@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Vaal AI Empire</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body class="dashboard-body">
+    <!-- Navigation -->
+    <nav class="navbar dashboard-nav">
+        <div class="nav-container">
+            <div class="logo">⚡ Vaal AI Empire</div>
+            <ul class="nav-menu">
+                <li><a href="dashboard.html" class="active">Dashboard</a></li>
+                <li><a href="#traces">Traces</a></li>
+                <li><a href="#experiments">Experiments</a></li>
+                <li><a href="#settings">Settings</a></li>
+            </ul>
+            <div class="user-menu">
+                <span class="user-name">Lungelo Luda</span>
+                <img src="https://ui-avatars.com/api/?name=LL&background=f7b731&color=0f3460" alt="User" class="avatar">
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Dashboard -->
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h4>AI Engines</h4>
+                <ul class="sidebar-menu">
+                    <li class="active">
+                        <span class="status-dot active"></span>
+                        <span>Financial Sentinel</span>
+                    </li>
+                    <li class="active">
+                        <span class="status-dot active"></span>
+                        <span>Guardian Engine</span>
+                    </li>
+                    <li class="active">
+                        <span class="status-dot active"></span>
+                        <span>Talent Accelerator</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h4>Quick Actions</h4>
+                <button class="sidebar-btn">📊 View Traces</button>
+                <button class="sidebar-btn">🧪 Run Experiment</button>
+                <button class="sidebar-btn">📝 Create Dataset</button>
+            </div>
+
+            <div class="sidebar-section">
+                <h4>Resources</h4>
+                <a href="#docs" class="sidebar-link">📖 Documentation</a>
+                <a href="#api" class="sidebar-link">🔌 API Reference</a>
+                <a href="#support" class="sidebar-link">📧 Support</a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Stats Overview -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Traces</div>
+                        <div class="stat-value" id="total-traces">1,247,893</div>
+                        <div class="stat-change positive">+12.5% from last month</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Tax Recovery</div>
+                        <div class="stat-value">R158,420</div>
+                        <div class="stat-change positive">+R24,500 this month</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-content">
+                        <div class="stat-label">System Uptime</div>
+                        <div class="stat-value">99.97%</div>
+                        <div class="stat-change positive">Above SLA target</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Active Hires</div>
+                        <div class="stat-value">23</div>
+                        <div class="stat-change">7 in final stage</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Trace Volume (Last 30 Days)</h3>
+                        <select class="chart-filter">
+                            <option>Last 7 days</option>
+                            <option selected>Last 30 days</option>
+                            <option>Last 90 days</option>
+                        </select>
+                    </div>
+                    <div class="chart-placeholder" id="trace-chart">
+                        <canvas id="traceCanvas"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Engine Performance</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item"><span class="legend-dot" style="background: #f7b731;"></span> Financial</span>
+                            <span class="legend-item"><span class="legend-dot" style="background: #00ff88;"></span> Guardian</span>
+                            <span class="legend-item"><span class="legend-dot" style="background: #3498db;"></span> Talent</span>
+                        </div>
+                    </div>
+                    <div class="chart-placeholder" id="performance-chart">
+                        <canvas id="performanceCanvas"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Activity -->
+            <section class="activity-section">
+                <h3>Recent Traces</h3>
+                <div class="activity-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Engine</th>
+                                <th>Operation</th>
+                                <th>Duration</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="traces-table">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Experiments Section -->
+            <section class="experiments-section">
+                <div class="section-header">
+                    <h3>Active Experiments</h3>
+                    <button class="btn-primary">+ New Experiment</button>
+                </div>
+                <div class="experiments-grid" id="experiments-grid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</body>
+</html>
