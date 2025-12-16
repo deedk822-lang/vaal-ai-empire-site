@@ -1,5 +1,5 @@
-// Vaal AI Empire - Stripe Checkout Server
-// Handles subscription checkout for South African SMEs
+// Vaal AI Empire - Main Server
+// Enterprise-grade Stripe + Observability Platform
 // Built in the Vaal. Built for Africa.
 
 require('dotenv').config();
@@ -11,8 +11,18 @@ const path = require('path');
 // Initialize Stripe
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+// Import observability
+const { getTracer } = require('./lib/tracing');
+const observabilityRoutes = require('./routes/observability');
+
 const app = express();
 const port = process.env.PORT || 4242;
+
+// Initialize tracer
+const tracer = getTracer({
+  projectName: 'vaal-ai-empire',
+  environment: process.env.NODE_ENV || 'development'
+});
 
 // Middleware
 app.use(cors());
@@ -20,10 +30,34 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '..')));
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
+    method: req.method,
+    path: req.path,
+    ip: req.ip
+  });
+  
+  req.traceId = traceId;
+  
+  res.on('finish', () => {
+    tracer.endTrace(traceId, {
+      statusCode: res.statusCode,
+      duration: Date.now() - req.timestamp
+    });
+  });
+  
+  req.timestamp = Date.now();
+  next();
+});
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
+
+// Observability routes
+app.use('/api/observability', observabilityRoutes);
 
 // Get configuration
 app.get('/config', (req, res) => {
@@ -39,6 +73,7 @@ app.get('/config', (req, res) => {
 // Create Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
   const { priceId } = req.body;
+  const spanId = tracer.startSpan(req.traceId, 'create_checkout_session', { priceId });
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -60,15 +95,20 @@ app.post('/create-checkout-session', async (req, res) => {
         source: 'vaalai_website'
       },
       subscription_data: {
+        trial_period_days: 7,
         metadata: {
           product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
         },
       },
     });
 
+    tracer.endSpan(spanId, { sessionId: session.id });
+    tracer.recordMetric('checkout_created', { priceId, sessionId: session.id });
+
     res.json({ sessionId: session.id });
   } catch (error) {
     console.error('Error creating checkout session:', error);
+    tracer.endSpan(spanId, { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
@@ -102,19 +142,29 @@ app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  const traceId = tracer.startTrace('webhook_event', {
+    type: event.type,
+    eventId: event.id
+  });
+
   // Handle events
   switch (event.type) {
     case 'checkout.session.completed':
       const session = event.data.object;
       console.log('✅ Checkout completed:', session.id);
-      console.log('Customer:', session.customer);
-      console.log('Subscription:', session.subscription);
-      // TODO: Send welcome email, provision access
+      tracer.recordMetric('checkout_completed', {
+        customerId: session.customer,
+        subscriptionId: session.subscription
+      });
       break;
 
     case 'customer.subscription.created':
       const subscription = event.data.object;
       console.log('✅ Subscription created:', subscription.id);
+      tracer.recordMetric('subscription_created', {
+        subscriptionId: subscription.id,
+        plan: subscription.items.data[0]?.price.id
+      });
       break;
 
     case 'customer.subscription.updated':
@@ -125,24 +175,33 @@ app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res
     case 'customer.subscription.deleted':
       const deletedSub = event.data.object;
       console.log('❌ Subscription canceled:', deletedSub.id);
-      // TODO: Revoke access
+      tracer.recordMetric('subscription_canceled', {
+        subscriptionId: deletedSub.id
+      });
       break;
 
     case 'invoice.paid':
       const invoice = event.data.object;
       console.log('💰 Invoice paid:', invoice.id);
+      tracer.recordMetric('invoice_paid', {
+        amount: invoice.amount_paid,
+        currency: invoice.currency
+      });
       break;
 
     case 'invoice.payment_failed':
       const failedInvoice = event.data.object;
       console.log('⚠️ Payment failed:', failedInvoice.id);
-      // TODO: Send payment failure email
+      tracer.recordMetric('payment_failed', {
+        invoiceId: failedInvoice.id
+      });
       break;
 
     default:
       console.log(`Unhandled event type: ${event.type}`);
   }
 
+  tracer.endTrace(traceId);
   res.json({ received: true });
 });
 
@@ -165,22 +224,34 @@ app.post('/create-portal-session', async (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
+  const stats = tracer.getStats();
+  
   res.json({
     status: 'ok',
     service: 'vaal-ai-empire',
     timestamp: new Date().toISOString(),
-    node: process.version
+    node: process.version,
+    uptime: process.uptime(),
+    stats
   });
 });
+
+// Cleanup old traces every hour
+setInterval(() => {
+  tracer.cleanup(24 * 60 * 60 * 1000); // 24 hours
+}, 60 * 60 * 1000);
 
 // Start server
 app.listen(port, () => {
   console.log('');
   console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
   console.log('   VAAL AI EMPIRE - SERVER');
+  console.log('   10X Enterprise Platform');
   console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
   console.log('');
   console.log(`🚀 Running on: http://localhost:${port}`);
+  console.log(`📊 Dashboard: http://localhost:${port}/dashboard.html`);
+  console.log(`🔍 Observability: http://localhost:${port}/api/observability`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌍 Domain: ${process.env.DOMAIN}`);
   console.log('');
