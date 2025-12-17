@@ -1,0 +1,51 @@
+{
+  "country": "South Africa",
+  "last_updated": "2024-12-17",
+  "gdp_2024": 377000000000,
+  "gdp_per_capita_usd": 6485,
+  "currency": "ZAR",
+  "exchange_rate_usd_dec_2024": 18.35,
+
+  "key_economic_challenges": [
+    {
+      "challenge": "Load-shedding",
+      "impact_2023": "R61.8 billion economic loss",
+      "status_2024": "352 days loadshedding-free (major improvement)",
+      "business_concern": "High (despite improvement, uncertainty remains)"
+    },
+    {
+      "challenge": "Labour strikes",
+      "frequency": "Seasonal (typically Q2-Q3)",
+      "high_risk_sectors": ["Mining", "Manufacturing", "Transport", "Public sector"],
+      "economic_impact": "R5-15 billion per major strike"
+    },
+    {
+      "challenge": "Port delays (Durban, Cape Town)",
+      "average_delay_2023": "7-14 days",
+      "improvement_2024": "Moderate (still below global standards)",
+      "impact": "Supply chain disruption, inventory shortages"
+    },
+    {
+      "challenge": "Currency volatility",
+      "typical_range": "R17-R19 per USD",
+      "impact_on_imports": "Significant for tech/manufacturing inputs"
+    }
+  ],
+
+  "sme_landscape": {
+    "total_smes": 2500000,
+    "contribution_to_gdp": "34%",
+    "employment": "60% of workforce",
+    "tax_compliance_rate": "52% (large gap)",
+    "digital_adoption": "48% (low)",
+    "failure_rate_5_years": "70%",
+    
+    "key_pain_points": [
+      "Cash flow management",
+      "Tax compliance complexity",
+      "Access to skilled talent",
+      "Load-shedding resilience costs",
+      "Digital transformation barriers"
+    ]
+  }
+}
