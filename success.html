@@ -4,6 +4,155 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Success - Vaal AI Empire</title>
+ feature/stripe-checkout
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        .success-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+        }
+        .success-icon {
+            font-size: 5rem;
+            margin-bottom: 2rem;
+            animation: scaleIn 0.5s ease;
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0); }
+            to { transform: scale(1); }
+        }
+        .success-title {
+            font-size: 3rem;
+            color: #f7b731;
+            margin-bottom: 1rem;
+        }
+        .success-message {
+            font-size: 1.25rem;
+            color: #ccc;
+            max-width: 600px;
+            margin-bottom: 3rem;
+            line-height: 1.6;
+        }
+        .subscription-details {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(247, 183, 49, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            max-width: 500px;
+            width: 100%;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            color: #999;
+        }
+        .detail-value {
+            color: #fff;
+            font-weight: 600;
+        }
+        .next-steps {
+            text-align: left;
+            max-width: 600px;
+            margin-bottom: 2rem;
+        }
+        .next-steps h3 {
+            color: #f7b731;
+            margin-bottom: 1rem;
+        }
+        .next-steps ol {
+            color: #ccc;
+            line-height: 1.8;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #f7b731 0%, #ff9933 100%);
+            color: #0f3460;
+        }
+        .btn-secondary {
+            background: transparent;
+            color: #f7b731;
+            border: 2px solid #f7b731;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(247, 183, 49, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="success-container">
+        <div class="success-icon">✅</div>
+        <h1 class="success-title">Welcome to the Vaal AI Empire!</h1>
+        <p class="success-message">
+            Your subscription is now active. We've sent a confirmation email with your login credentials and getting started guide.
+        </p>
+
+        <div class="subscription-details" id="details">
+            <div class="detail-row">
+                <span class="detail-label">Status:</span>
+                <span class="detail-value">✅ Active</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Plan:</span>
+                <span class="detail-value" id="plan-name">Loading...</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Amount:</span>
+                <span class="detail-value" id="amount">Loading...</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Billing:</span>
+                <span class="detail-value">Monthly</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Next billing date:</span>
+                <span class="detail-value" id="next-billing">Loading...</span>
+            </div>
+        </div>
+
+        <div class="next-steps">
+            <h3>What happens next:</h3>
+            <ol>
+                <li>Check your email for login credentials</li>
+                <li>Access your AI Empire dashboard</li>
+                <li>Complete onboarding wizard (5 minutes)</li>
+                <li>Connect your business accounts</li>
+                <li>Let the autonomous engines start working</li>
+            </ol>
+        </div>
+
+        <div class="action-buttons">
+            <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
+            <a href="/" class="btn btn-secondary">Return Home</a>
+
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -34,14 +183,55 @@
                 <a href="/dashboard.html" class="btn-primary">Go to Dashboard →</a>
                 <a href="/" class="btn-secondary">Return Home</a>
             </div>
+ main
         </div>
     </div>
 
     <script>
+ feature/stripe-checkout
+        // Get session ID from URL
+
+ main
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session_id');
 
         if (sessionId) {
+ feature/stripe-checkout
+            // Fetch session details
+            fetch(`/checkout-session?sessionId=${sessionId}`)
+                .then(response => response.json())
+                .then(session => {
+                    // Update page with session details
+                    const planName = session.metadata?.product || 'Vaal Empire';
+                    const amount = (session.amount_total / 100).toFixed(2);
+                    const currency = session.currency.toUpperCase();
+                    
+                    document.getElementById('plan-name').textContent = planName;
+                    document.getElementById('amount').textContent = `${currency} ${amount}`;
+                    
+                    // Calculate next billing date (30 days from now)
+                    const nextBilling = new Date();
+                    nextBilling.setDate(nextBilling.getDate() + 30);
+                    document.getElementById('next-billing').textContent = nextBilling.toLocaleDateString();
+                })
+                .catch(error => {
+                    console.error('Error fetching session:', error);
+                });
+        }
+
+        // Track conversion (Google Analytics, Facebook Pixel, etc.)
+        if (typeof gtag !== 'undefined') {
+            gtag('event', 'purchase', {
+                transaction_id: sessionId,
+                value: 999.00,
+                currency: 'ZAR',
+                items: [{
+                    item_name: 'Vaal AI Empire Subscription'
+                }]
+            });
+        }
+    </script>
+
             fetch(`/checkout-session?sessionId=${sessionId}`)
                 .then(res => res.json())
                 .then(session => {
@@ -60,5 +250,6 @@
             to { transform: scale(1); }
         }
     </style>
+ main
 </body>
 </html>
