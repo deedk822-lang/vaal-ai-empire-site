@@ -1,0 +1,114 @@
+{
+  "regulation": "Section 12H - Income Tax Act, 1962",
+  "title": "Learnership Tax Allowances",
+  "status": "Extended - No sunset clause (was April 1, 2024, now extended)",
+  "last_updated": "2024-12-17",
+  "description": "Tax deduction for employers who enter into registered learnership agreements to encourage skills development and employment",
+  
+  "eligibility": {
+    "employer": [
+      "Must be registered with SARS",
+      "Entered into registered learnership agreement",
+      "Agreement registered with relevant SETA (Sector Education and Training Authority)",
+      "Must derive income from trade where learnership is conducted",
+      "Learnership must be pursuant to trade carried on by employer"
+    ],
+    "learner": [
+      "Must be party to registered learnership agreement",
+      "Must hold NQF qualification level 1-10",
+      "Agreement must be registered before 1 April 2024 (for old rates)"
+    ]
+  },
+
+  "allowances": {
+    "annual_allowance": {
+      "description": "Deductible annually while learnership is active",
+      "nqf_1_to_6": {
+        "able_bodied": 40000,
+        "disability": 60000,
+        "currency": "ZAR",
+        "calculation": "Pro-rated based on months learner participated (full months only)"
+      },
+      "nqf_7_to_10": {
+        "able_bodied": 20000,
+        "disability": 50000,
+        "currency": "ZAR",
+        "calculation": "Pro-rated based on months learner participated (full months only)"
+      }
+    },
+    
+    "completion_allowance": {
+      "description": "Once-off allowance upon successful completion of learnership",
+      "nqf_1_to_6": {
+        "able_bodied": 40000,
+        "disability": 60000,
+        "currency": "ZAR"
+      },
+      "nqf_7_to_10": {
+        "able_bodied": 20000,
+        "disability": 50000,
+        "currency": "ZAR"
+      },
+      "duration_multiplier": {
+        "under_24_months": "Full allowance claimed in completion year",
+        "over_24_months": "Allowance multiplied by number of consecutive 12-month periods",
+        "example": "36-month learnership = 3 × applicable allowance"
+      }
+    }
+  },
+
+  "calculation_examples": [
+    {
+      "scenario": "Manufacturing company with 10 learners (NQF 1-6, able-bodied) completing 12-month learnership",
+      "annual_allowance": "10 × R40,000 = R400,000",
+      "completion_allowance": "10 × R40,000 = R400,000",
+      "total_deduction": "R800,000",
+      "tax_saving_28_percent": "R224,000",
+      "notes": "Claimed over 2 tax years"
+    },
+    {
+      "scenario": "Tech company with 5 learners (NQF 7-10, able-bodied) completing 18-month learnership",
+      "annual_allowance_year_1": "5 × R20,000 = R100,000",
+      "annual_allowance_year_2": "5 × (6/12 × R20,000) = R50,000 (pro-rated)",
+      "completion_allowance": "5 × R20,000 = R100,000",
+      "total_deduction": "R250,000",
+      "tax_saving_28_percent": "R70,000"
+    },
+    {
+      "scenario": "Employer with learner starting mid-year (6 months participation)",
+      "annual_allowance": "(6/12) × R40,000 = R20,000",
+      "notes": "Pro-rated to actual months of participation in tax year"
+    }
+  ],
+
+  "documentation_required": {
+    "sars_forms": ["IT180 - Certificate of Completion"],
+    "proof_of_registration": "SETA registration certificate",
+    "proof_of_completion": "Certificate from relevant SETA or training provider",
+    "learner_details": "ID number, disability status, NQF level"
+  },
+
+  "common_mistakes": [
+    "Claiming before SETA registration is complete",
+    "Not pro-rating for partial year participation",
+    "Claiming for terminated learnerships (except death)",
+    "Incorrect NQF level classification",
+    "Missing IT180 form submission"
+  ],
+
+  "official_sources": [
+    "https://www.sars.gov.za/wp-content/uploads/Legal/Notes/Legal-IntR-IN-20-Additional-deduction-for-learnership-agreements.pdf",
+    "https://www.sars.gov.za/wp-content/uploads/Ops/Guides/LAPD-IT-G09-Guide-on-the-Tax-Incentive-for-Learnership-Agreements.pdf"
+  ],
+
+  "financial_impact_sa": {
+    "typical_sme_unclaimed": "R150,000 - R500,000 annually",
+    "reason_for_non_claiming": [
+      "Lack of awareness",
+      "Administrative burden",
+      "Incomplete documentation",
+      "Fear of SARS audit"
+    ],
+    "market_opportunity": "Estimated R2+ billion unclaimed annually across SA SMEs"
+  }
+}
