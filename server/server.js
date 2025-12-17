@@ -24,6 +24,9 @@ const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const paymentRoutes = require('./routes/paymentRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // Import observability (if exists)
 let observabilityRoutes, tracer;
@@ -148,6 +151,9 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 if (observabilityRoutes) {
     app.use('/api/observability', observabilityRoutes);
