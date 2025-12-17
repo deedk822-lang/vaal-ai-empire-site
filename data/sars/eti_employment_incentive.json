@@ -1,0 +1,126 @@
+{
+  "regulation": "Employment Tax Incentive (ETI) Act, 2013",
+  "effective_date": "2014-01-01",
+  "latest_update": "2025-04-01",
+  "status": "Active",
+  "last_updated": "2025-04-01",
+  "description": "Monthly tax incentive aimed at encouraging employers to hire young workers aged 18-29",
+
+  "eligibility": {
+    "employee": {
+      "age_range": "18-29 years",
+      "citizenship": "South African citizen, permanent resident, refugee, or asylum seeker",
+      "not_connected_person": "Cannot be connected person to employer (as defined in Income Tax Act)",
+      "not_domestic_worker": "Domestic workers excluded"
+    },
+    "employer": {
+      "registered_for_paye": true,
+      "good_standing": "Must be tax compliant",
+      "minimum_wage": "Must pay at least national minimum wage or sectoral determination",
+      "excluded_sectors": [
+        "National or provincial government",
+        "Municipal entities",
+        "Public entities listed in PFMA Schedule 2 & 3"
+      ]
+    }
+  },
+
+  "monthly_allowance_2025": {
+    "effective_from": "2025-04-01",
+    "qualifying_threshold": "Monthly remuneration must be less than R7,500 (increased from R6,500)",
+    "minimum_hours": "160 hours per month for full benefit",
+    
+    "first_12_months": {
+      "remuneration_bands": [
+        {
+          "range": "R0 - R2,499.99",
+          "eti_amount": "60% of monthly remuneration",
+          "max_benefit": "R1,500"
+        },
+        {
+          "range": "R2,500 - R5,499.99",
+          "eti_amount": "R1,500 (fixed)",
+          "max_benefit": "R1,500"
+        },
+        {
+          "range": "R5,500 - R7,499.99",
+          "eti_formula": "R1,500 - (75% × (monthly remuneration - R5,500))",
+          "max_benefit": "R1,500",
+          "min_benefit": "R0"
+        }
+      ]
+    },
+
+    "second_12_months": {
+      "remuneration_bands": [
+        {
+          "range": "R0 - R2,499.99",
+          "eti_amount": "30% of monthly remuneration",
+          "max_benefit": "R750"
+        },
+        {
+          "range": "R2,500 - R5,499.99",
+          "eti_amount": "R750 (fixed)",
+          "max_benefit": "R750"
+        },
+        {
+          "range": "R5,500 - R7,499.99",
+          "eti_formula": "R750 - (37.5% × (monthly remuneration - R5,500))",
+          "max_benefit": "R750",
+          "min_benefit": "R0"
+        }
+      ]
+    },
+
+    "part_time_calculation": {
+      "under_160_hours": "ETI amount pro-rated based on actual hours worked",
+      "formula": "(Hours worked / 160) × Full ETI amount"
+    }
+  },
+
+  "calculation_examples": [
+    {
+      "scenario": "Employee aged 22, earning R4,000/month, working 160+ hours",
+      "month_1_to_12": "R1,500/month",
+      "month_13_to_24": "R750/month",
+      "total_24_months": "R27,000",
+      "annual_saving": "R18,000 (first year)"
+    },
+    {
+      "scenario": "Employee aged 25, earning R6,000/month, working 160+ hours",
+      "month_1_to_12_calculation": "R1,500 - (75% × (R6,000 - R5,500)) = R1,500 - R375 = R1,125",
+      "month_13_to_24_calculation": "R750 - (37.5% × (R6,000 - R5,500)) = R750 - R187.50 = R562.50",
+      "total_24_months": "R20,250"
+    },
+    {
+      "scenario": "Employer with 20 qualifying employees earning R3,500/month each",
+      "monthly_eti": "20 × R1,500 = R30,000/month",
+      "annual_first_year": "R360,000",
+      "annual_second_year": "R180,000",
+      "total_2_years": "R540,000"
+    }
+  ],
+
+  "claiming_process": {
+    "frequency": "Monthly via PAYE return (EMP201)",
+    "reconciliation": "Annual via EMP501",
+    "certificate": "ETI Certificate issued by SARS upon successful claim",
+    "audit_trail": "Keep employee records for 5 years"
+  },
+
+  "official_sources": [
+    "https://www.sars.gov.za/types-of-tax/pay-as-you-earn/employment-tax-incentive-eti/",
+    "https://www.sars.gov.za/latest-news/employment-tax-incentive-eti-changes-with-effect-from-1-april-2025/"
+  ],
+
+  "financial_impact_sa": {
+    "typical_sme_benefit": "R180,000 - R500,000 annually (10-30 qualifying employees)",
+    "national_uptake": "Approximately 50% of eligible employers claim ETI",
+    "reason_for_non_claiming": [
+      "Unaware of eligibility",
+      "Administrative complexity",
+      "Payroll system limitations",
+      "Fear of non-compliance penalties"
+    ]
+  }
+}

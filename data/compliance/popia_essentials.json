@@ -1,0 +1,147 @@
+{
+  "regulation": "Protection of Personal Information Act (POPIA), Act 4 of 2013",
+  "commencement_date": "2020-07-01",
+  "full_compliance_deadline": "2021-07-01",
+  "regulator": "Information Regulator South Africa",
+  "last_updated": "2024-12-17",
+
+  "maximum_penalties": {
+    "administrative_fine": "R10,000,000",
+    "criminal_penalty": "12 months imprisonment",
+    "both": "Fine AND imprisonment possible for serious breaches"
+  },
+
+  "eight_conditions_for_lawful_processing": [
+    {
+      "condition": "1. Accountability",
+      "requirement": "Responsible party must ensure compliance with all POPIA conditions",
+      "implementation": "Appoint Information Officer, document compliance measures"
+    },
+    {
+      "condition": "2. Processing Limitation",
+      "requirement": "Personal information must be processed lawfully and in a reasonable manner",
+      "legal_bases": ["Consent", "Contract", "Legal obligation", "Legitimate interest", "Public body function"],
+      "implementation": "Obtain explicit consent, document legal basis for each processing activity"
+    },
+    {
+      "condition": "3. Purpose Specification",
+      "requirement": "Must collect for specific, explicitly defined, lawful purpose",
+      "implementation": "Privacy notice clearly stating purpose, no secondary use without new consent"
+    },
+    {
+      "condition": "4. Further Processing Limitation",
+      "requirement": "No processing beyond original purpose without consent",
+      "implementation": "Document all processing activities, obtain fresh consent for new purposes"
+    },
+    {
+      "condition": "5. Information Quality",
+      "requirement": "Information must be complete, accurate, not misleading, updated where necessary",
+      "implementation": "Regular data quality audits, data subject access to update records"
+    },
+    {
+      "condition": "6. Openness",
+      "requirement": "Data subject must be notified about collection, purpose, recipient, and rights",
+      "implementation": "Comprehensive privacy policy, clear notices at point of collection"
+    },
+    {
+      "condition": "7. Security Safeguards",
+      "requirement": "Secure personal information against loss, damage, unauthorized access",
+      "implementation": "Encryption, access controls, audit logs, incident response plan"
+    },
+    {
+      "condition": "8. Data Subject Participation",
+      "requirement": "Data subjects have right to access, correct, and object to processing",
+      "implementation": "Formal process for data subject requests, respond within 30 days"
+    }
+  ],
+
+  "data_breach_notification": {
+    "regulator_notification": "As soon as reasonably possible after becoming aware",
+    "data_subject_notification": "Required if breach poses risk to rights and freedoms",
+    "notification_content": [
+      "Nature of breach",
+      "Personal information involved",
+      "Measures taken/to be taken",
+      "Recommendations for data subject protection"
+    ],
+    "failure_to_notify_penalty": "Up to R10,000,000 fine"
+  },
+
+  "consent_requirements": {
+    "must_be": ["Voluntary", "Specific", "Informed", "Unambiguous"],
+    "invalid_if": ["Pre-ticked boxes", "Bundled with T&Cs", "Coerced", "Ambiguous language"],
+    "withdrawal": "Must be as easy to withdraw as to give consent",
+    "children": "Parental consent required for children under 18"
+  },
+
+  "special_personal_information": {
+    "categories": [
+      "Race, ethnicity",
+      "Trade union membership",
+      "Political persuasion",
+      "Health/sex life",
+      "Biometric information",
+      "Religious/philosophical beliefs",
+      "Criminal behavior"
+    ],
+    "additional_requirements": "Explicit consent OR specific POPIA exemption required"
+  },
+
+  "vaal_ai_empire_compliance_checklist": [
+    {
+      "requirement": "Information Officer appointed",
+      "status": "Required",
+      "evidence": "Written appointment letter, published on website"
+    },
+    {
+      "requirement": "Privacy Policy published",
+      "status": "Required",
+      "evidence": "Accessible on website, covers all 8 conditions"
+    },
+    {
+      "requirement": "Consent management system",
+      "status": "Required for payment processing",
+      "evidence": "Checkbox on payment form, consent logged in database"
+    },
+    {
+      "requirement": "Data encryption at rest",
+      "status": "Required",
+      "evidence": "MongoDB encryption enabled, payment data tokenized (Stripe)"
+    },
+    {
+      "requirement": "Data encryption in transit",
+      "status": "Required",
+      "evidence": "HTTPS/TLS 1.3, Stripe payment gateway"
+    },
+    {
+      "requirement": "Access controls",
+      "status": "Required",
+      "evidence": "Role-based access control (RBAC), admin authentication"
+    },
+    {
+      "requirement": "Data breach response plan",
+      "status": "Required",
+      "evidence": "Written procedure, notification templates ready"
+    },
+    {
+      "requirement": "Data subject request process",
+      "status": "Required",
+      "evidence": "Email: privacy@vaalai.co.za, 30-day response SLA"
+    },
+    {
+      "requirement": "Data retention policy",
+      "status": "Required",
+      "evidence": "Payment data: 5 years (FICA), user data: deleted upon request"
+    },
+    {
+      "requirement": "Vendor agreements (POPIA clause)",
+      "status": "Required for Stripe, MongoDB Atlas, SendGrid",
+      "evidence": "Data Processing Agreements (DPAs) in place"
+    }
+  ],
+
+  "official_sources": [
+    "https://www.gov.za/documents/protection-personal-information-act",
+    "https://www.justice.gov.za/inforeg/"
+  ]
+}

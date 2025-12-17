@@ -1,0 +1,158 @@
+{
+  "crisis_type": "Load-shedding (Electricity Curtailment)",
+  "country": "South Africa",
+  "provider": "Eskom Holdings SOC Ltd",
+  "last_updated": "2024-12-17",
+
+  "2024_performance": {
+    "loadshedding_free_days": 352,
+    "last_loadshedding_date": "2024-03-26",
+    "consecutive_days_no_loadshedding_as_of_dec_2024": 261,
+    "status": "Suspended since March 26, 2024",
+    
+    "key_improvements": {
+      "energy_availability_factor_eaf": {
+        "q2_2024": "63.03% (April-August avg)",
+        "peak_july_2024": "70.67%",
+        "improvement_vs_2023": "+8% year-on-year",
+        "target": "Above 70% for stability"
+      },
+      "unplanned_outages_uclf": {
+        "current_2024": "26.13% (April-August avg)",
+        "2023_same_period": "34.91%",
+        "improvement": "-8.8% reduction",
+        "current_mw": "9,866 MW (significantly below winter forecast of 15,500 MW)"
+      },
+      "diesel_savings": {
+        "april_july_2024": "R4.2 billion saved vs budget",
+        "year_on_year_dec_2024": "R16.46 billion saved vs 2023"
+      }
+    }
+  },
+
+  "historical_crisis_years": {
+    "2023": {
+      "total_loadshedding_days": 279,
+      "worst_month": "June 2023",
+      "highest_stage": 6,
+      "economic_impact_estimate_zar": "61.8 billion",
+      "average_daily_capacity": "23,700 MW"
+    },
+    "2024_q1": {
+      "total_loadshedding_days": 85,
+      "last_stage_before_suspension": "Stage 2-4",
+      "suspension_date": "2024-03-26"
+    }
+  },
+
+  "loadshedding_stages": {
+    "stage_1": {
+      "capacity_shed_mw": 1000,
+      "frequency": "Once daily for 2 hours",
+      "severity": "Minimal disruption"
+    },
+    "stage_2": {
+      "capacity_shed_mw": 2000,
+      "frequency": "Twice daily for 2 hours (total 4 hours)",
+      "severity": "Moderate disruption"
+    },
+    "stage_3": {
+      "capacity_shed_mw": 3000,
+      "frequency": "3 times daily for 2 hours (total 6 hours)",
+      "severity": "Significant disruption"
+    },
+    "stage_4": {
+      "capacity_shed_mw": 4000,
+      "frequency": "4 times daily for 2 hours (total 8 hours)",
+      "severity": "Severe disruption"
+    },
+    "stage_5": {
+      "capacity_shed_mw": 5000,
+      "frequency": "5 times daily for 2 hours (total 10 hours)",
+      "severity": "Critical disruption"
+    },
+    "stage_6": {
+      "capacity_shed_mw": 6000,
+      "frequency": "6 times daily for 2 hours (total 12 hours)",
+      "severity": "Catastrophic disruption"
+    },
+    "stage_7_8": {
+      "status": "Theoretical worst-case scenarios",
+      "note": "Not implemented in 2023-2024 cycle"
+    }
+  },
+
+  "business_impact_matrix": {
+    "manufacturing": {
+      "stage_2": "Minor production delays, some shift rescheduling",
+      "stage_4": "Significant output reduction (30-40%), overtime costs",
+      "stage_6": "Major shutdowns, spoilage risk, safety concerns",
+      "mitigation": "Backup generators, battery storage, solar PV, demand-side management"
+    },
+    "retail": {
+      "stage_2": "Minimal - most have generator backup",
+      "stage_4": "Inventory spoilage (perishables), POS downtime",
+      "stage_6": "Store closures, security risks, major revenue loss",
+      "mitigation": "Generator backup, solar rooftop, cloud POS systems"
+    },
+    "it_services": {
+      "stage_2": "UPS systems handle short outages",
+      "stage_4": "Generator fuel costs escalate, connectivity issues",
+      "stage_6": "Data center risk, SLA breaches, client penalties",
+      "mitigation": "Cloud infrastructure (AWS Cape Town), redundant connectivity, UPS + solar"
+    },
+    "sme_services": {
+      "stage_2": "Productivity loss, meeting disruptions",
+      "stage_4": "Work-from-home complications, client service delays",
+      "stage_6": "Business closure during outages, revenue collapse",
+      "mitigation": "Flexible work schedules, mobile connectivity, coworking spaces with power"
+    }
+  },
+
+  "predictive_indicators": [
+    {
+      "indicator": "Eskom EAF below 60%",
+      "risk_level": "High",
+      "likely_outcome": "Stage 2-4 loadshedding within 48 hours"
+    },
+    {
+      "indicator": "Unplanned outages above 15,000 MW",
+      "risk_level": "Critical",
+      "likely_outcome": "Stage 4-6 loadshedding imminent"
+    },
+    {
+      "indicator": "Coal stockpile below 20 days",
+      "risk_level": "Medium",
+      "likely_outcome": "Increased risk within 2-4 weeks"
+    },
+    {
+      "indicator": "Winter demand spike (June-August)",
+      "risk_level": "Seasonal",
+      "likely_outcome": "Higher probability of loadshedding"
+    },
+    {
+      "indicator": "Eskom diesel budget depletion",
+      "risk_level": "High",
+      "likely_outcome": "Cannot run OCGTs, loadshedding escalates"
+    }
+  ],
+
+  "data_sources": [
+    "https://www.eskom.co.za/ (official loadshedding schedule)",
+    "https://loadshedding.eskom.co.za/LoadShedding/GetStatus (real-time API)",
+    "EskomSePush API (community monitoring)",
+    "Eskom System Status updates (published daily)"
+  ],
+
+  "agent_recommendations": {
+    "early_warning_threshold": "EAF drops below 65%",
+    "alert_frequency": "Real-time monitoring during winter, daily check otherwise",
+    "client_notification": "24-48 hour advance warning when EAF trends down",
+    "automated_actions": [
+      "Schedule generator maintenance",
+      "Shift manufacturing to off-peak hours",
+      "Activate demand-side management",
+      "Stock up on diesel/battery reserves"
+    ]
+  }
+}
