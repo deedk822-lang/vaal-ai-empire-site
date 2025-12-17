@@ -24,9 +24,12 @@ const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+ feat/auth-error-handling-5447018483623698560
 const paymentRoutes = require('./routes/paymentRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+
+ main
 
 // Import observability (if exists)
 let observabilityRoutes, tracer;
@@ -47,6 +50,7 @@ const port = process.env.PORT || 4242;
 // =============================
 // SECURITY MIDDLEWARE
 // =============================
+ feat/auth-error-handling-5447018483623698560
 
 // Set security HTTP headers
 app.use(helmet());
@@ -91,6 +95,53 @@ app.use(mongoSanitize());
 // Data sanitization against XSS
 app.use(xss());
 
+
+
+// Set security HTTP headers
+app.use(helmet());
+
+// Rate limiting
+const limiter = rateLimit({
+    max: 100, // 100 requests per windowMs
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    message: 'Too many requests from this IP, please try again later.'
+});
+app.use('/api', limiter);
+
+// Auth-specific rate limiter (stricter)
+const authLimiter = rateLimit({
+    max: 5, // 5 login attempts per windowMs
+    windowMs: 15 * 60 * 1000,
+    message: 'Too many login attempts, please try again later.',
+    skipSuccessfulRequests: true
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/signup', authLimiter);
+
+// CORS
+const corsOptions = {
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+    credentials: true,
+    optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
+// =============================
+// BODY PARSING & SANITIZATION
+// =============================
+
+// Body parser (limit payload size)
+app.use(bodyParser.json({ limit: '10kb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser());
+
+// Data sanitization against NoSQL query injection
+app.use(mongoSanitize());
+
+// Data sanitization against XSS
+app.use(xss());
+
+ main
 // Prevent parameter pollution
 app.use(hpp({
     whitelist: ['price', 'plan', 'status'] // Allow these params to be duplicated
@@ -110,9 +161,15 @@ app.use((req, res, next) => {
             path: req.path,
             ip: req.ip
         });
+ feat/auth-error-handling-5447018483623698560
 
         req.traceId = traceId;
 
+
+        
+        req.traceId = traceId;
+        
+ main
         res.on('finish', () => {
             tracer.endTrace(traceId, {
                 statusCode: res.statusCode,
@@ -120,7 +177,11 @@ app.use((req, res, next) => {
             });
         });
     }
+ feat/auth-error-handling-5447018483623698560
 
+
+    
+ main
     req.timestamp = Date.now();
     next();
 });
@@ -132,7 +193,11 @@ app.use((req, res, next) => {
 // Health check (before authentication)
 app.get('/health', (req, res) => {
     const stats = tracer ? tracer.getStats() : {};
+ feat/auth-error-handling-5447018483623698560
 
+
+    
+ main
     res.json({
         status: 'ok',
         service: 'vaal-ai-empire',
@@ -151,9 +216,12 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+ feat/auth-error-handling-5447018483623698560
 app.use('/api/payments', paymentRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/analytics', analyticsRoutes);
+
+ main
 
 if (observabilityRoutes) {
     app.use('/api/observability', observabilityRoutes);
@@ -177,7 +245,11 @@ app.get('/config', (req, res) => {
 // Create Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
     const { priceId } = req.body;
+ feat/auth-error-handling-5447018483623698560
 
+
+    
+ main
     try {
         const session = await stripe.checkout.sessions.create({
             mode: 'subscription',
@@ -230,7 +302,11 @@ app.get('/checkout-session', async (req, res) => {
 });
 
 // Webhook endpoint (must use raw body)
+ feat/auth-error-handling-5447018483623698560
 app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+
+app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res) => {
+ main
     const sig = req.headers['stripe-signature'];
     let event;
 
@@ -321,14 +397,22 @@ const startServer = async () => {
     try {
         // Connect to MongoDB
         await connectDB();
+ feat/auth-error-handling-5447018483623698560
 
+
+        
+ main
         // Cleanup old traces every hour (if tracer exists)
         if (tracer) {
             setInterval(() => {
                 tracer.cleanup(24 * 60 * 60 * 1000); // 24 hours
             }, 60 * 60 * 1000);
         }
+ feat/auth-error-handling-5447018483623698560
 
+
+        
+ main
         // Start server
         app.listen(port, () => {
             console.log('');

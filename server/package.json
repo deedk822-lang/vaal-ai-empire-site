@@ -7,8 +7,13 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "diagnose": "node agents/diagnostic-runner.js",
+ feat/auth-error-handling-5447018483623698560
     "test:auth": "node -e \"require('./agents/auth-validator').run()\"",
     "test:security": "node -e \"require('./agents/security-auditor').run()\"",
+
+    "test:auth": "node agents/auth-validator.js",
+    "test:security": "node agents/security-auditor.js",
+ main
     "test": "npm run diagnose"
   },
   "keywords": [
