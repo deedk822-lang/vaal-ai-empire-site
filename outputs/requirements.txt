@@ -1,0 +1,58 @@
+ feature/knowledge-bases
+# Vaal AI Empire - Python Dependencies (MINIMAL - No Cohere)
+
+# AG2 Multi-Agent Framework
+ag2[openai]>=0.10.0
+
+# Standard Libraries
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Environment Management
+python-dotenv>=1.0.0
+
+# Async Support
+aiohttp>=3.9.0
+
+# JSON/Data Handling
+orjson>=3.9.0
+
+# Web Scraping (for SARS Monitor)
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# PDF Parsing (for SARS documents)
+PyPDF2>=3.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+=======
+# Vaal AI Empire - AI Agent Dependencies
+# Install: pip install -r requirements.txt
+
+# Multi-Agent Framework
+ag2[openai]==0.5.0
+
+# Web Scraping & Document Processing
+beautifulsoup4==4.12.3
+PyPDF2==3.0.1
+requests==2.31.0
+lxml==5.1.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+python-dateutil==2.8.2
+
+# Logging & Monitoring
+loguru==0.7.2
+
+# Testing (Optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+ main
