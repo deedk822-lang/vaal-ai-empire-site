@@ -285,3 +285,34 @@ const Crisis = require('./agents/lib/crisis-detector');
 **Built in the Vaal Triangle. Powered by Cohere. Verified by SARS.**
 
 © 2025 Vaal AI Empire
+
+
+---
+
+## 🧠 Coding Agent Executor
+
+A lightweight Python CLI is included for quick coding prompts and optional local execution.
+
+```bash
+# Set API key
+export DASHSCOPE_API_KEY=your_key_here
+
+# Interactive mode
+python agents/coding_agent_executor.py -i
+
+# Single message
+python agents/coding_agent_executor.py -m "Write a Python web scraper"
+
+# With code execution
+python agents/coding_agent_executor.py -m "Calculate pi" -e
+
+# Run examples
+python agents/coding_agent_example.py 3
+
+# Optional: load key from a file (avoid putting secrets directly on the CLI)
+python agents/coding_agent_executor.py -m "Write a Python web scraper" --api-key-file ~/.secrets/dashscope_key
+```
+
+Security note: prefer the `DASHSCOPE_API_KEY` environment variable method shown above for regular use. Use `--api-key-file` only when needed, and avoid exposing secrets via command-line arguments.
+
+If no key is configured, the executor still runs in local fallback mode and prints a note.
