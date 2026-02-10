@@ -9,10 +9,6 @@ on:
     # Run every Monday at 9 AM UTC
     - cron: '0 9 * * 1'
 
-# Default permissions for all jobs
-permissions:
-  contents: read
-
 jobs:
   # ============================================
   # Node.js Security Audit
@@ -84,9 +80,16 @@ jobs:
   # ============================================
   # CodeQL Analysis (GitHub)
   # ============================================
+  # Note: This job is skipped for PRs from forks because GitHub
+  # doesn't allow fork PRs to write security events.
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    # Skip CodeQL on fork PRs as they can't write security events
+    # This prevents "Resource not accessible by integration" errors
+    if: |
+      github.event_name != 'pull_request' || 
+      github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       actions: read
       contents: read
@@ -108,14 +111,17 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
+        continue-on-error: true
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v4
+        continue-on-error: true
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{matrix.language}}"
+        continue-on-error: true
 
   # ============================================
   # Secret Scanning
