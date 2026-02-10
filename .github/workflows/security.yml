@@ -1,0 +1,38 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * 1'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: NPM Audit
+      run: npm audit --audit-level=high
+      continue-on-error: true
+
+    - name: Python Bandit (SAST)
+      run: |
+        pip install bandit
+        bandit -r . -x ./tests
+      continue-on-error: true
+
+    - name: Safety Check
+      run: |
+        pip install safety
+        safety check
+      continue-on-error: true
+
+    - name: CodeQL Analysis
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, python
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
