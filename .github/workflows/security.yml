@@ -1,0 +1,174 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  # ============================================
+  # Node.js Security Audit
+  # ============================================
+  npm-security:
+    name: NPM Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '18'
+
+      - name: Run npm audit (Root)
+        run: npm audit --audit-level=moderate || true
+
+      - name: Run npm audit (Server)
+        working-directory: ./server
+        run: npm audit --audit-level=moderate || true
+
+  # ============================================
+  # Python Security Scan
+  # ============================================
+  python-security:
+    name: Python Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+
+      - name: Run Bandit (Python SAST)
+        run: bandit -r agents/ -f json -o bandit-report.json || true
+
+      - name: Run Safety (Dependency Check)
+        run: safety check -r requirements.txt || true
+
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
+
+  # ============================================
+  # CodeQL Analysis (GitHub)
+  # ============================================
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript', 'python']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # ============================================
+  # Secret Scanning
+  # ============================================
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
+
+      - name: Manual secret patterns check
+        run: |
+          echo "Checking for common secret patterns..."
+          
+          # Patterns to check
+          patterns=(
+            "sk_live_[a-zA-Z0-9]{24,}"
+            "sk_test_[a-zA-Z0-9]{24,}"
+            "pk_live_[a-zA-Z0-9]{24,}"
+            "AKIA[0-9A-Z]{16}"
+            "ghp_[a-zA-Z0-9]{36}"
+            "glpat-[a-zA-Z0-9\-]{20}"
+            "mongodb\+srv://[^:]+:[^@]+@"
+            "postgresql://[^:]+:[^@]+@"
+          )
+          
+          found=0
+          for pattern in "${patterns[@]}"; do
+            if grep -rE "$pattern" --include="*.js" --include="*.py" --include="*.json" --include="*.env*" --include="*.yml" --include="*.yaml" . 2>/dev/null | grep -v "node_modules" | grep -v ".git"; then
+              echo "❌ Found potential secret matching: $pattern"
+              found=1
+            fi
+          done
+          
+          if [ $found -eq 1 ]; then
+            echo "⚠️  Potential secrets found. Please review and remove if real."
+          else
+            echo "✅ No obvious secrets found in code"
+          fi
+
+  # ============================================
+  # Dependency Review (PR only)
+  # ============================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v3
+        with:
+          comment-summary-in-pr: true
+          fail-on-severity: moderate

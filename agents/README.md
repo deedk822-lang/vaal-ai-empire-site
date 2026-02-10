@@ -285,3 +285,70 @@ const Crisis = require('./agents/lib/crisis-detector');
 **Built in the Vaal Triangle. Powered by Cohere. Verified by SARS.**
 
 © 2025 Vaal AI Empire
+
+
+---
+
+## 🧠 Coding Agent Executor
+
+A powerful Python CLI powered by **Qwen3-Coder-Plus** via DashScope API for coding assistance with optional local execution.
+
+### Features
+- 🤖 AI-powered code generation via Qwen3-Coder-Plus
+- 🐍 Safe Python code execution in sandboxed environment
+- 💬 Interactive and single-message modes
+- 🔒 Multiple API key options (env var, file, CLI)
+- 🔄 Local fallback mode when API unavailable
+
+### Quick Start
+
+```bash
+# Set API key (recommended)
+export DASHSCOPE_API_KEY=your_key_here
+
+# Interactive mode
+python agents/coding_agent_executor.py -i
+
+# Single message
+python agents/coding_agent_executor.py -m "Write a Python web scraper"
+
+# With code execution
+python agents/coding_agent_executor.py -m "Calculate pi" -e
+
+# Fallback mode (no API key required)
+python agents/coding_agent_executor.py -m "Write a web scraper" --fallback
+
+# Load key from file (safer than CLI args)
+python agents/coding_agent_executor.py -m "Hello" --api-key-file ~/.dashscope_key
+```
+
+### Security Best Practices
+
+| Method | Security | Use Case |
+|--------|----------|----------|
+| `DASHSCOPE_API_KEY` env var | ⭐⭐⭐⭐⭐ | **Recommended** for regular use |
+| `--api-key-file` | ⭐⭐⭐⭐ | Good for CI/CD or shared machines |
+| `--api-key` CLI arg | ⭐⭐ | Avoid - visible in shell history |
+| `--fallback` | ⭐⭐⭐⭐⭐ | No key needed, limited functionality |
+
+### Examples
+
+```bash
+# Generate code with specific temperature
+python agents/coding_agent_executor.py -m "Write a Flask app" -t 0.5
+
+# Execute generated code automatically
+python agents/coding_agent_executor.py -m "Sort a list" -e
+
+# Non-streaming response
+python agents/coding_agent_executor.py -m "Explain decorators" --no-stream
+
+# Run examples
+python agents/coding_agent_example.py 3
+```
+
+### API Key Sources (Priority Order)
+1. `--api-key` CLI argument
+2. `--api-key-file` file path
+3. `DASHSCOPE_API_KEY` environment variable
+4. Fallback mode (if `--fallback` flag used)
