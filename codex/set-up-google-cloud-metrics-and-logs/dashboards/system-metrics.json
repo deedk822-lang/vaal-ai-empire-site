@@ -1,0 +1,262 @@
+{
+  "displayName": "Vaal AI Empire - System Infrastructure",
+  "gridLayout": {
+    "columns": "2",
+    "widgets": [
+      {
+        "title": "CPU Utilization",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_cpu_seconds_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "groupByFields": [
+                      "metric.label.cpu"
+                    ],
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 80,
+              "color": "RED",
+              "direction": "ABOVE"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Percent",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Memory Usage",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_memory_MemAvailable_bytes\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_memory_MemTotal_bytes\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Bytes",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Disk Usage",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_filesystem_avail_bytes\"",
+                  "aggregation": {
+                    "alignmentPeriod": "300s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "groupByFields": [
+                      "metric.label.device"
+                    ],
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 0.9,
+              "color": "RED",
+              "direction": "ABOVE"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Bytes Available",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Network I/O",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_network_receive_bytes_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_network_transmit_bytes_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Bytes/sec",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Load Average",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_load1\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_load5\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Load",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Disk I/O",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_disk_read_bytes_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/node_disk_written_bytes_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Bytes/sec",
+            "scale": "LINEAR"
+          }
+        }
+      }
+    ]
+  }
+}

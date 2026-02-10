@@ -1,0 +1,228 @@
+{
+  "displayName": "Vaal AI Empire - Application Performance",
+  "gridLayout": {
+    "columns": "2",
+    "widgets": [
+      {
+        "title": "Request Rate (RPS)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/http_requests_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": [
+                      "metric.label.status"
+                    ],
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Requests/sec",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Response Time Distribution",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/vaal-ai-empire/response-time\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_50"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/vaal-ai-empire/response-time\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/vaal-ai-empire/response-time\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_99"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Milliseconds",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Error Rate",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/vaal-ai-empire/error-count\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [
+            {
+              "value": 0.1,
+              "color": "RED",
+              "direction": "ABOVE"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Errors/sec",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Active Connections",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/http_active_connections\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Connections",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Stripe Webhook Processing",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/stripe_webhooks_processed_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "300s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": [
+                      "metric.label.event_type"
+                    ],
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Events/sec",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "AI Agent Performance",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/agent_requests_total\"",
+                  "aggregation": {
+                    "alignmentPeriod": "300s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": [
+                      "metric.label.agent_type"
+                    ],
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Requests/sec",
+            "scale": "LINEAR"
+          }
+        }
+      }
+    ]
+  }
+}

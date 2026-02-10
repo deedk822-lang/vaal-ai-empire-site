@@ -1,0 +1,241 @@
+// Grafana Alloy Configuration for GitHub Repository Monitoring
+// Vaal AI Empire - Observability Stack
+// 
+// This configuration exports:
+// - Repository metrics (stars, forks, issues, PRs)
+// - Workflow/Action metrics
+// - Security alerts
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ============================================
+// GitHub Prometheus Exporter
+// ============================================
+prometheus.exporter.github "vaal_ai_empire" {
+  api_token = env("GITHUB_TOKEN")
+  
+  // Repository to monitor
+  github_user = "deedk822-lang"
+  github_repo = "vaal-ai-empire-site"
+  
+  // Collectors to enable
+  collectors = [
+    "repos",      // Repository metrics
+    "actions",    // GitHub Actions metrics
+    "issues",     // Issue metrics
+    "pulls",      // Pull request metrics
+    "releases",   // Release metrics
+  ]
+}
+
+// Scrape the GitHub exporter
+prometheus.scrape "github" {
+  targets = prometheus.exporter.github.vaal_ai_empire.targets
+  forward_to = [prometheus.relabel.github.receiver]
+  job_name   = "github-exporter"
+  scrape_interval = "5m"
+}
+
+// Relabel and filter GitHub metrics
+prometheus.relabel "github" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  // Add project label
+  rule {
+    target_label = "project"
+    replacement  = "vaal-ai-empire"
+  }
+  
+  // Add environment label
+  rule {
+    target_label = "environment"
+    replacement  = env("ENVIRONMENT")
+  }
+}
+
+// ============================================
+// Application Metrics (from local Node.js app)
+// ============================================
+prometheus.scrape "app_metrics" {
+  targets = [
+    {"__address__" = "localhost:4242", "job" = "vaal-ai-empire-api"},
+  ]
+  forward_to = [prometheus.relabel.app.receiver]
+  job_name   = "application"
+  scrape_interval = "30s"
+}
+
+prometheus.relabel "app" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "project"
+    replacement  = "vaal-ai-empire"
+  }
+  
+  rule {
+    target_label = "service"
+    replacement  = "api-server"
+  }
+}
+
+// ============================================
+// Node/System Metrics
+// ============================================
+prometheus.exporter.unix "node" {
+  // Collect standard node metrics
+  // CPU, memory, disk, network, filesystem
+}
+
+prometheus.scrape "node_metrics" {
+  targets = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.relabel.node.receiver]
+  job_name   = "node-exporter"
+  scrape_interval = "15s"
+}
+
+prometheus.relabel "node" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "instance"
+    replacement  = env("HOSTNAME")
+  }
+}
+
+// ============================================
+// Google Cloud Monitoring (Remote Write)
+// ============================================
+prometheus.remote_write "gcm" {
+  endpoint {
+    name = "google-cloud-monitoring"
+    url  = "https://monitoring.googleapis.com/v1/projects/" + env("GCP_PROJECT_ID") + "/location/global/prometheus/api/v1/write"
+    
+    // GCP Authentication using service account
+    headers = {
+      "Authorization" = "Bearer " + env("GCP_ACCESS_TOKEN"),
+    }
+    
+    // Queue configuration
+    queue_config {
+      capacity          = 10000
+      max_samples_per_send = 1000
+      batch_send_deadline = "5s"
+    }
+    
+    // Metadata configuration
+    metadata_config {
+      send              = true
+      send_interval     = "1m"
+      max_samples_per_send = 500
+    }
+  }
+  
+  // External labels applied to all metrics
+  external_labels = {
+    cluster   = "vaal-ai-empire",
+    namespace = "production",
+    location  = "south-africa",
+  }
+}
+
+// ============================================
+// Log Collection for Google Cloud Logging
+// ============================================
+
+// Collect application logs
+local.file_match "app_logs" {
+  path_targets = [
+    {"__path__" = "/var/log/vaal-ai-empire/app.log", "job" = "app"},
+    {"__path__" = "/var/log/vaal-ai-empire/error.log", "job" = "app-errors"},
+  ]
+}
+
+// Collect system logs
+local.file_match "system_logs" {
+  path_targets = [
+    {"__path__" = "/var/log/nginx/*.log", "job" = "nginx"},
+    {"__path__" = "/var/log/auth.log", "job" = "auth"},
+  ]
+}
+
+// Read and process application logs
+loki.source.file "app_logs" {
+  targets    = local.file_match.app_logs.targets
+  forward_to = [loki.process.app_logs.receiver]
+}
+
+// Read and process system logs
+loki.source.file "system_logs" {
+  targets    = local.file_match.system_logs.targets
+  forward_to = [loki.process.system_logs.receiver]
+}
+
+// Process application logs (JSON parsing)
+loki.process "app_logs" {
+  stage.json {
+    expressions = {
+      level   = "level",
+      message = "message",
+      timestamp = "timestamp",
+    }
+  }
+  
+  stage.labels {
+    values = {
+      level = "level",
+    }
+  }
+  
+  forward_to = [loki.write.gcl.receiver]
+}
+
+// Process system logs (regex parsing for nginx)
+loki.process "system_logs" {
+  stage.regex {
+    expression = "^(?P<remote_addr>\\S+) - (?P<remote_user>\\S+) \\[(?P<time_local>[^\\]]+)\\] \"(?P<request>[^\"]+)\" (?P<status>\\d+) (?P<body_bytes_sent>\\d+)"
+  }
+  
+  stage.labels {
+    values = {
+      status = "status",
+    }
+  }
+  
+  forward_to = [loki.write.gcl.receiver]
+}
+
+// Write logs to Google Cloud Logging
+loki.write "gcl" {
+  endpoint {
+    name = "google-cloud-logging"
+    url  = "https://logging.googleapis.com/v2/entries:write"
+    
+    headers = {
+      "Authorization" = "Bearer " + env("GCP_ACCESS_TOKEN"),
+      "Content-Type"  = "application/json",
+    }
+  }
+  
+  // Use GCP-specific external labels
+  external_labels = {
+    project_id = env("GCP_PROJECT_ID"),
+    service    = "vaal-ai-empire",
+    version    = "1.0.0",
+  }
+}
+
+// ============================================
+// Health and Readiness Checks
+// ============================================
+// Expose Alloy's own metrics
+prometheus.exporter.self "alloy" {}
+
+prometheus.scrape "alloy_self" {
+  targets    = prometheus.exporter.self.alloy.targets
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  job_name   = "alloy-internal"
+}

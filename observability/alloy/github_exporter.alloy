@@ -1,6 +1,19 @@
+// Grafana Alloy Configuration for GitHub Repository Monitoring
+// Vaal AI Empire - Observability Stack
+// 
+// This configuration exports GitHub metrics to Google Cloud Monitoring
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ============================================
+// GitHub Prometheus Exporter
+// ============================================
 prometheus.exporter.github "integrations_github_exporter" {
-  repositories = ["grafana/agent"]
-  api_token    = "<your github api token>"
+  repositories = ["deedk822-lang/vaal-ai-empire-site"]
+  api_token    = env("GITHUB_TOKEN")
 }
 
 discovery.relabel "integrations_github_exporter" {
@@ -21,6 +34,7 @@ prometheus.scrape "integrations_github_exporter" {
   targets    = discovery.relabel.integrations_github_exporter.output
   forward_to = [prometheus.relabel.integrations_github_exporter.receiver]
   job_name   = "integrations/github_exporter"
+  scrape_interval = "5m"
 }
 
 prometheus.relabel "integrations_github_exporter" {
@@ -30,5 +44,41 @@ prometheus.relabel "integrations_github_exporter" {
     source_labels = ["__name__"]
     regex         = "up|github_rate_limit|github_rate_remaining|github_repo_forks|github_repo_open_issues|github_repo_pull_request_count|github_repo_size_kb|github_repo_stars|github_repo_watchers"
     action        = "keep"
+  }
+  
+  rule {
+    target_label = "project"
+    replacement  = "vaal-ai-empire"
+  }
+}
+
+// ============================================
+// Google Cloud Monitoring (Remote Write)
+// ============================================
+prometheus.remote_write "metrics_service" {
+  endpoint {
+    name = "google-cloud-monitoring"
+    url  = "https://monitoring.googleapis.com/v1/projects/" + env("GCP_PROJECT_ID") + "/location/global/prometheus/api/v1/write"
+    
+    // Use GCP Application Default Credentials
+    // Set GOOGLE_APPLICATION_CREDENTIALS environment variable
+    
+    queue_config {
+      capacity             = 10000
+      max_samples_per_send = 1000
+      batch_send_deadline  = "5s"
+    }
+    
+    metadata_config {
+      send              = true
+      send_interval     = "1m"
+      max_samples_per_send = 500
+    }
+  }
+  
+  external_labels = {
+    cluster   = "vaal-ai-empire",
+    namespace = "production",
+    location  = "south-africa",
   }
 }

@@ -1,0 +1,225 @@
+{
+  "displayName": "Vaal AI Empire - GitHub Repository Metrics",
+  "gridLayout": {
+    "columns": "2",
+    "widgets": [
+      {
+        "title": "Repository Stars Over Time",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_stars\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "crossSeriesReducer": "REDUCE_MEAN",
+                    "groupByFields": [
+                      "metric.label.repo"
+                    ],
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Count",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Open Issues vs Pull Requests",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_open_issues\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_pull_requests\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Count",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "GitHub Actions - Workflow Success Rate",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_actions_workflow_runs_total\" metric.label.status=\"success\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_actions_workflow_runs_total\" metric.label.status=\"failure\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Rate",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Forks and Watchers",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_forks\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            },
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_watchers\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Count",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Workflow Duration (p95)",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_actions_workflow_duration_seconds\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Seconds",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Release Downloads",
+        "xyChart": {
+          "chartOptions": {
+            "mode": "COLOR"
+          },
+          "dataSets": [
+            {
+              "plotType": "LINE",
+              "targetAxis": "Y1",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"custom.googleapis.com/github_repo_release_downloads\"",
+                  "aggregation": {
+                    "alignmentPeriod": "3600s",
+                    "perSeriesAligner": "ALIGN_MEAN"
+                  }
+                }
+              }
+            }
+          ],
+          "thresholds": [],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Downloads",
+            "scale": "LINEAR"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,271 @@
+// Google Cloud Monitoring Specific Configuration
+// Vaal AI Empire - GCP-native Monitoring Integration
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ============================================
+// Google Cloud Service Monitoring
+// ============================================
+
+// Monitor Cloud Run service (if deployed on Cloud Run)
+prometheus.scrape "cloud_run" {
+  targets = [
+    // Cloud Run exposes metrics on :8080/__metrics
+    {"__address__" = "localhost:8080", "job" = "cloud-run"},
+  ]
+  forward_to = [prometheus.relabel.cloud_run.receiver]
+  job_name   = "cloud-run-metrics"
+  scrape_interval = "30s"
+  metrics_path = "/__metrics"
+}
+
+prometheus.relabel "cloud_run" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "service_name"
+    replacement  = "vaal-ai-empire"
+  }
+  
+  rule {
+    target_label = "revision_name"
+    replacement  = env("K_REVISION")
+  }
+  
+  rule {
+    target_label = "configuration_name"
+    replacement  = "vaal-ai-empire-config"
+  }
+}
+
+// ============================================
+// Custom Application Metrics
+// ============================================
+
+// Business metrics from the application
+prometheus.scrape "business_metrics" {
+  targets = [
+    {"__address__" = "localhost:4242", "job" = "business-metrics"},
+  ]
+  forward_to = [prometheus.relabel.business.receiver]
+  job_name   = "business"
+  scrape_interval = "1m"
+  metrics_path = "/metrics/business"
+}
+
+prometheus.relabel "business" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "metric_type"
+    replacement  = "business"
+  }
+}
+
+// ============================================
+// Stripe Integration Metrics
+// ============================================
+prometheus.scrape "stripe_metrics" {
+  targets = [
+    {"__address__" = "localhost:4242", "job" = "stripe"},
+  ]
+  forward_to = [prometheus.relabel.stripe.receiver]
+  job_name   = "stripe-webhooks"
+  scrape_interval = "2m"
+  metrics_path = "/metrics/stripe"
+}
+
+prometheus.relabel "stripe" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "integration"
+    replacement  = "stripe"
+  }
+  
+  rule {
+    target_label = "environment"
+    replacement  = env("STRIPE_ENVIRONMENT")
+  }
+}
+
+// ============================================
+// AI Agent Performance Metrics
+// ============================================
+prometheus.scrape "agent_metrics" {
+  targets = [
+    {"__address__" = "localhost:4242", "job" = "ai-agents"},
+  ]
+  forward_to = [prometheus.relabel.agents.receiver]
+  job_name   = "ai-agents"
+  scrape_interval = "30s"
+  metrics_path = "/metrics/agents"
+}
+
+prometheus.relabel "agents" {
+  forward_to = [prometheus.remote_write.gcm.receiver]
+  
+  rule {
+    target_label = "agent_system"
+    replacement  = "vaal-ai-empire"
+  }
+}
+
+// ============================================
+// Google Cloud Monitoring Remote Write
+// ============================================
+prometheus.remote_write "gcm" {
+  endpoint {
+    name = "gcm-remote-write"
+    url  = "https://monitoring.googleapis.com/v1/projects/" + env("GCP_PROJECT_ID") + "/location/global/prometheus/api/v1/write"
+    
+    // Use GCP ADC (Application Default Credentials)
+    // Alloy will automatically use GOOGLE_APPLICATION_CREDENTIALS
+    
+    queue_config {
+      capacity              = 15000
+      max_samples_per_send  = 2000
+      max_shards            = 10
+      batch_send_deadline   = "10s"
+      min_backoff           = "100ms"
+      max_backoff           = "10s"
+    }
+    
+    metadata_config {
+      send              = true
+      send_interval     = "2m"
+      max_samples_per_send = 1000
+    }
+  }
+  
+  external_labels = {
+    project     = env("GCP_PROJECT_ID"),
+    environment = env("ENVIRONMENT"),
+    region      = env("GCP_REGION"),
+    service     = "vaal-ai-empire",
+    version     = env("APP_VERSION"),
+  }
+}
+
+// ============================================
+// Structured Logging for Google Cloud Logging
+// ============================================
+
+// Parse structured JSON logs
+loki.source.file "structured_logs" {
+  targets = [
+    {"__path__" = "/var/log/vaal-ai-empire/*.json.log", "format" = "json"},
+  ]
+  forward_to = [loki.process.structured.receiver]
+}
+
+loki.process "structured" {
+  // Parse JSON log entries
+  stage.json {
+    expressions = {
+      timestamp   = "time",
+      severity    = "level",
+      message     = "msg",
+      component   = "component",
+      trace_id    = "trace_id",
+      span_id     = "span_id",
+    }
+  }
+  
+  // Map severity to GCP log levels
+  stage.template {
+    source   = "severity"
+    template = "{{ if eq .Value \"error\" }}ERROR{{ else if eq .Value \"warn\" }}WARNING{{ else if eq .Value \"info\" }}INFO{{ else if eq .Value \"debug\" }}DEBUG{{ else }}DEFAULT{{ end }}"
+  }
+  
+  // Set labels for filtering
+  stage.labels {
+    values = {
+      severity  = "severity",
+      component = "component",
+    }
+  }
+  
+  // Add trace correlation
+  stage.label_drop {
+    values = ["filename", "trace_id", "span_id"]
+  }
+  
+  forward_to = [loki.write.gcl.receiver]
+}
+
+// Write to Google Cloud Logging
+loki.write "gcl" {
+  endpoint {
+    name = "google-cloud-logging"
+    url  = "https://logging.googleapis.com/v2/entries:write"
+    
+    // GCP uses structured logging format
+    headers = {
+      "Content-Type" = "application/json",
+    }
+    
+    // Use GCP ADC
+  }
+  
+  external_labels = {
+    log_name    = "projects/" + env("GCP_PROJECT_ID") + "/logs/vaal-ai-empire",
+    resource_type = "global",
+    service     = "vaal-ai-empire",
+  }
+}
+
+// ============================================
+// Alerting Rules (Prometheus-style)
+// ============================================
+prometheus.rules "vaal_ai_empire_alerts" {
+  rule {
+    alert = "HighErrorRate"
+    expr  = "rate(http_requests_total{status=~\"5..\"}[5m]) > 0.1"
+    for   = "5m"
+    
+    annotations = {
+      summary     = "High error rate detected",
+      description = "Error rate is above 10% for 5 minutes",
+    }
+    
+    labels = {
+      severity = "critical",
+    }
+  }
+  
+  rule {
+    alert = "HighLatency"
+    expr  = "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2"
+    for   = "10m"
+    
+    annotations = {
+      summary     = "High latency detected",
+      description = "95th percentile latency is above 2 seconds",
+    }
+    
+    labels = {
+      severity = "warning",
+    }
+  }
+  
+  rule {
+    alert = "GitHubAPIRateLimit"
+    expr  = "github_rate_limit_remaining < 100"
+    for   = "1m"
+    
+    annotations = {
+      summary     = "GitHub API rate limit low",
+      description = "GitHub API rate limit is below 100 requests remaining",
+    }
+    
+    labels = {
+      severity = "warning",
+    }
+  }
+  
+  forward_to = [prometheus.remote_write.gcm.receiver]
+}
