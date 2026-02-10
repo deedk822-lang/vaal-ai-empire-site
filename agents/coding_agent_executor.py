@@ -7,6 +7,7 @@ import argparse
 import math
 import os
 import textwrap
+from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 
@@ -94,6 +95,9 @@ def run_interactive(executor: CodingAgentExecutor, execute: bool = False) -> Non
         except EOFError:
             print()
             break
+        except KeyboardInterrupt:
+            print("\nInterrupted. Exiting interactive mode.")
+            break
 
         if user_input.lower() in {"exit", "quit"}:
             break
@@ -102,19 +106,29 @@ def run_interactive(executor: CodingAgentExecutor, execute: bool = False) -> Non
         print(f"agent> {result.response}\n")
 
 
+def load_api_key_from_file(api_key_file: Optional[str]) -> Optional[str]:
+    """Load API key from file path if provided."""
+    if not api_key_file:
+        return None
+
+    key_path = Path(api_key_file).expanduser()
+    key = key_path.read_text(encoding="utf-8").strip()
+    return key or None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the coding agent executor.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("-i", "--interactive", action="store_true", help="Start interactive mode")
     group.add_argument("-m", "--message", type=str, help="Send a single message")
     parser.add_argument("-e", "--execute", action="store_true", help="Enable local task execution")
-    parser.add_argument("--api-key", type=str, default=None, help="Optional API key override")
+    parser.add_argument("--api-key-file", type=str, default=None, help="Path to file containing API key (safer than passing secrets on CLI)")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    executor = CodingAgentExecutor(api_key=args.api_key)
+    executor = CodingAgentExecutor(api_key=load_api_key_from_file(args.api_key_file))
 
     if args.interactive:
         run_interactive(executor, execute=args.execute)
