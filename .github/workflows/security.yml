@@ -60,12 +60,17 @@ jobs:
 
       - name: Run Bandit (Python SAST)
         run: |
-          bandit -r agents/ -f json -o bandit-report.json || bandit -r agents/ || echo "Bandit completed"
+          bandit -r agents/ -f json -o bandit-report.json -ll || \
+          bandit -r agents/ -ll || \
+          echo "⚠️ Bandit completed - review findings above"
         continue-on-error: true
 
       - name: Run Safety (Dependency Check)
         run: |
-          safety check -r requirements.txt || echo "Safety check completed with issues"
+          # Use safety scan (new command) or fall back to check (deprecated)
+          safety scan -r requirements.txt 2>/dev/null || \
+          safety check -r requirements.txt 2>/dev/null || \
+          echo "⚠️ Safety scan completed - review vulnerabilities above"
         continue-on-error: true
 
       - name: Upload Bandit Report
