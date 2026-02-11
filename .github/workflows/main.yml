@@ -14,9 +14,18 @@ jobs:
   lint-and-test-node:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      MONGODB_URI: mongodb://localhost:27017
     services:
       mongodb:
         image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping').ok\" || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -35,9 +44,18 @@ jobs:
   lint-and-test-python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      MONGODB_URI: mongodb://localhost:27017
     services:
       mongodb:
         image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping').ok\" || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       fail-fast: false
       matrix:
