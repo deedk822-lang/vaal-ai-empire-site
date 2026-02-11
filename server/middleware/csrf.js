@@ -9,6 +9,14 @@ const crypto = require('crypto');
 // Cookie name with __Host- prefix for additional security
 // __Host- prefix requires: secure, path=/, no domain attribute
 const CSRF_COOKIE_NAME = '__Host-csrfToken';
+const CSRF_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: true, // Required for __Host- prefix
+  path: '/', // Required for __Host- prefix
+  sameSite: 'strict',
+  maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  // No domain attribute - Required for __Host- prefix
+};
 
 // Generate a secure random token
 const generateToken = () => {
@@ -26,14 +34,7 @@ const createCsrfToken = (req, res, next) => {
     if (!req.cookies[CSRF_COOKIE_NAME]) {
       const token = generateToken();
       // __Host- prefix requires: secure, path=/, no domain attribute
-      res.cookie(CSRF_COOKIE_NAME, token, {
-        httpOnly: true,
-        secure: true, // Required for __Host- prefix
-        path: '/',    // Required for __Host- prefix
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        // No domain attribute - Required for __Host- prefix
-      });
+      res.cookie(CSRF_COOKIE_NAME, token, CSRF_COOKIE_OPTIONS);
       req.csrfToken = token;
     } else {
       req.csrfToken = req.cookies[CSRF_COOKIE_NAME];
@@ -88,7 +89,7 @@ const verifyCsrfToken = (req, res, next) => {
   const tokenFromHeader = req.headers['x-csrf-token'] || req.headers['x-xsrf-token'];
   
   // Get token from __Host- prefixed cookie
-  const tokenFromCookie = req.cookies[CSRF_COOKIE_NAME];
+  const tokenFromCookie = req.cookies['__Host-csrfToken'];
   
   // Check if tokens exist and match using constant-time comparison (double-submit pattern)
   if (!constantTimeCompare(tokenFromHeader, tokenFromCookie)) {
@@ -112,14 +113,7 @@ const getCsrfToken = (req, res) => {
   // Set cookie if not exists
   if (!req.cookies[CSRF_COOKIE_NAME]) {
     // __Host- prefix requires: secure, path=/, no domain attribute
-    res.cookie(CSRF_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: true, // Required for __Host- prefix
-      path: '/',    // Required for __Host- prefix
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000,
-      // No domain attribute - Required for __Host- prefix
-    });
+    res.cookie(CSRF_COOKIE_NAME, token, CSRF_COOKIE_OPTIONS);
   }
   
   res.status(200).json({
