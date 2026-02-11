@@ -22,6 +22,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Import middleware
 const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
+const { createCsrfToken, verifyCsrfToken, getCsrfToken } = require('./middleware/csrf');
 const {
   metricsMiddleware,
   metricsEndpoint,
@@ -76,11 +77,26 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
 
-// CORS
+// CORS - Restrictive configuration
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',') 
+      : ['http://localhost:3000', 'http://localhost:4242'];
+    
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 };
 app.use(cors(corsOptions));
 
@@ -94,6 +110,9 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(bodyParser.json({ limit: '10kb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
+
+// CSRF Protection - Create token for all requests
+app.use(createCsrfToken);
 
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
@@ -158,6 +177,9 @@ app.get('/health', (req, res) => {
     stats,
   });
 });
+
+// CSRF Token endpoint
+app.get('/api/csrf-token', getCsrfToken);
 
 // Home page
 app.get('/', (req, res) => {
