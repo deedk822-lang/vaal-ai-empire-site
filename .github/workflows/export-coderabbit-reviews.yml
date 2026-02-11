@@ -1,0 +1,37 @@
+name: Export CodeRabbit Reviews to Kimi
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  export-reviews:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install CodeRabbit Extractor
+        run: |
+          pip install beautifulsoup4 requests
+          curl -o extract-coderabbit.py https://raw.githubusercontent.com/obra/coderabbit-review-helper/main/extract-coderabbit-feedback.py
+          
+      - name: Export Reviews to File
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 extract-coderabbit.py "${{ github.repository }}/${{ github.event.pull_request.number }}" > .coderabbit-reviews.md
+          
+      - name: Commit Review File
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .coderabbit-reviews.md
+          git commit -m "Export CodeRabbit reviews for Kimi" || exit 0
+          git push
