@@ -22,6 +22,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Import middleware
 const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
+const { metricsMiddleware, metricsEndpoint, recordStripeWebhook, recordCheckoutSession } = require('./middleware/prometheus');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -100,6 +101,9 @@ app.use(hpp({
     whitelist: ['price', 'plan', 'status'] // Allow these params to be duplicated
 }));
 
+// Prometheus metrics middleware
+app.use(metricsMiddleware);
+
 // Static files
 app.use(express.static(path.join(__dirname, '..')));
 
@@ -130,6 +134,9 @@ app.use((req, res, next) => {
 // =============================
 // ROUTES
 // =============================
+
+// Prometheus metrics endpoint
+app.get('/metrics', metricsEndpoint);
 
 // Health check (before authentication)
 app.get('/health', (req, res) => {
@@ -209,6 +216,9 @@ app.post('/create-checkout-session', async (req, res) => {
         if (tracer) {
             tracer.recordMetric('checkout_created', { priceId, sessionId: session.id });
         }
+        
+        // Record Prometheus metric
+        recordCheckoutSession(priceId);
 
         res.json({ sessionId: session.id });
     } catch (error) {
@@ -251,32 +261,38 @@ app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) =
         case 'checkout.session.completed':
             const session = event.data.object;
             console.log('✅ Checkout completed:', session.id);
+            recordStripeWebhook('checkout.session.completed', 'success');
             // TODO: Create user subscription in database
             break;
 
         case 'customer.subscription.created':
             const subscription = event.data.object;
             console.log('✅ Subscription created:', subscription.id);
+            recordStripeWebhook('customer.subscription.created', 'success');
             break;
 
         case 'customer.subscription.updated':
             const updatedSub = event.data.object;
             console.log('🔄 Subscription updated:', updatedSub.id);
+            recordStripeWebhook('customer.subscription.updated', 'success');
             break;
 
         case 'customer.subscription.deleted':
             const deletedSub = event.data.object;
             console.log('❌ Subscription canceled:', deletedSub.id);
+            recordStripeWebhook('customer.subscription.deleted', 'success');
             break;
 
         case 'invoice.paid':
             const invoice = event.data.object;
             console.log('💰 Invoice paid:', invoice.id);
+            recordStripeWebhook('invoice.paid', 'success');
             break;
 
         case 'invoice.payment_failed':
             const failedInvoice = event.data.object;
             console.log('⚠️ Payment failed:', failedInvoice.id);
+            recordStripeWebhook('invoice.payment_failed', 'failed');
             // TODO: Send email to customer
             break;
 

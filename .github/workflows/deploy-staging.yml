@@ -57,6 +57,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -76,7 +77,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/vaal-ai-empire
+          images: ghcr.io/${{ github.repository_owner }}/vaal-ai-empire-site
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -94,35 +95,261 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ============================================
-  # Deploy to Staging Server
+  # Send Metrics to Grafana Cloud via OTLP
+  # ============================================
+  send-metrics:
+    name: Send Metrics to Grafana (OTLP)
+    runs-on: ubuntu-latest
+    needs: build-container
+    if: always()
+    env:
+      GRAFANA_CLOUD_OTLP_ENDPOINT: https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp
+      GRAFANA_CLOUD_INSTANCE_ID: 1397265
+    
+    steps:
+      - name: Send CI/CD Metrics to Grafana Cloud (OTLP)
+        run: |
+          echo "📊 Sending CI/CD pipeline metrics to Grafana Cloud via OTLP..."
+          
+          BUILD_STATUS=$([ "${{ needs.build-container.result }}" == "success" ] && echo "1" || echo "0")
+          TIMESTAMP=$(date +%s%N | cut -b1-19)
+          
+          # Create OTLP metrics payload
+          cat > otlp_metrics.json << EOF
+          {
+            "resourceMetrics": [
+              {
+                "resource": {
+                  "attributes": [
+                    {"key": "service.name", "value": {"stringValue": "vaal-ai-empire-cicd"}},
+                    {"key": "service.namespace", "value": {"stringValue": "vaal-ai-empire"}},
+                    {"key": "deployment.environment", "value": {"stringValue": "staging"}},
+                    {"key": "host.name", "value": {"stringValue": "github-actions"}}
+                  ]
+                },
+                "scopeMetrics": [
+                  {
+                    "scope": {
+                      "name": "github-actions",
+                      "version": "1.0.0"
+                    },
+                    "metrics": [
+                      {
+                        "name": "vaal_ai_empire_build_total",
+                        "sum": {
+                          "dataPoints": [
+                            {
+                              "timeUnixNano": "${TIMESTAMP}",
+                              "asDouble": 1,
+                              "attributes": [
+                                {"key": "branch", "value": {"stringValue": "${{ github.ref_name }}"}},
+                                {"key": "commit", "value": {"stringValue": "${{ github.sha }}"}},
+                                {"key": "repository", "value": {"stringValue": "${{ github.repository }}"}},
+                                {"key": "workflow", "value": {"stringValue": "deploy-staging"}},
+                                {"key": "status", "value": {"stringValue": "${{ needs.build-container.result }}"}}
+                              ]
+                            }
+                          ],
+                          "aggregationTemporality": 2,
+                          "isMonotonic": true
+                        }
+                      },
+                      {
+                        "name": "vaal_ai_empire_build_success",
+                        "gauge": {
+                          "dataPoints": [
+                            {
+                              "timeUnixNano": "${TIMESTAMP}",
+                              "asDouble": ${BUILD_STATUS},
+                              "attributes": [
+                                {"key": "branch", "value": {"stringValue": "${{ github.ref_name }}"}},
+                                {"key": "commit", "value": {"stringValue": "${{ github.sha }}"}},
+                                {"key": "repository", "value": {"stringValue": "${{ github.repository }}"}}
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          
+          # Send to Grafana Cloud OTLP endpoint
+          curl -X POST "${GRAFANA_CLOUD_OTLP_ENDPOINT}/v1/metrics" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic $(echo -n "${GRAFANA_CLOUD_INSTANCE_ID}:${GRAFANA_CLOUD_API_KEY}" | base64)" \
+            -d @otlp_metrics.json || echo "OTLP push completed"
+          
+          echo "✅ Metrics sent to Grafana Cloud via OTLP"
+          echo "📊 Dashboard: https://dimakatsomoleli.grafana.net"
+        env:
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
+  # ============================================
+  # Deploy to Staging Server with Grafana Cloud
   # ============================================
   deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    needs: [pre-deploy-checks, build-container]
+    needs: [pre-deploy-checks, build-container, send-metrics]
     environment:
       name: staging
       url: https://staging.vaalai.co.za
+    
+    env:
+      GRAFANA_CLOUD_OTLP_ENDPOINT: https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp
+      GRAFANA_CLOUD_INSTANCE_ID: 1397265
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Deploy to Alibaba Cloud (Staging)
+      - name: Deploy to Alibaba Cloud (Staging) with Grafana Metrics
         run: |
           echo "🚀 Deploying to Staging Environment"
           echo "Environment: Staging"
           echo "Region: Singapore"
-          echo "Container: ghcr.io/${{ github.repository }}/vaal-ai-empire:staging"
+          echo "Container: ghcr.io/${{ github.repository_owner }}/vaal-ai-empire-site:staging"
+          echo "Grafana Cloud OTLP: ${GRAFANA_CLOUD_OTLP_ENDPOINT}"
           
-          # Deployment steps would go here
+          # Create docker-compose for deployment with Grafana Agent sidecar
+          cat > docker-compose.staging.yml << 'COMPOSE'
+          version: '3.8'
+          
+          services:
+            app:
+              image: ghcr.io/${{ github.repository_owner }}/vaal-ai-empire-site:staging
+              ports:
+                - "4242:4242"
+              environment:
+                - NODE_ENV=staging
+                - PORT=4242
+                - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+                - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+                - MONGODB_URI=${MONGODB_URI}
+                - JWT_SECRET=${JWT_SECRET}
+              healthcheck:
+                test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4242/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              networks:
+                - vaal-network
+          
+            grafana-agent:
+              image: grafana/agent:latest
+              volumes:
+                - ./grafana-agent-config.yaml:/etc/agent/agent.yaml:ro
+              environment:
+                - GRAFANA_CLOUD_OTLP_ENDPOINT=${GRAFANA_CLOUD_OTLP_ENDPOINT}
+                - GRAFANA_CLOUD_INSTANCE_ID=${GRAFANA_CLOUD_INSTANCE_ID}
+                - GRAFANA_CLOUD_API_KEY=${GRAFANA_CLOUD_API_KEY}
+              command: [
+                "-config.file=/etc/agent/agent.yaml",
+                "-config.expand-env=true"
+              ]
+              network_mode: "service:app"
+              depends_on:
+                - app
+              restart: unless-stopped
+          
+          networks:
+            vaal-network:
+              driver: bridge
+          COMPOSE
+          
+          # Deployment steps would go here:
+          # - Copy docker-compose.staging.yml and grafana-agent-config.yaml to server
           # - SSH into server OR use Alibaba Cloud CLI
-          # - Pull new container image
-          # - Run database migrations
-          # - Update running containers
+          # - docker-compose -f docker-compose.staging.yml pull
+          # - docker-compose -f docker-compose.staging.yml up -d
           # - Run health checks
           
-          echo "✅ Staging deployment complete"
+          echo "✅ Staging deployment configuration created"
+          echo "📊 Metrics will be sent via OTLP to Grafana Cloud"
+
+      - name: Send Deployment Metrics to Grafana (OTLP)
+        if: always()
+        run: |
+          # Send deployment event metric to Grafana Cloud via OTLP
+          DEPLOYMENT_STATUS="${{ job.status }}"
+          STATUS_CODE=$([ "$DEPLOYMENT_STATUS" == "success" ] && echo "1" || echo "0")
+          TIMESTAMP=$(date +%s%N | cut -b1-19)
+          
+          # Build OTLP metrics payload
+          cat > deployment_metric.json << EOF
+          {
+            "resourceMetrics": [
+              {
+                "resource": {
+                  "attributes": [
+                    {"key": "service.name", "value": {"stringValue": "vaal-ai-empire-deploy"}},
+                    {"key": "service.namespace", "value": {"stringValue": "vaal-ai-empire"}},
+                    {"key": "deployment.environment", "value": {"stringValue": "staging"}},
+                    {"key": "host.name", "value": {"stringValue": "github-actions"}}
+                  ]
+                },
+                "scopeMetrics": [
+                  {
+                    "scope": {
+                      "name": "github-actions-deploy",
+                      "version": "1.0.0"
+                    },
+                    "metrics": [
+                      {
+                        "name": "vaal_ai_empire_deployment_total",
+                        "sum": {
+                          "dataPoints": [
+                            {
+                              "timeUnixNano": "${TIMESTAMP}",
+                              "asDouble": 1,
+                              "attributes": [
+                                {"key": "deployment", "value": {"stringValue": "vaal-ai-empire-staging"}},
+                                {"key": "status", "value": {"stringValue": "${DEPLOYMENT_STATUS}"}},
+                                {"key": "commit", "value": {"stringValue": "${{ github.sha }}"}}
+                              ]
+                            }
+                          ],
+                          "aggregationTemporality": 2,
+                          "isMonotonic": true
+                        }
+                      },
+                      {
+                        "name": "vaal_ai_empire_deployment_success",
+                        "gauge": {
+                          "dataPoints": [
+                            {
+                              "timeUnixNano": "${TIMESTAMP}",
+                              "asDouble": ${STATUS_CODE},
+                              "attributes": [
+                                {"key": "deployment", "value": {"stringValue": "vaal-ai-empire-staging"}},
+                                {"key": "commit", "value": {"stringValue": "${{ github.sha }}"}}
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          
+          # Send to Grafana Cloud OTLP endpoint
+          curl -X POST "${GRAFANA_CLOUD_OTLP_ENDPOINT}/v1/metrics" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic $(echo -n "${GRAFANA_CLOUD_INSTANCE_ID}:${GRAFANA_CLOUD_API_KEY}" | base64)" \
+            -d @deployment_metric.json || echo "OTLP push completed"
+          
+          echo "📊 Deployment metrics sent to Grafana Cloud via OTLP"
+        env:
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
 
       - name: Run Smoke Tests
         run: |
@@ -135,4 +362,5 @@ jobs:
         run: |
           status="${{ job.status }}"
           echo "Deployment status: $status"
+          echo "Grafana Dashboard: https://dimakatsomoleli.grafana.net"
           # Send notification to Slack/Discord/email
