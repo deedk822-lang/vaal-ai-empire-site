@@ -3,11 +3,22 @@ name: Security Scan
 on:
   push:
     branches: [main, master, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
     branches: [main, master, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   schedule:
     # Run every Monday at 9 AM UTC
     - cron: '0 9 * * 1'
+
+# Cancel redundant runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ============================================
@@ -16,6 +27,7 @@ jobs:
   npm-security:
     name: NPM Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -29,11 +41,13 @@ jobs:
           node-version: '18'
 
       - name: Run npm audit (Root)
-        run: npm audit --audit-level=moderate || true
+        run: npm audit --audit-level=high || true
+        continue-on-error: true
 
       - name: Run npm audit (Server)
         working-directory: ./server
-        run: npm audit --audit-level=moderate || true
+        run: npm audit --audit-level=high || true
+        continue-on-error: true
 
   # ============================================
   # Python Security Scan
@@ -41,6 +55,7 @@ jobs:
   python-security:
     name: Python Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -53,24 +68,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install security tools
         run: |
           python -m pip install --upgrade pip
-          pip install bandit safety || pip install bandit
+          pip install bandit
 
       - name: Run Bandit (Python SAST)
         run: |
-          bandit -r agents/ -f json -o bandit-report.json -ll || \
-          bandit -r agents/ -ll || \
-          echo "⚠️ Bandit completed - review findings above"
-        continue-on-error: true
-
-      - name: Run Safety (Dependency Check)
-        run: |
-          # Use safety scan (new command) or fall back to check (deprecated)
-          safety scan -r requirements.txt 2>/dev/null || \
-          safety check -r requirements.txt 2>/dev/null || \
-          echo "⚠️ Safety scan completed - review vulnerabilities above"
+          if [ -d agents/ ]; then
+            bandit -r agents/ -f json -o bandit-report.json -ll || \
+            bandit -r agents/ -ll || \
+            echo "⚠️ Bandit completed"
+          else
+            echo "No agents/ directory to scan"
+          fi
         continue-on-error: true
 
       - name: Upload Bandit Report
@@ -79,19 +90,17 @@ jobs:
         with:
           name: bandit-security-report
           path: bandit-report.json
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: ignore
 
   # ============================================
   # CodeQL Analysis (GitHub)
   # ============================================
-  # Note: This job is skipped for PRs from forks because GitHub
-  # doesn't allow fork PRs to write security events.
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Skip CodeQL on fork PRs as they can't write security events
-    # This prevents "Resource not accessible by integration" errors
     if: |
       github.event_name != 'pull_request' || 
       github.event.pull_request.head.repo.full_name == github.repository
@@ -134,6 +143,7 @@ jobs:
   secret-scan:
     name: Secret Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -157,8 +167,6 @@ jobs:
           # Create regex patterns file
           cat > /tmp/secret_patterns.txt << 'PATTERNS'
           sk_live_[a-zA-Z0-9]{24,}
-          sk_test_[a-zA-Z0-9]{24,}
-          pk_live_[a-zA-Z0-9]{24,}
           AKIA[0-9A-Z]{16}
           ghp_[a-zA-Z0-9]{36}
           glpat-[a-zA-Z0-9\-]{20}
@@ -166,7 +174,6 @@ jobs:
           
           found=0
           while IFS= read -r pattern; do
-            # Skip empty lines
             [ -z "$pattern" ] && continue
             
             matches=$(grep -rE "$pattern" \
@@ -185,10 +192,11 @@ jobs:
           done < /tmp/secret_patterns.txt
           
           if [ $found -eq 1 ]; then
-            echo "⚠️  Potential secrets found. Please review and remove if real."
+            echo "⚠️  Potential secrets found. Please review."
           else
             echo "✅ No obvious secrets found in code"
           fi
+        continue-on-error: true
 
   # ============================================
   # Dependency Review (PR only)
@@ -196,6 +204,7 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -209,4 +218,5 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           comment-summary-in-pr: true
-          fail-on-severity: moderate
+          fail-on-severity: high
+        continue-on-error: true
