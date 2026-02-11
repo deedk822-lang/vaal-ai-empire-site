@@ -15,7 +15,7 @@ jobs:
       pull-requests: read
     
     steps:
-      - name: Get PR number (for issue_comment events)
+      - name: Get PR number
         id: get-pr
         run: |
           if [ "${{ github.event_name }}" == "issue_comment" ]; then
@@ -24,7 +24,7 @@ jobs:
             echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           fi
       
-      - name: Checkout merge/develop-to-main branch
+      - name: Checkout merge/develop-to-main
         uses: actions/checkout@v4
         with:
           ref: merge/develop-to-main
@@ -34,9 +34,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
           
       - name: Install dependencies
-        run: pip install pygithub
+        run: |
+          pip install --upgrade pip
+          pip install pygithub python-dateutil
       
       - name: Export CodeRabbit Reviews
         env:
@@ -46,33 +49,155 @@ jobs:
         run: |
           python3 << 'EOF'
           import os
+          import sys
+          from datetime import datetime
           from github import Github
           
-          g = Github(os.environ['GITHUB_TOKEN'])
-          repo = g.get_repo(os.environ['REPO'])
-          pr = repo.get_pull(int(os.environ['PR_NUMBER']))
-          
-          output = [f"# CodeRabbit Reviews for PR #{pr.number}: {pr.title}\n"]
-          
-          # Get all review comments on code
-          for comment in pr.get_review_comments():
-              if 'coderabbit' in comment.user.login.lower():
-                  output.append(f"## {comment.path}:{comment.line}\n{comment.body}\n")
-          
-          # Get summary comments
-          for comment in pr.get_issue_comments():
-              if 'coderabbit' in comment.user.login.lower():
-                  output.append(f"\n## Summary\n{comment.body}\n")
-          
-          with open('.coderabbit-reviews.md', 'w') as f:
-              f.write('\n'.join(output))
-          print("Export complete")
+          try:
+              g = Github(os.environ['GITHUB_TOKEN'])
+              repo = g.get_repo(os.environ['REPO'])
+              pr_number = int(os.environ['PR_NUMBER'])
+              pr = repo.get_pull(pr_number)
+              
+              output = [
+                  f"# 🤖 CodeRabbit Reviews for PR #{pr.number}",
+                  f"",
+                  f"**Title:** {pr.title}",
+                  f"**Author:** @{pr.user.login}",
+                  f"**Status:** {pr.state.upper()}",
+                  f"**Base:** `{pr.base.ref}` → **Head:** `{pr.head.ref}`",
+                  f"**Created:** {pr.created_at.strftime('%Y-%m-%d %H:%M UTC')}",
+                  f"**Updated:** {pr.updated_at.strftime('%Y-%m-%d %H:%M UTC')}",
+                  f"**Export Time:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+                  f"",
+                  f"---",
+                  f""
+              ]
+              
+              review_comments = []
+              for comment in pr.get_review_comments():
+                  if 'coderabbit' in comment.user.login.lower():
+                      review_comments.append(comment)
+              
+              issue_comments = []
+              for comment in pr.get_issue_comments():
+                  if 'coderabbit' in comment.user.login.lower():
+                      issue_comments.append(comment)
+              
+              if issue_comments:
+                  output.append(f"## 📋 Summary ({len(issue_comments)} comment(s))")
+                  output.append("")
+                  for idx, comment in enumerate(issue_comments, 1):
+                      output.append(f"### Summary {idx}")
+                      output.append(f"*Posted: {comment.created_at.strftime('%Y-%m-%d %H:%M UTC')}*")
+                      output.append("")
+                      output.append(comment.body)
+                      output.append("")
+                      output.append("---")
+                      output.append("")
+              
+              if review_comments:
+                  output.append(f"## 🔍 Code Review Comments ({len(review_comments)} comment(s))")
+                  output.append("")
+                  
+                  by_file = {}
+                  for comment in review_comments:
+                      if comment.path not in by_file:
+                          by_file[comment.path] = []
+                      by_file[comment.path].append(comment)
+                  
+                  for file_path, comments in sorted(by_file.items()):
+                      output.append(f"### 📄 `{file_path}`")
+                      output.append("")
+                      
+                      for comment in sorted(comments, key=lambda c: c.position or 0):
+                          line_info = f"Line {comment.line}" if comment.line else "General"
+                          output.append(f"#### {line_info}")
+                          output.append(f"*Posted: {comment.created_at.strftime('%Y-%m-%d %H:%M UTC')}*")
+                          output.append("")
+                          
+                          if comment.diff_hunk:
+                              output.append("**Code Context:**")
+                              output.append("```diff")
+                              output.append(comment.diff_hunk)
+                              output.append("```")
+                              output.append("")
+                          
+                          output.append("**Review:**")
+                          output.append(comment.body)
+                          output.append("")
+                          output.append("---")
+                          output.append("")
+              
+              if not review_comments and not issue_comments:
+                  output.append("## ℹ️ No CodeRabbit Reviews Yet")
+                  output.append("")
+                  output.append("CodeRabbit hasn't posted any reviews on this PR yet.")
+                  output.append("")
+              
+              output.append("---")
+              output.append(f"*Generated by GitHub Actions on {datetime.utcnow().strftime('%Y-%m-%d at %H:%M UTC')}*")
+              
+              with open('.coderabbit-reviews.md', 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(output))
+              
+              print(f"✅ Successfully exported {len(review_comments)} code comments and {len(issue_comments)} summaries")
+              sys.exit(0)
+              
+          except Exception as e:
+              print(f"❌ Error: {e}", file=sys.stderr)
+              sys.exit(1)
           EOF
       
-      - name: Commit to merge/develop-to-main
+      - name: Validate export
+        run: |
+          if [ ! -f .coderabbit-reviews.md ]; then
+            echo "❌ ERROR: .coderabbit-reviews.md was not created"
+            exit 1
+          fi
+          
+          FILE_SIZE=$(stat -f%z .coderabbit-reviews.md 2>/dev/null || stat -c%s .coderabbit-reviews.md)
+          echo "✅ File created: .coderabbit-reviews.md (${FILE_SIZE} bytes)"
+          
+          if [ "$FILE_SIZE" -lt 50 ]; then
+            echo "⚠️  WARNING: File is suspiciously small"
+          fi
+      
+      - name: Commit and push changes
         run: |
           git config user.email "action@github.com"
           git config user.name "Kimi Helper"
-          git add .coderabbit-reviews.md
-          git diff --staged --quiet || git commit -m "📝 CodeRabbit reviews for Kimi"
-          git push origin merge/develop-to-main
+          git add -f .coderabbit-reviews.md
+          
+          if git diff --cached --quiet; then
+            echo "ℹ️  No changes detected - file is already up to date"
+            exit 0
+          fi
+          
+          git commit -m "📝 Update CodeRabbit reviews for PR #${{ steps.get-pr.outputs.pr_number }}"
+          
+          MAX_RETRIES=3
+          RETRY=0
+          until git push origin merge/develop-to-main || [ $RETRY -eq $MAX_RETRIES ]; do
+            RETRY=$((RETRY+1))
+            echo "⚠️  Push failed, retrying ($RETRY/$MAX_RETRIES)..."
+            sleep 2
+            git pull --rebase origin merge/develop-to-main
+          done
+          
+          if [ $RETRY -eq $MAX_RETRIES ]; then
+            echo "❌ Failed to push after $MAX_RETRIES attempts"
+            exit 1
+          fi
+          
+          echo "✅ Successfully committed and pushed changes"
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "### 📊 Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number:** #${{ steps.get-pr.outputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Branch:** \`merge/develop-to-main\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Export File:** \`.coderabbit-reviews.md\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

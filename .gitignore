@@ -150,4 +150,6 @@ secrets/
 .secret
 
 # CodeRabbit review exports (auto-generated for Kimi)
-.coderabbit-reviews.md
+
+# Allow CodeRabbit reviews (force-added by workflow)
+!.coderabbit-reviews.md
