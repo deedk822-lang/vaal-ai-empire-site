@@ -45,6 +45,36 @@ const createCsrfToken = (req, res, next) => {
 };
 
 /**
+ * Constant-time token comparison to prevent timing attacks
+ * @param {string} headerToken - Token from request header
+ * @param {string} cookieToken - Token from cookie
+ * @returns {boolean} - True if tokens match
+ */
+const constantTimeCompare = (headerToken, cookieToken) => {
+  // Check if both tokens exist
+  if (!headerToken || !cookieToken) {
+    return false;
+  }
+  
+  // Convert to buffers
+  const bufHeader = Buffer.from(headerToken, 'utf8');
+  const bufCookie = Buffer.from(cookieToken, 'utf8');
+  
+  // Check length - must match for timingSafeEqual
+  if (bufHeader.length !== bufCookie.length) {
+    return false;
+  }
+  
+  // Constant-time comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(bufHeader, bufCookie);
+  } catch (error) {
+    // If buffers have different lengths, timingSafeEqual throws
+    return false;
+  }
+};
+
+/**
  * Verify CSRF token middleware
  * Validates the token in the request header against the __Host- prefixed cookie
  */
@@ -60,8 +90,8 @@ const verifyCsrfToken = (req, res, next) => {
   // Get token from __Host- prefixed cookie
   const tokenFromCookie = req.cookies[CSRF_COOKIE_NAME];
   
-  // Check if tokens exist and match (double-submit pattern)
-  if (!tokenFromHeader || !tokenFromCookie || tokenFromHeader !== tokenFromCookie) {
+  // Check if tokens exist and match using constant-time comparison (double-submit pattern)
+  if (!constantTimeCompare(tokenFromHeader, tokenFromCookie)) {
     return res.status(403).json({
       success: false,
       error: 'Invalid or missing CSRF token',
