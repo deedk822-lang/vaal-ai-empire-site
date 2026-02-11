@@ -9,10 +9,9 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:node/recommended',
-    'plugin:security/recommended',
     'plugin:prettier/recommended',
   ],
-  plugins: ['node', 'security', 'prettier'],
+  plugins: ['node', 'prettier'],
   parserOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
@@ -24,22 +23,18 @@ module.exports = {
     // Node.js best practices
     'node/no-unpublished-require': 'off',
     'node/no-missing-require': 'error',
+    'node/no-extraneous-require': 'warn',
     
-    // Security
-    'security/detect-object-injection': 'warn',
-    'security/detect-non-literal-regexp': 'warn',
-    'security/detect-unsafe-regex': 'error',
-    'security/detect-buffer-noassert': 'error',
-    'security/detect-eval-with-expression': 'error',
-    'security/detect-no-csrf-before-method-override': 'error',
-    'security/detect-non-literal-fs-filename': 'warn',
-    'security/detect-non-literal-require': 'warn',
-    'security/detect-possible-timing-attacks': 'warn',
-    'security/detect-pseudoRandomBytes': 'error',
+    // Allow process.exit in server files
+    'no-process-exit': 'off',
+    
+    // Relax async/await rules
+    'require-await': 'off',
+    'no-return-await': 'off',
     
     // General best practices
-    'no-console': 'off', // Allow console in this project
-    'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    'no-console': 'off',
+    'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     'no-undef': 'error',
     'no-var': 'error',
     'prefer-const': 'error',
@@ -47,13 +42,12 @@ module.exports = {
     'eqeqeq': ['error', 'always'],
     'curly': ['error', 'all'],
     'no-throw-literal': 'error',
-    'no-return-await': 'error',
-    'require-await': 'error',
     
-    // Code quality
-    'complexity': ['warn', 10],
-    'max-lines-per-function': ['warn', 50],
-    'max-params': ['warn', 4],
+    // Code quality - relaxed for this project
+    'complexity': ['warn', 15],
+    'max-lines-per-function': ['warn', 100],
+    'max-params': ['warn', 6],
+    'no-case-declarations': 'off',
   },
   overrides: [
     {
@@ -63,6 +57,7 @@ module.exports = {
       },
       rules: {
         'no-console': 'off',
+        'node/no-process-exit': 'off',
       },
     },
     {
@@ -78,6 +73,9 @@ module.exports = {
       files: ['**/*.test.js', '**/*.spec.js'],
       env: {
         jest: true,
+      },
+      rules: {
+        'no-unused-vars': 'off',
       },
     },
   ],

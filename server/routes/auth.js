@@ -1,15 +1,15 @@
 const express = require('express');
 const {
-    signup,
-    login,
-    logout,
-    protect,
-    restrictTo,
-    forgotPassword,
-    resetPassword,
-    updatePassword,
-    verifyEmail,
-    getMe
+  signup,
+  login,
+  logout,
+  protect,
+  restrictTo,
+  forgotPassword,
+  resetPassword,
+  updatePassword,
+  verifyEmail,
+  getMe,
 } = require('../middleware/auth');
 
 const router = express.Router();
@@ -30,10 +30,10 @@ router.patch('/update-password', updatePassword);
 
 // Admin only routes
 router.get('/admin', restrictTo('admin'), (req, res) => {
-    res.status(200).json({
-        status: 'success',
-        message: 'Admin access granted'
-    });
+  res.status(200).json({
+    status: 'success',
+    message: 'Admin access granted',
+  });
 });
 
 module.exports = router;

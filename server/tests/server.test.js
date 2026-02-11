@@ -27,7 +27,7 @@ describe('Server', () => {
     app = require('../server');
   });
 
-  afterAll((done) => {
+  afterAll(done => {
     if (server) {
       server.close(done);
     } else {
@@ -37,10 +37,8 @@ describe('Server', () => {
 
   describe('Basic Routes', () => {
     test('GET / should return welcome message or redirect', async () => {
-      const response = await request(app)
-        .get('/')
-        .expect(200);
-      
+      const response = await request(app).get('/').expect(200);
+
       // Should either return HTML or JSON
       expect([200, 302, 404]).toContain(response.status);
     });
@@ -54,7 +52,7 @@ describe('Server', () => {
   describe('Security Headers', () => {
     test('should have security headers', async () => {
       const response = await request(app).get('/');
-      
+
       // Check for helmet headers
       expect(response.headers['x-dns-prefetch-control']).toBeDefined();
       expect(response.headers['x-frame-options']).toBeDefined();
@@ -64,10 +62,8 @@ describe('Server', () => {
 
   describe('Error Handling', () => {
     test('should handle 404 errors', async () => {
-      const response = await request(app)
-        .get('/non-existent-route-12345')
-        .expect(404);
-      
+      const response = await request(app).get('/non-existent-route-12345').expect(404);
+
       expect(response.body).toBeDefined();
     });
   });
@@ -75,13 +71,13 @@ describe('Server', () => {
   describe('Rate Limiting', () => {
     test('should have rate limit headers on API routes', async () => {
       const response = await request(app).get('/api');
-      
+
       // Rate limit headers should be present on API routes
       // (may be 404, but headers should still be there)
-      const hasRateLimitHeaders = 
+      const hasRateLimitHeaders =
         response.headers['x-ratelimit-limit'] !== undefined ||
         response.headers['ratelimit-limit'] !== undefined;
-      
+
       // Not all routes may have rate limiting, so this is optional
       // Just checking the headers don't cause errors
       expect(response.status).toBeDefined();
@@ -98,10 +94,10 @@ describe('Health Check', () => {
 
   test('GET /health should return health status', async () => {
     const response = await request(app).get('/health');
-    
+
     // Health endpoint may or may not exist
     expect([200, 404]).toContain(response.status);
-    
+
     if (response.status === 200) {
       expect(response.body).toHaveProperty('status');
     }

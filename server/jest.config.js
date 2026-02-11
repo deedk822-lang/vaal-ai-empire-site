@@ -6,10 +6,7 @@ module.exports = {
   roots: ['<rootDir>/tests'],
 
   // Test file patterns
-  testMatch: [
-    '**/__tests__/**/*.js',
-    '**/?(*.)+(spec|test).js',
-  ],
+  testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
 
   // Coverage configuration
   collectCoverage: true,
