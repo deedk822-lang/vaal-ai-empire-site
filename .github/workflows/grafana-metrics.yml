@@ -1,0 +1,19 @@
+name: Setup Grafana Metrics Environment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          echo "PROMETHEUS_URL=https://prometheus-prod-37-prod-ap-southeast-1.grafana.net/api/prom" >> .env
+          echo "PROMETHEUS_USER=2718767" >> .env
+          echo "PROMETHEUS_PASSWORD=${{ secrets.PROMETHEUS_API_KEY }}" >> .env
+          echo "GRAFANA_DATASOURCE_NAME=grafanacloud-dimakatsomoleli-prom" >> .env
+          echo ".env file generated for local use or container environment."
