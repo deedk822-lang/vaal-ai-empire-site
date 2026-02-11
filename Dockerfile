@@ -32,14 +32,20 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy package files
+# Copy package files and install production dependencies only
 COPY server/package*.json ./
-
-# Install production dependencies only
 RUN npm ci --only=production && npm cache clean --force
 
-# Copy application code from builder
-COPY --from=builder --chown=nodejs:nodejs /app ./
+# Copy application code from builder (excluding node_modules)
+COPY --from=builder --chown=nodejs:nodejs /app/server.js ./
+COPY --from=builder --chown=nodejs:nodejs /app/config ./config/
+COPY --from=builder --chown=nodejs:nodejs /app/controllers ./controllers/
+COPY --from=builder --chown=nodejs:nodejs /app/lib ./lib/
+COPY --from=builder --chown=nodejs:nodejs /app/middleware ./middleware/
+COPY --from=builder --chown=nodejs:nodejs /app/models ./models/
+COPY --from=builder --chown=nodejs:nodejs /app/routes ./routes/
+COPY --from=builder --chown=nodejs:nodejs /app/agents ./agents/
+COPY --from=builder --chown=nodejs:nodejs /app/tests ./tests/
 
 # Switch to non-root user
 USER nodejs

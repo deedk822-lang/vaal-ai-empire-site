@@ -7,8 +7,7 @@ server/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
-yarn.lock
+
 
 # ============================================
 # Python
@@ -127,11 +126,14 @@ log/
 # ============================================
 # Docker
 # ============================================
+# Only ignore transient/dev Docker files
 .dockerignore
-Dockerfile*
-docker-compose*
-!docker-compose.yml
-!docker-compose.example.yml
+docker-compose.override.yml
+docker-compose.*.yml
+docker-compose-local.yml
+*-local.yml
+.env
+.env.*
 
 # ============================================
 # GitHub Actions (local testing)

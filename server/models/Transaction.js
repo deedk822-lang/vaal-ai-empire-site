@@ -191,7 +191,9 @@ const transactionSchema = new mongoose.Schema(
     },
     riskFactors: [
       {
-        type: String,
+        type: {
+          type: String,
+        },
         severity: {
           type: String,
           enum: ['low', 'medium', 'high', 'critical'],

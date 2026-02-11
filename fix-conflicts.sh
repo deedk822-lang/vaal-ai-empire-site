@@ -12,14 +12,19 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Configuration
-TARGET_DIR="${1:-.}"
+# Configuration - parse flags first
 FIX_MODE=false
+TARGET_DIR="."
 
-# Check for --fix flag
-if [[ "${2:-}" == "--fix" ]] || [[ "$TARGET_DIR" == "--fix" ]]; then
+# Check for --fix flag and parse arguments
+if [[ "${1:-}" == "--fix" ]]; then
+    FIX_MODE=true
+    TARGET_DIR="${2:-.}"
+elif [[ "${2:-}" == "--fix" ]]; then
     FIX_MODE=true
     TARGET_DIR="${1:-.}"
+elif [[ -n "${1:-}" && "${1:-}" != "--fix" ]]; then
+    TARGET_DIR="$1"
 fi
 
 # Ensure target directory exists
@@ -36,8 +41,6 @@ CONFLICT_PATTERNS=(
     '^<<<<<<< '          # Git conflict start
     '^=======$'          # Git conflict separator
     '^>>>>>>> '          # Git conflict end
-    '^ feature/'         # Feature branch markers
-    '^ main$'            # Main branch markers
     '^[a-z-]+/[^/]+$'    # General branch pattern (e.g., feat/name, fix/name)
 )
 
@@ -135,8 +138,6 @@ if $FIX_MODE; then
         sed -i.bak '/^<<<<<<< /d' "$file"
         sed -i.bak '/^=======$/d' "$file"
         sed -i.bak '/^>>>>>>> /d' "$file"
-        sed -i.bak '/^ feature\//d' "$file"
-        sed -i.bak '/^ main$/d' "$file"
         
         # Remove .bak files created by sed
         rm -f "$file.bak"
@@ -148,6 +149,9 @@ if $FIX_MODE; then
     echo -e "${GREEN}✅ Processed $FIXED_COUNT files${NC}"
     echo -e "${YELLOW}⚠️  IMPORTANT: Backups created with .backup extension${NC}"
     echo -e "${YELLOW}⚠️  Please review all changes before committing!${NC}"
+    
+    # Exit successfully after fixing
+    exit 0
 else
     echo -e "${RED}Please resolve conflicts manually or run with --fix flag (use with caution!)${NC}"
     echo ""

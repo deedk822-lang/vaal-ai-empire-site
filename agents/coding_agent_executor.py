@@ -250,71 +250,63 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
             ).strip()
         
         elif "factorial" in normalized:
-            return textwrap.dedent(
-                """\
-                Here's a Python function to calculate factorial:
-
-                ```python
-def factorial(n):
-                    \"\"\"Calculate factorial of n.\"\"\"
-                    if n < 0:
-                        raise ValueError("Factorial not defined for negative numbers")
-                    if n == 0 or n == 1:
-                        return 1
-                    return n * factorial(n - 1)
-
-                # Iterative version (better for large numbers)
-                def factorial_iterative(n):
-                    \"\"\"Calculate factorial iteratively.\"\"\"
-                    if n < 0:
-                        raise ValueError("Factorial not defined for negative numbers")
-                    result = 1
-                    for i in range(2, n + 1):
-                        result *= i
-                    return result
-
-                # Example usage
-                print(factorial(5))  # 120
-                print(factorial_iterative(5))  # 120
-                ```
-                """
-            ).strip()
-        
+            return (
+                "Here's a Python function to calculate factorial:\n\n"
+                "```python\n"
+                "def factorial(n):\n"
+                "    \"\"\"Calculate factorial of n.\"\"\"\n"
+                "    if n < 0:\n"
+                '        raise ValueError("Factorial not defined for negative numbers")\n'
+                "    if n == 0 or n == 1:\n"
+                "        return 1\n"
+                "    return n * factorial(n - 1)\n"
+                "\n"
+                "# Iterative version (better for large numbers)\n"
+                "def factorial_iterative(n):\n"
+                "    \"\"\"Calculate factorial iteratively.\"\"\"\n"
+                "    if n < 0:\n"
+                '        raise ValueError("Factorial not defined for negative numbers")\n'
+                "    result = 1\n"
+                "    for i in range(2, n + 1):\n"
+                "        result *= i\n"
+                "    return result\n"
+                "\n"
+                "# Example usage\n"
+                "print(factorial(5))  # 120\n"
+                "print(factorial_iterative(5))  # 120\n"
+                "```"
+            )
         elif "fibonacci" in normalized:
-            return textwrap.dedent(
-                """\
-                Here's a Python function to generate Fibonacci numbers:
-
-                ```python
-def fibonacci(n):
-                    \"\"\"Generate first n Fibonacci numbers.\"\"\"
-                    if n <= 0:
-                        return []
-                    elif n == 1:
-                        return [0]
-                    
-                    fibs = [0, 1]
-                    for i in range(2, n):
-                        fibs.append(fibs[i-1] + fibs[i-2])
-                    return fibs
-
-                # Generator version (memory efficient)
-                def fibonacci_generator(limit=None):
-                    \"\"\"Generate Fibonacci sequence.\"\"\"
-                    a, b = 0, 1
-                    count = 0
-                    while limit is None or count < limit:
-                        yield a
-                        a, b = b, a + b
-                        count += 1
-
-                # Example usage
-                print(fibonacci(10))
-                print(list(fibonacci_generator(10)))
-                ```
-                """
-            ).strip()
-        
+            return (
+                "Here's a Python function to generate Fibonacci numbers:\n\n"
+                "```python\n"
+                "def fibonacci(n):\n"
+                "    \"\"\"Generate first n Fibonacci numbers.\"\"\"\n"
+                "    if n <= 0:\n"
+                "        return []\n"
+                "    elif n == 1:\n"
+                "        return [0]\n"
+                "    \n"
+                "    fibs = [0, 1]\n"
+                "    for i in range(2, n):\n"
+                "        fibs.append(fibs[i-1] + fibs[i-2])\n"
+                "    return fibs\n"
+                "\n"
+                "# Generator version (memory efficient)\n"
+                "def fibonacci_generator(limit=None):\n"
+                "    \"\"\"Generate Fibonacci sequence.\"\"\"\n"
+                "    a, b = 0, 1\n"
+                "    count = 0\n"
+                "    while limit is None or count < limit:\n"
+                "        yield a\n"
+                "        a, b = b, a + b\n"
+                "        count += 1\n"
+                "\n"
+                "# Example usage\n"
+                "print(fibonacci(10))\n"
+                "print(list(fibonacci_generator(10)))\n"
+                "```"
+            )
         return f"I received your request: {message}\n\n[Note: Running in local fallback mode. Set DASHSCOPE_API_KEY for AI-powered responses.]"
 
     def chat(

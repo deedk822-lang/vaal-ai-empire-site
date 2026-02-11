@@ -166,14 +166,16 @@ jobs:
           
           # Create regex patterns file
           cat > /tmp/secret_patterns.txt << 'PATTERNS'
-          sk_live_[a-zA-Z0-9]{24,}
-          AKIA[0-9A-Z]{16}
-          ghp_[a-zA-Z0-9]{36}
-          glpat-[a-zA-Z0-9\-]{20}
-          PATTERNS
+sk_live_[a-zA-Z0-9]{24,}
+AKIA[0-9A-Z]{16}
+ghp_[a-zA-Z0-9]{36}
+glpat-[a-zA-Z0-9\-]{20}
+PATTERNS
           
           found=0
           while IFS= read -r pattern; do
+            # Trim leading/trailing whitespace
+            pattern=$(echo "$pattern" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             [ -z "$pattern" ] && continue
             
             matches=$(grep -rE "$pattern" \

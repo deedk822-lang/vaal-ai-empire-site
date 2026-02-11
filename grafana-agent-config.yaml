@@ -1,10 +1,11 @@
-# Grafana Agent Configuration
-# Scrapes metrics from the Vaal AI Empire app and pushes to Grafana Cloud via OTLP
+// Grafana Agent Configuration
+// Scrapes metrics from the Vaal AI Empire app and pushes to Grafana Cloud via OTLP
 
-server:
-  log_level: info
+server {
+  log_level = "info"
+}
 
-# OTLP Configuration for Grafana Cloud
+// OTLP Configuration for Grafana Cloud
 otelcol.auth.basic "grafana_cloud" {
   username = env("GRAFANA_CLOUD_INSTANCE_ID")
   password = env("GRAFANA_CLOUD_API_KEY")
@@ -17,7 +18,7 @@ otelcol.exporter.otlp "grafana_cloud" {
   }
 }
 
-# Metrics Pipeline
+// Metrics Pipeline
 otelcol.receiver.prometheus "default" {
   output {
     metrics = [otelcol.exporter.otlp.grafana_cloud.input]
@@ -34,7 +35,7 @@ prometheus.scrape "vaal_ai_empire" {
   job_name = "vaal-ai-empire-app"
 }
 
-# Default metrics (CPU, memory, etc.)
+// Default metrics (CPU, memory, etc.)
 prometheus.exporter.self "default" {}
 prometheus.scrape "agent" {
   targets    = prometheus.exporter.self.default.targets

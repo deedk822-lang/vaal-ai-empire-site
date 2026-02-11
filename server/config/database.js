@@ -4,10 +4,6 @@ const connectDB = async () => {
   try {
     // MongoDB connection options
     const options = {
-      // Use new URL parser
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-
       // Connection pool settings
       maxPoolSize: 10,
       minPoolSize: 2,

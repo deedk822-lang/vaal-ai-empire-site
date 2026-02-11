@@ -129,8 +129,7 @@ def example_6_quick_chat():
     print("=" * 60)
     
     response = quick_chat(
-        "What are Python decorators?",
-        stream=False
+        "What are Python decorators?"
     )
     
     print(response)
