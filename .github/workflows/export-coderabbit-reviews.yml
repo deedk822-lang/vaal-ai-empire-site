@@ -2,36 +2,77 @@ name: Export CodeRabbit Reviews to Kimi
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
 
 jobs:
   export-reviews:
+    if: github.event_name == 'pull_request' || contains(github.event.comment.user.login, 'coderabbit')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Get PR number (for issue_comment events)
+        id: get-pr
+        run: |
+          if [ "${{ github.event_name }}" == "issue_comment" ]; then
+            echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Checkout merge/develop-to-main branch
+        uses: actions/checkout@v4
+        with:
+          ref: merge/develop-to-main
+          fetch-depth: 0
       
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           
-      - name: Install CodeRabbit Extractor
-        run: |
-          pip install beautifulsoup4 requests
-          curl -o extract-coderabbit.py https://raw.githubusercontent.com/obra/coderabbit-review-helper/main/extract-coderabbit-feedback.py
-          
-      - name: Export Reviews to File
+      - name: Install dependencies
+        run: pip install pygithub
+      
+      - name: Export CodeRabbit Reviews
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.get-pr.outputs.pr_number }}
         run: |
-          python3 extract-coderabbit.py "${{ github.repository }}/${{ github.event.pull_request.number }}" > .coderabbit-reviews.md
+          python3 << 'EOF'
+          import os
+          from github import Github
           
-      - name: Commit Review File
+          g = Github(os.environ['GITHUB_TOKEN'])
+          repo = g.get_repo(os.environ['REPO'])
+          pr = repo.get_pull(int(os.environ['PR_NUMBER']))
+          
+          output = [f"# CodeRabbit Reviews for PR #{pr.number}: {pr.title}\n"]
+          
+          # Get all review comments on code
+          for comment in pr.get_review_comments():
+              if 'coderabbit' in comment.user.login.lower():
+                  output.append(f"## {comment.path}:{comment.line}\n{comment.body}\n")
+          
+          # Get summary comments
+          for comment in pr.get_issue_comments():
+              if 'coderabbit' in comment.user.login.lower():
+                  output.append(f"\n## Summary\n{comment.body}\n")
+          
+          with open('.coderabbit-reviews.md', 'w') as f:
+              f.write('\n'.join(output))
+          print("Export complete")
+          EOF
+      
+      - name: Commit to merge/develop-to-main
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git config user.name "Kimi Helper"
           git add .coderabbit-reviews.md
-          git commit -m "Export CodeRabbit reviews for Kimi" || exit 0
-          git push
+          git diff --staged --quiet || git commit -m "📝 CodeRabbit reviews for Kimi"
+          git push origin merge/develop-to-main

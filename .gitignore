@@ -148,3 +148,6 @@ docker-compose-local.yml
 *.crt
 secrets/
 .secret
+
+# CodeRabbit review exports (auto-generated for Kimi)
+.coderabbit-reviews.md
