@@ -36,7 +36,7 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY server/package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
-# Copy application code from builder (excluding node_modules)
+# Copy only necessary application code from builder (node_modules excluded)
 COPY --from=builder --chown=nodejs:nodejs /app/server.js ./
 COPY --from=builder --chown=nodejs:nodejs /app/config ./config/
 COPY --from=builder --chown=nodejs:nodejs /app/controllers ./controllers/
@@ -46,6 +46,7 @@ COPY --from=builder --chown=nodejs:nodejs /app/models ./models/
 COPY --from=builder --chown=nodejs:nodejs /app/routes ./routes/
 COPY --from=builder --chown=nodejs:nodejs /app/agents ./agents/
 COPY --from=builder --chown=nodejs:nodejs /app/tests ./tests/
+# NOTE: builder node_modules is NOT copied - we use the production node_modules installed above
 
 # Switch to non-root user
 USER nodejs

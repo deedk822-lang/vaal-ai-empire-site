@@ -163,8 +163,8 @@ jobs:
         run: |
           echo "Checking for common secret patterns..."
           
-          # Create regex patterns file
-          cat > /tmp/secret_patterns.txt << 'PATTERNS'
+          # Create regex patterns file (no leading whitespace in patterns)
+cat > /tmp/secret_patterns.txt << 'PATTERNS'
 sk_live_[a-zA-Z0-9]{24,}
 AKIA[0-9A-Z]{16}
 ghp_[a-zA-Z0-9]{36}

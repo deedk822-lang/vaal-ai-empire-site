@@ -16,6 +16,19 @@ const signToken = id => {
   });
 };
 
+// Encrypt token for cookie storage
+const encryptToken = token => {
+  // Simple encryption using AES-256-GCM
+  const algorithm = 'aes-256-gcm';
+  const key = crypto.scryptSync(JWT_SECRET, 'salt', 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+};
+
 // Create and send token
 const createSendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
@@ -200,9 +213,10 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
 
   // 3) Send it to user's email
   try {
-    // TODO: Send email with resetURL
+    // TODO: Send email with password reset link
     // const resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
     // await sendPasswordResetEmail(user.email, resetURL);
+    // NOTE: resetURL is defined in the commented code above for future implementation
 
     res.status(200).json({
       status: 'success',

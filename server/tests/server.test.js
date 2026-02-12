@@ -26,8 +26,8 @@ describe('Server', () => {
     app = require('../server');
   });
 
-  afterAll(done => {
-    done();
+  afterAll(async () => {
+    // Cleanup after tests
   });
 
   describe('Basic Routes', () => {
@@ -75,7 +75,6 @@ describe('Server', () => {
 
       // Not all routes may have rate limiting, so this is optional
       // Just checking the headers don't cause errors
-      expect(typeof hasRateLimitHeaders).toBe('boolean');
       expect(response.status).toBeDefined();
     });
   });

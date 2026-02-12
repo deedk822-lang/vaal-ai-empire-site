@@ -11,7 +11,6 @@ const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
 const cookieParser = require('cookie-parser');
-const bodyParser = require('body-parser');
 const path = require('path');
 
 // Database connection
@@ -22,7 +21,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Import middleware
 const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
-const { createCsrfToken, verifyCsrfToken, getCsrfToken } = require('./middleware/csrf');
+const { createCsrfToken, getCsrfToken } = require('./middleware/csrf');
 const {
   metricsMiddleware,
   metricsEndpoint,
@@ -107,18 +106,11 @@ app.use(cors(corsOptions));
 // Body parser (limit payload size)
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
- codex/add-dockerfile-and-monitoring-integration
-app.use(cookieParser());
-
-
-app.use(bodyParser.json({ limit: '10kb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
 // CSRF Protection - Create token for all requests
 app.use(createCsrfToken);
 
- merge/develop-to-main
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
 
@@ -143,27 +135,6 @@ app.use(express.static(path.join(__dirname, '..')));
 // =============================
 
 app.use((req, res, next) => {
- codex/add-dockerfile-and-monitoring-integration
-    if (tracer) {
-        const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
-            method: req.method,
-            path: req.path,
-            ip: req.ip
-        });
-
-        req.traceId = traceId;
-
-        res.on('finish', () => {
-            tracer.endTrace(traceId, {
-                statusCode: res.statusCode,
-                duration: Date.now() - req.timestamp
-            });
-        });
-    }
-
-    req.timestamp = Date.now();
-    next();
-
   if (tracer) {
     const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
       method: req.method,
@@ -181,7 +152,6 @@ app.use((req, res, next) => {
   }
   req.timestamp = Date.now();
   next();
- merge/develop-to-main
 });
 
 // =============================
@@ -193,19 +163,6 @@ app.get('/metrics', metricsEndpoint);
 
 // Health check (before authentication)
 app.get('/health', (req, res) => {
- codex/add-dockerfile-and-monitoring-integration
-    const stats = tracer ? tracer.getStats() : {};
-
-    res.json({
-        status: 'ok',
-        service: 'vaal-ai-empire',
-        timestamp: new Date().toISOString(),
-        node: process.version,
-        uptime: process.uptime(),
-        database: 'connected', // Will be updated by connectDB
-        stats
-    });
-
   const stats = tracer ? tracer.getStats() : {};
   res.json({
     status: 'ok',
@@ -216,7 +173,6 @@ app.get('/health', (req, res) => {
     database: 'connected',
     stats,
   });
- merge/develop-to-main
 });
 
 // CSRF Token endpoint
@@ -243,15 +199,6 @@ if (observabilityRoutes) {
 
 // Get configuration
 app.get('/config', (req, res) => {
- codex/add-dockerfile-and-monitoring-integration
-    res.json({
-        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-        prices: {
-            starter: process.env.STARTER_PRICE_ID,
-            empire: process.env.EMPIRE_PRICE_ID
-        }
-    });
-
   res.json({
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
     prices: {
@@ -259,51 +206,10 @@ app.get('/config', (req, res) => {
       empire: process.env.EMPIRE_PRICE_ID,
     },
   });
- merge/develop-to-main
 });
 
 // Create Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
- codex/add-dockerfile-and-monitoring-integration
-    const { priceId } = req.body;
-
-    try {
-        const session = await stripe.checkout.sessions.create({
-            mode: 'subscription',
-            line_items: [
-                {
-                    price: priceId,
-                    quantity: 1,
-                },
-            ],
-            success_url: `${process.env.DOMAIN}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.DOMAIN}/canceled.html`,
-            customer_creation: 'always',
-            billing_address_collection: 'required',
-            allow_promotion_codes: true,
-            payment_method_types: ['card'],
-            metadata: {
-                product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire',
-                source: 'vaalai_website'
-            },
-            subscription_data: {
-                trial_period_days: 7,
-                metadata: {
-                    product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
-                },
-            },
-        });
-
-        if (tracer) {
-            tracer.recordMetric('checkout_created', { priceId, sessionId: session.id });
-        }
-
-        res.json({ sessionId: session.id });
-    } catch (error) {
-        console.error('Error creating checkout session:', error);
-        res.status(500).json({ error: error.message });
-    }
-
   const { priceId } = req.body;
 
   try {
@@ -345,73 +251,10 @@ app.post('/create-checkout-session', async (req, res) => {
     console.error('Error creating checkout session:', error);
     res.status(500).json({ error: error.message });
   }
- merge/develop-to-main
 });
 
 // Get session details
 app.get('/checkout-session', async (req, res) => {
- codex/add-dockerfile-and-monitoring-integration
-    const { sessionId } = req.query;
-
-    try {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        res.json(session);
-    } catch (error) {
-        console.error('Error retrieving session:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Webhook endpoint (must use raw body)
-app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    let event;
-
-    try {
-        event = stripe.webhooks.constructEvent(
-            req.body,
-            sig,
-            process.env.STRIPE_WEBHOOK_SECRET
-        );
-    } catch (err) {
-        console.error('Webhook signature verification failed:', err.message);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    // Handle events
-    switch (event.type) {
-        case 'checkout.session.completed':
-            console.log('✅ Checkout completed:', event.data.object.id);
-            // TODO: Create user subscription in database
-            break;
-
-        case 'customer.subscription.created':
-            console.log('✅ Subscription created:', event.data.object.id);
-            break;
-
-        case 'customer.subscription.updated':
-            console.log('🔄 Subscription updated:', event.data.object.id);
-            break;
-
-        case 'customer.subscription.deleted':
-            console.log('❌ Subscription canceled:', event.data.object.id);
-            break;
-
-        case 'invoice.paid':
-            console.log('💰 Invoice paid:', event.data.object.id);
-            break;
-
-        case 'invoice.payment_failed':
-            console.log('⚠️ Payment failed:', event.data.object.id);
-            // TODO: Send email to customer
-            break;
-
-        default:
-            console.log(`Unhandled event type: ${event.type}`);
-    }
-
-    res.json({ received: true });
-
   const { sessionId } = req.query;
 
   try {
@@ -437,69 +280,59 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
   // Handle events
   switch (event.type) {
-    case 'checkout.session.completed':
+    case 'checkout.session.completed': {
       const session = event.data.object;
       console.log('✅ Checkout completed:', session.id);
       recordStripeWebhook('checkout.session.completed', 'success');
       // TODO: Create user subscription in database
       break;
+    }
 
-    case 'customer.subscription.created':
+    case 'customer.subscription.created': {
       const subscription = event.data.object;
       console.log('✅ Subscription created:', subscription.id);
       recordStripeWebhook('customer.subscription.created', 'success');
       break;
+    }
 
-    case 'customer.subscription.updated':
+    case 'customer.subscription.updated': {
       const updatedSub = event.data.object;
       console.log('🔄 Subscription updated:', updatedSub.id);
       recordStripeWebhook('customer.subscription.updated', 'success');
       break;
+    }
 
-    case 'customer.subscription.deleted':
+    case 'customer.subscription.deleted': {
       const deletedSub = event.data.object;
       console.log('❌ Subscription canceled:', deletedSub.id);
       recordStripeWebhook('customer.subscription.deleted', 'success');
       break;
+    }
 
-    case 'invoice.paid':
+    case 'invoice.paid': {
       const invoice = event.data.object;
       console.log('💰 Invoice paid:', invoice.id);
       recordStripeWebhook('invoice.paid', 'success');
       break;
+    }
 
-    case 'invoice.payment_failed':
+    case 'invoice.payment_failed': {
       const failedInvoice = event.data.object;
       console.log('⚠️ Payment failed:', failedInvoice.id);
       recordStripeWebhook('invoice.payment_failed', 'failed');
       // TODO: Send email to customer
       break;
+    }
 
     default:
       console.log(`Unhandled event type: ${event.type}`);
   }
 
   res.json({ received: true });
- merge/develop-to-main
 });
 
 // Customer Portal
 app.post('/create-portal-session', async (req, res) => {
- codex/add-dockerfile-and-monitoring-integration
-    const { customerId } = req.body;
-
-    try {
-        const portalSession = await stripe.billingPortal.sessions.create({
-            customer: customerId,
-            return_url: `${process.env.DOMAIN}/account.html`,
-        });
-
-        res.json({ url: portalSession.url });
-    } catch (error) {
-        console.error('Error creating portal session:', error);
-        res.status(500).json({ error: error.message });
-    }
-
   const { customerId } = req.body;
 
   try {
@@ -513,7 +346,6 @@ app.post('/create-portal-session', async (req, res) => {
     console.error('Error creating portal session:', error);
     res.status(500).json({ error: error.message });
   }
- merge/develop-to-main
 });
 
 // =============================
@@ -531,43 +363,6 @@ app.use(globalErrorHandler);
 // =============================
 
 const startServer = async () => {
- codex/add-dockerfile-and-monitoring-integration
-    try {
-        // Connect to MongoDB
-        await connectDB();
-
-        // Cleanup old traces every hour (if tracer exists)
-        if (tracer) {
-            setInterval(() => {
-                tracer.cleanup(24 * 60 * 60 * 1000); // 24 hours
-            }, 60 * 60 * 1000);
-        }
-
-        // Start server
-        app.listen(port, () => {
-            console.log('');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('   VAAL AI EMPIRE - SERVER');
-            console.log('   10X Enterprise Platform');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('');
-            console.log(`🚀 Running on: http://localhost:${port}`);
-            console.log(`🔐 Auth API: http://localhost:${port}/api/auth`);
-            console.log(`💳 Stripe API: http://localhost:${port}/create-checkout-session`);
-            console.log(`📊 Dashboard: http://localhost:${port}/dashboard.html`);
-            if (tracer) {
-                console.log(`🔍 Observability: http://localhost:${port}/api/observability`);
-            }
-            console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`🌍 Domain: ${process.env.DOMAIN}`);
-            console.log('');
-            console.log('🇿🇦 Built in the Vaal. Built for Africa.');
-            console.log('');
-        });
-    } catch (error) {
-        console.error('❌ Failed to start server:', error);
-        process.exit(1);
-
   try {
     // Connect to MongoDB
     await connectDB();
@@ -580,7 +375,6 @@ const startServer = async () => {
         },
         60 * 60 * 1000
       );
- merge/develop-to-main
     }
 
     // Start server

@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-
+import json
 import re
 import subprocess
 import tempfile
@@ -518,7 +518,7 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
                 execution_time_ms=timeout * 1000,
                 files_created=[temp_file]
             )
-        except Exception as e:
+        except (OSError, IOError, subprocess.SubprocessError) as e:
             return CodeExecutionResult(
                 success=False,
                 stdout="",
