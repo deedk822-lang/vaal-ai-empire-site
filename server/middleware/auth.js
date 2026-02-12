@@ -16,17 +16,42 @@ const signToken = id => {
   });
 };
 
-// Encrypt token for cookie storage
+// Encrypt/decrypt token for cookie storage
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+const ENCRYPTION_KEY_MATERIAL = process.env.COOKIE_ENCRYPTION_SECRET || JWT_SECRET;
+const ENCRYPTION_SALT = process.env.COOKIE_ENCRYPTION_SALT || 'vaal-ai-empire-cookie-salt';
+const ENCRYPTION_KEY = crypto.scryptSync(ENCRYPTION_KEY_MATERIAL, ENCRYPTION_SALT, 32);
+
 const encryptToken = token => {
-  // Simple encryption using AES-256-GCM
-  const algorithm = 'aes-256-gcm';
-  const key = crypto.scryptSync(JWT_SECRET, 'salt', 32);
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, key, iv);
-  let encrypted = cipher.update(token, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+};
+
+const decryptToken = encryptedToken => {
+  const parts = encryptedToken.split(':');
+
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted token format');
+  }
+
+  const [ivHex, authTagHex, encryptedHex] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
+
+  if (iv.length !== 16 || authTag.length !== 16 || encrypted.length === 0) {
+    throw new Error('Invalid encrypted token payload');
+  }
+
+  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, ENCRYPTION_KEY, iv);
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  return decrypted.toString('utf8');
 };
 
 // Create and send token
@@ -49,7 +74,6 @@ const createSendToken = (user, statusCode, res) => {
 
   res.status(statusCode).json({
     status: 'success',
-    token,
     data: {
       user,
     },
@@ -157,7 +181,11 @@ exports.protect = catchAsync(async (req, res, next) => {
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   } else if (req.cookies.jwt && req.cookies.jwt !== 'loggedout') {
-    token = req.cookies.jwt;
+    try {
+      token = decryptToken(req.cookies.jwt);
+    } catch (error) {
+      return next(new AppError('Invalid authentication token. Please log in again.', 401));
+    }
   }
 
   if (!token) {
@@ -165,7 +193,8 @@ exports.protect = catchAsync(async (req, res, next) => {
   }
 
   // 2) Verification token
-  const decoded = await promisify(jwt.verify)(token, JWT_SECRET);
+  const decodedToken = token;
+  const decoded = await promisify(jwt.verify)(decodedToken, JWT_SECRET);
 
   // 3) Check if user still exists
   const currentUser = await User.findById(decoded.id);
