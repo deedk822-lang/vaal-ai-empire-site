@@ -458,8 +458,13 @@ transactionSchema.methods.calculateFees = function () {
   let baseFee = 0;
   if (this.currency === 'ZAR') {
     baseFee = zarBaseFee;
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-eu3mz0
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
     baseFee = zarBaseFee / this.exchangeRate.rate;
+
+  } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate;
+ merge/develop-to-main
   }
 
   // Calculate processing fee: 2.9% + currency-adjusted flat fee
@@ -571,6 +576,11 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     validatedRefundAmount = numericRefundAmount;
   }
 
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-eu3mz0
+
+  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+
+ merge/develop-to-main
   this.refundData = {
     originalTransactionId: this.transactionId,
     refundAmount: validatedRefundAmount,
@@ -579,7 +589,7 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     refundedBy,
   };
 
-  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+  await this.save();
   return this;
 };
 
