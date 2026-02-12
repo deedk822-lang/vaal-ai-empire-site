@@ -4,7 +4,7 @@ Powered by Qwen3-Coder-Plus via DashScope API
 
 This module provides a coding agent that can:
 - Generate, analyze, and refactor code
-- Execute Python code safely in a sandboxed environment
+- Execute Python code with a timeout (NOT a security sandbox)
 - Stream responses for real-time feedback
 - Maintain conversation context
 
@@ -88,7 +88,7 @@ class CodingAgentExecutor:
     - Streaming responses for real-time feedback
     - Code extraction and execution
     - Conversation memory
-    - Safe sandboxed execution
+    - Time-limited local code execution (NOT isolated)
     - Local fallback mode when API key is not available
     """
     
@@ -137,8 +137,8 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
             temperature: Sampling temperature (0-2)
             top_p: Nucleus sampling parameter
             max_tokens: Maximum tokens to generate
-            enable_code_execution: Whether to enable code execution
-            execution_timeout: Timeout for code execution in seconds
+            enable_code_execution: Whether to enable local Python execution via subprocess.run
+            execution_timeout: Timeout for code execution in seconds (time limit only, not isolation)
             fallback_mode: If True, run in local fallback mode when no API key
         """
         # Resolve API key from multiple sources
@@ -463,7 +463,12 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
     
     def execute_python(self, code: str, timeout: Optional[int] = None) -> CodeExecutionResult:
         """
-        Execute Python code in a sandboxed environment.
+        Execute Python code locally with a timeout.
+
+        Security note:
+            This is NOT a secure sandbox. It runs code with the current process's user privileges and does not provide filesystem, network, or privilege isolation.
+            For real sandboxing, run code inside hardened containers/VMs or use tools
+            such as nsjail, bubblewrap, and OS policies like seccomp/AppArmor.
         
         Args:
             code: Python code to execute
