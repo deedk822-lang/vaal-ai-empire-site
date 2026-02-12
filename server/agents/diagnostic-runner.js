@@ -31,6 +31,7 @@ const runDiagnostics = async () => {
     } else {
       console.log(colors.green.bold('🎉 OVERALL STATUS: PERFECT'));
       console.log(colors.green('   All systems operational. Backend ready for production!\n'));
+ codex/add-dockerfile-and-monitoring-integration
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -47,4 +48,21 @@ const runDiagnostics = async () => {
   }
 };
 
+
+    }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(colors.gray(`⏱️  Diagnostic completed in ${duration}s\n`));
+
+    if (totalFailures > 0) {
+      process.exit(1); // Exit with a non-zero code to fail CI/CD pipelines
+    }
+  } catch (error) {
+    console.error(colors.red.bold('\n💥 A fatal error occurred during diagnostics:'));
+    console.error(error);
+    process.exit(1);
+  }
+};
+
+ merge/develop-to-main
 runDiagnostics();

@@ -1,0 +1,53 @@
+# Vaal AI Empire - Python Dependencies (Source)
+# Generate locked requirements.txt with: pip-compile requirements.in --output-file=requirements.txt
+
+# Multi-Agent Framework
+ag2[openai]>=0.10.0
+
+# LLM API Client (for Coding Agent Executor)
+openai>=1.0.0
+
+# Web Scraping & Document Processing
+beautifulsoup4>=4.12.0
+pypdf>=4.0.0
+requests>=2.32.4  # CVE-2024-35195, CVE-2024-47081
+lxml>=5.1.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+python-dateutil>=2.8.0
+
+# Async Support
+aiohttp>=3.9.0
+
+# JSON/Data Handling
+orjson>=3.9.0
+
+# Logging & Monitoring
+loguru>=0.7.0
+
+# Testing & Linting
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Code Quality
+flake8>=6.1.0
+black>=23.0.0
+isort>=5.12.0
+bandit>=1.7.0
+mypy>=1.0.0
+
+# Security
+safety>=2.3.0
+
+# Security Updates (transitive dependencies)
+cryptography>=42.0.5  # CVE-2024-26130
+idna>=3.7  # CVE-2024-3651
+urllib3>=2.6.3  # CVE-2024-37891, CVE-2025-66471, CVE-2025-66418, CVE-2025-50181, CVE-2026-21441
+certifi>=2024.7.4  # CVE-2024-39689

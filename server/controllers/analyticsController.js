@@ -1,7 +1,14 @@
 const { catchAsync } = require('../middleware/errorHandler');
+const { logger, sanitizeObject } = require('../utils/secureLogger');
 
 exports.logDocumentDownload = catchAsync(async (req, res, next) => {
-    // In a real application, you would log this to a database or analytics service
-    console.log('Document downloaded:', req.body);
-    res.status(200).json({ status: 'success' });
+  // Use secure logger to prevent log injection
+  logger.info('Document downloaded', sanitizeObject({
+    userId: req.user?._id,
+    documentId: req.body.documentId,
+    timestamp: new Date().toISOString(),
+    ip: req.ip,
+  }));
+  
+  res.status(200).json({ status: 'success' });
 });

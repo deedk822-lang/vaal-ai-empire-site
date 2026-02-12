@@ -1,7 +1,51 @@
 module.exports = {
+  // Test environment
   testEnvironment: 'node',
-  setupFilesAfterEnv: ['./tests/setup.js'],
-  testMatch: ['**/tests/**/*.test.js'],
+
+  // Root directories for test discovery
+  roots: ['<rootDir>/tests'],
+
+  // Test file patterns
+  testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+
+  // Coverage configuration
   collectCoverage: true,
-  coverageDirectory: 'coverage',
+  coverageDirectory: '<rootDir>/coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
+  collectCoverageFrom: [
+    '**/*.js',
+    '!**/node_modules/**',
+    '!**/coverage/**',
+    '!**/tests/**',
+    '!jest.config.js',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 10,
+      functions: 15,
+      lines: 35,
+      statements: 35,
+    },
+  },
+
+  // Setup files
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+
+  // Module paths
+  moduleDirectories: ['node_modules'],
+
+  // Verbose output
+  verbose: true,
+
+  // Clear mocks between tests
+  clearMocks: true,
+
+  // Restore mocks after each test
+  restoreMocks: true,
+
+  // Fail tests on console errors/warnings (optional, can be strict)
+  // errorOnDeprecated: true,
+
+  // Timeout for tests
+  testTimeout: 10000,
 };
