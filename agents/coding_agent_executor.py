@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import json
+
 import re
 import subprocess
 import tempfile
@@ -531,7 +531,7 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
             # Cleanup
             try:
                 os.unlink(temp_file)
-            except:
+            except Exception:
                 pass
     
     def clear_history(self):

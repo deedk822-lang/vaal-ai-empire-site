@@ -28,7 +28,8 @@ const createSendToken = (user, statusCode, res) => {
     sameSite: 'strict',
   };
 
-  res.cookie('jwt', token, cookieOptions);
+  const encryptedToken = encryptToken(token);
+  res.cookie('jwt', encryptedToken, cookieOptions);
 
   // Remove password from output
   user.password = undefined;
@@ -182,8 +183,12 @@ exports.restrictTo = (...roles) => {
 
 // Forgot password
 exports.forgotPassword = catchAsync(async (req, res, next) => {
-  // 1) Get user based on POSTed email
-  const user = await User.findOne({ email: req.body.email });
+  // 1) Validate and get user based on POSTed email
+  if (typeof req.body.email !== 'string') {
+    return next(new AppError('Please provide a valid email address.', 400));
+  }
+
+  const user = await User.findOne({ email: { $eq: req.body.email } });
 
   if (!user) {
     return next(new AppError('There is no user with that email address.', 404));
@@ -195,9 +200,8 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
 
   // 3) Send it to user's email
   try {
-    const resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
-
     // TODO: Send email with resetURL
+    // const resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
     // await sendPasswordResetEmail(user.email, resetURL);
 
     res.status(200).json({

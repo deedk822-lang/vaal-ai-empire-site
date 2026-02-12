@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 
 # Skip tests if no API key
 pytestmark = pytest.mark.skipif(

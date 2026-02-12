@@ -21,18 +21,13 @@ jest.mock('../config/database', () => jest.fn(() => Promise.resolve()));
 
 describe('Server', () => {
   let app;
-  let server;
 
   beforeAll(() => {
     app = require('../server');
   });
 
   afterAll(done => {
-    if (server) {
-      server.close(done);
-    } else {
-      done();
-    }
+    done();
   });
 
   describe('Basic Routes', () => {
@@ -80,6 +75,7 @@ describe('Server', () => {
 
       // Not all routes may have rate limiting, so this is optional
       // Just checking the headers don't cause errors
+      expect(typeof hasRateLimitHeaders).toBe('boolean');
       expect(response.status).toBeDefined();
     });
   });

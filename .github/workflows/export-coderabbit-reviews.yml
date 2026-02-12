@@ -8,7 +8,7 @@ on:
 
 jobs:
   export-reviews:
-    if: github.event_name == 'pull_request' || contains(github.event.comment.user.login, 'coderabbit')
+    if: github.event_name == 'pull_request' || github.event.comment.user.login == 'coderabbitai[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,10 +24,14 @@ jobs:
             echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           fi
       
-      - name: Checkout merge/develop-to-main
+      - name: Set target branch
+        id: set-branch
+        run: echo "branch=merge/develop-to-main" >> $GITHUB_OUTPUT
+      
+      - name: Checkout target branch
         uses: actions/checkout@v4
         with:
-          ref: merge/develop-to-main
+          ref: ${{ steps.set-branch.outputs.branch }}
           fetch-depth: 0
       
       - name: Set up Python
@@ -76,12 +80,12 @@ jobs:
               
               review_comments = []
               for comment in pr.get_review_comments():
-                  if 'coderabbit' in comment.user.login.lower():
+                  if comment.user.login.lower() == 'coderabbitai[bot]':
                       review_comments.append(comment)
               
               issue_comments = []
               for comment in pr.get_issue_comments():
-                  if 'coderabbit' in comment.user.login.lower():
+                  if comment.user.login.lower() == 'coderabbitai[bot]':
                       issue_comments.append(comment)
               
               if issue_comments:
@@ -178,11 +182,11 @@ jobs:
           
           MAX_RETRIES=3
           RETRY=0
-          until git push origin merge/develop-to-main || [ $RETRY -eq $MAX_RETRIES ]; do
+          until git push origin ${{ steps.set-branch.outputs.branch }} || [ $RETRY -eq $MAX_RETRIES ]; do
             RETRY=$((RETRY+1))
             echo "⚠️  Push failed, retrying ($RETRY/$MAX_RETRIES)..."
             sleep 2
-            git pull --rebase origin merge/develop-to-main
+            git pull --rebase origin ${{ steps.set-branch.outputs.branch }}
           done
           
           if [ $RETRY -eq $MAX_RETRIES ]; then

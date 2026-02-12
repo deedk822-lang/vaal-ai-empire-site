@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from coding_agent_executor import CodingAgentExecutor, create_agent, quick_chat
+from coding_agent_executor import create_agent, quick_chat
 
 # Make sure to set your DASHSCOPE_API_KEY environment variable
 # export DASHSCOPE_API_KEY=your_api_key_here
@@ -150,7 +150,7 @@ def example_7_with_callback():
         # Custom processing - just print dots instead of content
         print(".", end="", flush=True)
     
-    response = agent.chat(
+    agent.chat(
         "Write a Python script to scrape a website using requests and BeautifulSoup",
         stream=True,
         on_chunk=on_chunk

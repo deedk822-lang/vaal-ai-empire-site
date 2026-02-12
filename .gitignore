@@ -23,7 +23,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python build artifacts (narrowed from broad lib/ pattern)
+build/lib/
+*.egg-info/
+.Python
 lib64/
 parts/
 sdist/

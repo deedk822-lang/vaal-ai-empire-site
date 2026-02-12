@@ -28,7 +28,7 @@ const createCsrfToken = (req, res, next) => {
       // __Host- prefix requires: secure, path=/, no domain attribute
       res.cookie(CSRF_COOKIE_NAME, token, {
         httpOnly: true,
-        secure: true, // Required for __Host- prefix
+        secure: process.env.NODE_ENV === 'production' || req.secure, // Required for __Host- prefix
         path: '/',    // Required for __Host- prefix
         sameSite: 'strict',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
@@ -114,7 +114,7 @@ const getCsrfToken = (req, res) => {
     // __Host- prefix requires: secure, path=/, no domain attribute
     res.cookie(CSRF_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: true, // Required for __Host- prefix
+      secure: process.env.NODE_ENV === 'production' || req.secure, // Required for __Host- prefix
       path: '/',    // Required for __Host- prefix
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000,
