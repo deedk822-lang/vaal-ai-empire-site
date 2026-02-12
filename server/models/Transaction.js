@@ -411,11 +411,19 @@ transactionSchema.methods.updateStatus = async function (
 // Calculate transaction fees (Stripe-compliant for ZAR)
 transactionSchema.methods.calculateFees = function () {
   // Base fee structure (adjust per your payment processor)
-  const baseFee = 2.5; // ZAR flat fee
+  const zarBaseFee = 2.5; // ZAR flat fee
   const percentageFee = 0.029; // 2.9%
   const gatewayFee = 1.0; // Gateway processing fee
 
-  // Calculate processing fee: 2.9% + R2.50
+  // Only apply flat base fee directly for ZAR; convert when exchange rate is available
+  let baseFee = 0;
+  if (this.currency === 'ZAR') {
+    baseFee = zarBaseFee;
+  } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate;
+  }
+
+  // Calculate processing fee: 2.9% + currency-adjusted flat fee
   this.fees.processing = Math.round((this.amount * percentageFee + baseFee) * 100) / 100;
 
   // Gateway fee
@@ -439,6 +447,9 @@ transactionSchema.methods.calculateFees = function () {
 // Calculate risk score based on various factors
 transactionSchema.methods.calculateRiskScore = function () {
   let score = 0;
+
+  // Reset risk factors to avoid duplicate accumulation across repeated calls
+  this.riskFactors = [];
 
   // High amount transactions (>R10,000)
   if (this.amount > 10000) {
@@ -505,15 +516,33 @@ transactionSchema.methods.calculateRiskScore = function () {
 
 // Process refund
 transactionSchema.methods.processRefund = async function (refundAmount, reason, refundedBy) {
+  let validatedRefundAmount = this.amount;
+
+  if (refundAmount !== undefined && refundAmount !== null) {
+    const numericRefundAmount = Number(refundAmount);
+
+    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount <= 0) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a positive number.`);
+    }
+
+    if (numericRefundAmount > this.amount) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: requested refund (${numericRefundAmount}) exceeds original amount (${this.amount}).`);
+    }
+
+    validatedRefundAmount = numericRefundAmount;
+  }
+
+  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+
   this.refundData = {
     originalTransactionId: this.transactionId,
-    refundAmount: refundAmount || this.amount,
+    refundAmount: validatedRefundAmount,
     refundReason: reason,
     processedAt: new Date(),
     refundedBy,
   };
 
-  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+  await this.save();
   return this;
 };
 
