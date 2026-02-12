@@ -164,30 +164,32 @@ jobs:
           echo "Checking for common secret patterns..."
           
           # Create regex patterns file (no leading whitespace in patterns)
-cat > /tmp/secret_patterns.txt << 'PATTERNS'
-sk_live_[a-zA-Z0-9]{24,}
-AKIA[0-9A-Z]{16}
-ghp_[a-zA-Z0-9]{36}
-glpat-[a-zA-Z0-9\-]{20}
-PATTERNS
+          : > /tmp/secret_patterns.txt
+          echo 'sk_live_[a-zA-Z0-9]{24,}' >> /tmp/secret_patterns.txt
+          echo 'AKIA[0-9A-Z]{16}' >> /tmp/secret_patterns.txt
+          echo 'ghp_[a-zA-Z0-9]{36}' >> /tmp/secret_patterns.txt
+          echo 'glpat-[a-zA-Z0-9\-]{20}' >> /tmp/secret_patterns.txt
           
           found=0
           while IFS= read -r pattern; do
             # Trim leading/trailing whitespace
             pattern=$(echo "$pattern" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             [ -z "$pattern" ] && continue
-            
-            matches=$(grep -rE "$pattern" \
+
+            match_locations=$(grep -rEn "$pattern" \
               --include="*.js" \
               --include="*.py" \
               --include="*.json" \
               --include="*.yml" \
               --include="*.yaml" \
-              . 2>/dev/null | grep -v "node_modules" | grep -v ".git" | grep -v "package-lock" || true)
-            
-            if [ -n "$matches" ]; then
-              echo "⚠️  Potential matches for pattern: $pattern"
-              echo "$matches"
+              . 2>/dev/null | grep -v "node_modules" | grep -v ".git" | grep -v "package-lock" | cut -d: -f1,2 || true)
+            match_count=$(printf "%s\n" "$match_locations" | sed '/^$/d' | wc -l)
+
+            if [ "$match_count" -gt 0 ]; then
+              echo "⚠️  Potential matches found for pattern (content redacted): $pattern"
+              echo "   Match count: $match_count"
+              echo "   File:line references:"
+              echo "$match_locations"
               found=1
             fi
           done < /tmp/secret_patterns.txt

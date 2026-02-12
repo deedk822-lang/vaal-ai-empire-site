@@ -1,13 +1,20 @@
 """Tests for the coding agent executor."""
 
 import os
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import patch
 
-# Skip tests if no API key
-pytestmark = pytest.mark.skipif(
+import pytest
+
+from agents.coding_agent_executor import (
+    AgentResponse,
+    CodeExecutionResult,
+    CodingAgentExecutor,
+    create_agent,
+)
+
+requires_api_key = pytest.mark.skipif(
     not os.getenv("DASHSCOPE_API_KEY"),
-    reason="DASHSCOPE_API_KEY not set"
+    reason="DASHSCOPE_API_KEY not set",
 )
 
 
@@ -16,7 +23,6 @@ class TestCodingAgentExecutor:
 
     def test_initialization_requires_api_key(self):
         """Test that initialization fails without API key."""
-        from coding_agent_executor import CodingAgentExecutor
         
         # Clear any existing API key
         with patch.dict(os.environ, {}, clear=True):
@@ -25,7 +31,6 @@ class TestCodingAgentExecutor:
 
     def test_initialization_with_api_key(self):
         """Test successful initialization with API key."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-api-key")
         assert agent.api_key == "test-api-key"
@@ -34,7 +39,6 @@ class TestCodingAgentExecutor:
 
     def test_initialization_with_custom_params(self):
         """Test initialization with custom parameters."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(
             api_key="test-key",
@@ -51,7 +55,6 @@ class TestCodingAgentExecutor:
 
     def test_clear_history(self):
         """Test clearing conversation history."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         agent.messages.append({"role": "user", "content": "Hello"})
@@ -66,7 +69,6 @@ class TestCodingAgentExecutor:
 
     def test_get_stats_initial(self):
         """Test getting stats with fresh agent."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         stats = agent.get_stats()
@@ -77,7 +79,6 @@ class TestCodingAgentExecutor:
 
     def test_extract_code_blocks(self):
         """Test code block extraction from markdown."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         
@@ -108,7 +109,6 @@ function greet() {
 
     def test_get_python_code(self):
         """Test extracting Python code from blocks."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         
@@ -124,7 +124,6 @@ function greet() {
 
     def test_get_python_code_none(self):
         """Test extracting Python code when none exists."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         
@@ -142,7 +141,6 @@ class TestCodeExecution:
 
     def test_execute_python_success(self):
         """Test successful Python code execution."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         
@@ -156,7 +154,6 @@ class TestCodeExecution:
 
     def test_execute_python_error(self):
         """Test Python code execution with error."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key")
         
@@ -169,7 +166,6 @@ class TestCodeExecution:
 
     def test_execute_python_timeout(self):
         """Test Python code execution timeout."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key", execution_timeout=1)
         
@@ -181,7 +177,6 @@ class TestCodeExecution:
 
     def test_execute_python_disabled(self):
         """Test code execution when disabled."""
-        from coding_agent_executor import CodingAgentExecutor
         
         agent = CodingAgentExecutor(api_key="test-key", enable_code_execution=False)
         
@@ -196,7 +191,6 @@ class TestAgentResponse:
 
     def test_agent_response_creation(self):
         """Test creating an AgentResponse."""
-        from coding_agent_executor import AgentResponse
         
         response = AgentResponse(
             content="Test content",
@@ -213,7 +207,6 @@ class TestCodeExecutionResult:
 
     def test_result_creation(self):
         """Test creating a CodeExecutionResult."""
-        from coding_agent_executor import CodeExecutionResult
         
         result = CodeExecutionResult(
             success=True,
@@ -233,9 +226,22 @@ class TestHelperFunctions:
 
     def test_create_agent(self):
         """Test create_agent helper function."""
-        from coding_agent_executor import create_agent, CodingAgentExecutor
         
         agent = create_agent(api_key="test-key")
         
         assert isinstance(agent, CodingAgentExecutor)
         assert agent.api_key == "test-key"
+
+
+@requires_api_key
+class TestLiveAPI:
+    """Live API smoke tests (requires DASHSCOPE_API_KEY)."""
+
+    def test_chat_live_api_smoke(self):
+        """Test a minimal non-streaming API call returns content."""
+        agent = CodingAgentExecutor(api_key=os.getenv("DASHSCOPE_API_KEY"))
+        response = agent.chat("Respond with the word OK", stream=False, execute_code=False)
+
+        assert isinstance(response, AgentResponse)
+        assert isinstance(response.content, str)
+        assert response.content.strip() != ""
