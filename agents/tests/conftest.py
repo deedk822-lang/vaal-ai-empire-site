@@ -1,13 +1,19 @@
 """Pytest configuration for agents tests."""
 
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
 from importlib.util import find_spec
 from pathlib import Path
 import sys
 import types
 
+from pathlib import Path
+import sys
+ merge/develop-to-main
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
 
 
 if find_spec("dotenv") is None:
@@ -30,3 +36,5 @@ if find_spec("openai") is None:
 
     openai_stub.OpenAI = OpenAI
     sys.modules["openai"] = openai_stub
+
+ merge/develop-to-main
