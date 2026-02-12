@@ -42,3 +42,9 @@ prometheus.scrape "agent" {
   forward_to = [otelcol.receiver.prometheus.default.receiver]
   job_name   = "grafana-agent"
 }
+
+// Logging configuration
+logging {
+  level  = "info"
+  format = "logfmt"
+}

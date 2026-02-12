@@ -12,7 +12,7 @@
     "lint:fix": "cd server && npm run lint:fix",
     "format": "cd server && npm run format",
     "format:check": "cd server && npm run format:check",
-    "test:agents": "python3 agents/ag2/orchestrator.py"
+    "test:agents": "python agents/ag2/orchestrator.py"
   },
   "keywords": [
     "ai",

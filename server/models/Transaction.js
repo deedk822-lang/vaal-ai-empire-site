@@ -191,7 +191,7 @@ const transactionSchema = new mongoose.Schema(
     },
     riskFactors: [
       {
-        type: {
+        factorType: {
           type: String,
         },
         severity: {
@@ -444,7 +444,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   if (this.amount > 10000) {
     score += 20;
     this.riskFactors.push({
-      type: 'high_amount',
+      factorType: 'high_amount',
       severity: 'medium',
       description: `Transaction amount (${this.currency} ${this.amount}) exceeds threshold`,
     });
@@ -454,7 +454,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   if (this.customerInfo?.location?.country && this.customerInfo.location.country !== 'ZA') {
     score += 15;
     this.riskFactors.push({
-      type: 'international',
+      factorType: 'international',
       severity: 'low',
       description: `International transaction from ${this.customerInfo.location.country}`,
     });
@@ -464,7 +464,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   if (this.paymentMethod === 'crypto') {
     score += 25;
     this.riskFactors.push({
-      type: 'crypto_payment',
+      factorType: 'crypto_payment',
       severity: 'medium',
       description: 'Cryptocurrency payment requires additional verification',
     });
@@ -477,7 +477,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   ) {
     score += 50;
     this.riskFactors.push({
-      type: 'sanctions_hit',
+      factorType: 'sanctions_hit',
       severity: 'critical',
       description: 'Failed sanctions screening',
     });
@@ -486,7 +486,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   if (this.complianceFlags.amlCheck?.checked && !this.complianceFlags.amlCheck?.passed) {
     score += 40;
     this.riskFactors.push({
-      type: 'aml_concern',
+      factorType: 'aml_concern',
       severity: 'high',
       description: 'AML check raised concerns',
     });

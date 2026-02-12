@@ -20,11 +20,11 @@ TARGET_DIR="."
 if [[ "${1:-}" == "--fix" ]]; then
     FIX_MODE=true
     TARGET_DIR="${2:-.}"
-elif [[ "${2:-}" == "--fix" ]]; then
-    FIX_MODE=true
-    TARGET_DIR="${1:-.}"
 elif [[ -n "${1:-}" && "${1:-}" != "--fix" ]]; then
     TARGET_DIR="$1"
+    if [[ "${2:-}" == "--fix" ]]; then
+        FIX_MODE=true
+    fi
 fi
 
 # Ensure target directory exists
@@ -152,6 +152,10 @@ if $FIX_MODE; then
     
     # Exit successfully after fixing
     exit 0
+else
+    # Not in fix mode, exit with error if conflicts found
+    exit 1
+fi
 else
     echo -e "${RED}Please resolve conflicts manually or run with --fix flag (use with caution!)${NC}"
     echo ""
