@@ -42,9 +42,13 @@ from enum import Enum
 # Import base executor
 try:
     from coding_agent_executor import CodingAgentExecutor, CodeExecutionResult, AgentResponse
+    _HAS_BASE_CLASS = True
 except ImportError:
-    # Fallback for standalone execution
-    pass
+    # Fallback for standalone execution - define placeholder classes
+    _HAS_BASE_CLASS = False
+    CodingAgentExecutor = None
+    CodeExecutionResult = None
+    AgentResponse = None
 
 
 class BenchmarkCategory(Enum):
@@ -91,7 +95,7 @@ class BenchmarkReport:
     overall_score: float = 0.0
 
 
-class BenchmarkExecutor(CodingAgentExecutor if 'CodingAgentExecutor' in dir() else object):
+class BenchmarkExecutor:
     """
     Professional benchmark suite extending CodingAgentExecutor.
     
@@ -132,8 +136,10 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
     ):
         """Initialize the BenchmarkExecutor."""
         # Initialize parent class if available
-        if CodingAgentExecutor in dir():
-            super().__init__(
+        if _HAS_BASE_CLASS and CodingAgentExecutor is not None:
+            # Initialize as subclass
+            CodingAgentExecutor.__init__(
+                self,
                 api_key=api_key,
                 enable_code_execution=enable_code_execution,
                 execution_timeout=execution_timeout
