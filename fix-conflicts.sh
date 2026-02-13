@@ -41,7 +41,6 @@ CONFLICT_PATTERNS=(
     '^<<<<<<< '          # Git conflict start
     '^=======$'          # Git conflict separator
     '^>>>>>>> '          # Git conflict end
-    '^[a-z-]+/[^/]+$'    # General branch pattern (e.g., feat/name, fix/name)
 )
 
 # Find files with conflicts
@@ -119,48 +118,42 @@ if $FIX_MODE; then
     echo "This will remove conflict markers but may NOT produce correct results!"
     echo "Manual review is strongly recommended after running this."
     echo ""
-    
+
     read -p "Are you sure you want to proceed? (yes/no): " confirm
     if [[ "$confirm" != "yes" ]]; then
         echo "Aborted."
         exit 0
     fi
-    
+
     FIXED_COUNT=0
     for file in "${CONFLICT_FILES[@]}"; do
         echo "Processing: $file"
-        
+
         # Create backup
         cp "$file" "$file.backup"
-        
+
         # Remove conflict markers (naive approach - removes lines with markers)
         # This is NOT a complete solution but helps clean up
         sed -i.bak '/^<<<<<<< /d' "$file"
         sed -i.bak '/^=======$/d' "$file"
         sed -i.bak '/^>>>>>>> /d' "$file"
-        
+
         # Remove .bak files created by sed
         rm -f "$file.bak"
-        
+
         FIXED_COUNT=$((FIXED_COUNT + 1))
     done
-    
+
     echo ""
     echo -e "${GREEN}✅ Processed $FIXED_COUNT files${NC}"
     echo -e "${YELLOW}⚠️  IMPORTANT: Backups created with .backup extension${NC}"
     echo -e "${YELLOW}⚠️  Please review all changes before committing!${NC}"
-    
-    # Exit successfully after fixing
+
     exit 0
-else
-    # Not in fix mode, exit with error if conflicts found
-    exit 1
-fi
 else
     echo -e "${RED}Please resolve conflicts manually or run with --fix flag (use with caution!)${NC}"
     echo ""
     echo "To attempt automatic cleanup (requires manual review after):"
     echo "  ./fix-conflicts.sh --fix"
+    exit 1
 fi
-
-exit 1

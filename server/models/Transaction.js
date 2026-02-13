@@ -16,6 +16,45 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
+
+const redactSensitiveFields = (doc, ret) => {
+  delete ret.customerEmail;
+
+  if (ret.customerInfo) {
+    delete ret.customerInfo.ipAddress;
+    delete ret.customerInfo.userAgent;
+    delete ret.customerInfo.deviceFingerprint;
+  }
+
+  if (ret.providerData) {
+    if (ret.providerData.stripe) {
+      delete ret.providerData.stripe.paymentMethodId;
+      delete ret.providerData.stripe.customerId;
+      delete ret.providerData.stripe.chargeId;
+    }
+
+    if (ret.providerData.paystack) {
+      delete ret.providerData.paystack.authorizationCode;
+      delete ret.providerData.paystack.accessCode;
+    }
+
+    if (ret.providerData.payfast) {
+      delete ret.providerData.payfast.signature;
+    }
+
+    if (ret.providerData.crypto) {
+      delete ret.providerData.crypto.walletAddress;
+      delete ret.providerData.crypto.transactionHash;
+    }
+  }
+
+  if (ret.settlement) {
+    delete ret.settlement.bankAccount;
+  }
+
+  return ret;
+};
+
 const transactionSchema = new mongoose.Schema(
   {
     // Transaction Identification
@@ -315,8 +354,8 @@ const transactionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true, getters: true },
-    toObject: { virtuals: true, getters: true },
+    toJSON: { virtuals: true, getters: true, transform: redactSensitiveFields },
+    toObject: { virtuals: true, getters: true, transform: redactSensitiveFields },
   }
 );
 
@@ -419,6 +458,8 @@ transactionSchema.methods.calculateFees = function () {
   let baseFee = 0;
   if (this.currency === 'ZAR') {
     baseFee = zarBaseFee;
+  } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate.rate;
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
     baseFee = zarBaseFee / this.exchangeRate;
   }
@@ -521,8 +562,8 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
   if (refundAmount !== undefined && refundAmount !== null) {
     const numericRefundAmount = Number(refundAmount);
 
-    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount <= 0) {
-      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a positive number.`);
+    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount < 0) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`);
     }
 
     if (numericRefundAmount > this.amount) {
