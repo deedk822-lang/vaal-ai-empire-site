@@ -67,12 +67,6 @@ describe('Server', () => {
     test('should have rate limit headers on API routes', async () => {
       const response = await request(app).get('/api');
 
-      // Rate limit headers should be present on API routes
-      // (may be 404, but headers should still be there)
-      const hasRateLimitHeaders =
-        response.headers['x-ratelimit-limit'] !== undefined ||
-        response.headers['ratelimit-limit'] !== undefined;
-
       // Not all routes may have rate limiting, so this is optional
       // Just checking the headers don't cause errors
       expect(response.status).toBeDefined();

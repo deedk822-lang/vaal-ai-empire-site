@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import json
 import re
 import subprocess
 import tempfile
