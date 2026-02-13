@@ -454,18 +454,22 @@ transactionSchema.methods.calculateFees = function () {
   const percentageFee = 0.029; // 2.9%
   const gatewayFee = 1.0; // Gateway processing fee
 
-  // Only apply flat base fee directly for ZAR; convert when exchange rate is available
+  // Only apply flat base fee for ZAR or convert it when exchange rate is available
+  // Non-ZAR currencies without exchange rate get no baseFee (only percentage fee)
   let baseFee = 0;
   if (this.currency === 'ZAR') {
     baseFee = zarBaseFee;
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
+    // Convert ZAR baseFee to transaction currency
     baseFee = zarBaseFee / this.exchangeRate.rate;
 <<<<<<< codex/remove-git-merge-artifacts-and-fix-echo-logic-v5zkre
 =======
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
+    // Convert ZAR baseFee to transaction currency
     baseFee = zarBaseFee / this.exchangeRate;
 >>>>>>> merge/develop-to-main
   }
+  // Note: Non-ZAR currencies without exchange rate data get baseFee = 0
 
   // Calculate processing fee: 2.9% + currency-adjusted flat fee
   this.fees.processing = Math.round((this.amount * percentageFee + baseFee) * 100) / 100;
@@ -490,10 +494,9 @@ transactionSchema.methods.calculateFees = function () {
 
 // Calculate risk score based on various factors
 transactionSchema.methods.calculateRiskScore = function () {
-  let score = 0;
-
-  // Reset risk factors to avoid duplicate accumulation across repeated calls
+  // Reset risk factors to prevent accumulation across repeated calls
   this.riskFactors = [];
+  let score = 0;
 
   // High amount transactions (>R10,000)
   if (this.amount > 10000) {
