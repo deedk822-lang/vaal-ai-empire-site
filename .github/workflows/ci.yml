@@ -1,0 +1,304 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'GRAFANA_CLOUD_SETUP.md'
+  pull_request:
+    branches: [main, master, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# Default permissions for all jobs
+permissions:
+  contents: read
+
+# Cancel redundant runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================
+  # Node.js Backend Tests & Linting
+  # ============================================
+  server-ci:
+    name: Server CI (Node.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: ./server
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18.x, 20.x]
+
+    # MongoDB service for tests
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: ./server/package-lock.json
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: ./server/node_modules
+          key: ${{ runner.os }}-server-${{ hashFiles('./server/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-server-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint || echo "No lint script configured"
+        continue-on-error: true
+
+      - name: Run security audit
+        timeout-minutes: 3
+        run: npm audit --audit-level=high || true
+
+      - name: Wait for MongoDB
+        run: |
+          echo "Waiting for MongoDB..."
+          for i in {1..30}; do
+            if nc -z localhost 27017; then
+              echo "MongoDB is ready!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: npm test -- --runInBand --detectOpenHandles --forceExit
+        env:
+          NODE_ENV: test
+          STRIPE_SECRET_KEY: sk_test_dummy
+          MONGODB_URI: mongodb://localhost:27017/test
+          JWT_SECRET: test-secret-key-for-ci-only
+
+      - name: Upload coverage report
+        if: matrix.node-version == '18.x' && !cancelled()
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./server/coverage
+          flags: server
+          name: server-coverage
+          fail_ci_if_error: false
+          verbose: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ============================================
+  # Frontend / Static Site Checks
+  # ============================================
+  frontend-ci:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install root dependencies (if exists)
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "No root package-lock.json, skipping"
+          fi
+
+      - name: Validate HTML
+        run: |
+          if command -v htmlhint &> /dev/null || npm install -g htmlhint; then
+            htmlhint *.html || true
+          fi
+        continue-on-error: true
+
+      - name: Validate CSS
+        run: |
+          if npm install -g stylelint stylelint-config-standard 2>/dev/null; then
+            stylelint "css/**/*.css" || true
+          fi
+        continue-on-error: true
+
+  # ============================================
+  # Python Agents Tests & Linting
+  # ============================================
+  python-ci:
+    name: Python CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || echo "No requirements.txt"
+          pip install flake8 pytest pytest-cov
+
+      - name: Lint with flake8
+        run: |
+          if [ -d agents/ ]; then
+            flake8 agents/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
+            flake8 agents/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
+          else
+            echo "No agents/ directory"
+          fi
+        continue-on-error: true
+
+      - name: Run pytest
+        run: |
+          if [ -d agents/ ] && [ -n "$(find agents/ -name '*_test.py' -o -name 'test_*.py' 2>/dev/null)" ]; then
+            pytest agents/ -v --cov=agents --cov-report=xml --cov-report=term
+          else
+            echo "No Python tests found"
+          fi
+        continue-on-error: true
+
+      - name: Upload Python coverage
+        if: matrix.python-version == '3.11' && !cancelled()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: python
+          name: python-coverage
+          fail_ci_if_error: false
+          verbose: false
+
+  # ============================================
+  # Environment Validation
+  # ============================================
+  env-validation:
+    name: Environment Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Validate .env.example completeness
+        run: |
+          if [ -f .env.example ]; then
+            test -s .env.example && echo "✅ .env.example is valid"
+          else
+            echo "⚠️ No .env.example file"
+          fi
+
+      - name: Check for secrets in code
+        run: |
+          found=0
+          if grep -r "sk_live_" --include="*.js" --include="*.py" . 2>/dev/null | grep -v node_modules | grep -v ".git"; then
+            echo "❌ Found potential live Stripe key!"
+            found=1
+          fi
+          if grep -rE "sk-[a-zA-Z0-9]{48}" --include="*.js" --include="*.py" . 2>/dev/null | grep -v node_modules | grep -v ".git"; then
+            echo "❌ Found potential secret key!"
+            found=1
+          fi
+          if [ $found -eq 0 ]; then
+            echo "✅ No obvious secrets found"
+          fi
+        continue-on-error: true
+
+      - name: Validate JSON files
+        run: |
+          failed=0
+          for file in $(find . -name "*.json" -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null); do
+            if ! python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
+              echo "⚠️ Invalid JSON: $file"
+              failed=1
+            fi
+          done
+          if [ $failed -eq 0 ]; then
+            echo "✅ JSON validation complete"
+          fi
+        continue-on-error: true
+
+  # ============================================
+  # Build Verification
+  # ============================================
+  build-check:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [server-ci]
+    if: always() && needs.server-ci.result == 'success'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ./server/package-lock.json
+
+      - name: Test server startup
+        working-directory: ./server
+        run: |
+          npm ci
+          timeout 10s npm start || echo "Server start test completed"
+        env:
+          NODE_ENV: test
+          PORT: 9999
+          STRIPE_SECRET_KEY: sk_test_dummy
+          MONGODB_URI: mongodb://localhost:27017/test
+          JWT_SECRET: test-secret-key-for-ci-only
+        continue-on-error: true

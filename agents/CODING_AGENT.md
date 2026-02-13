@@ -1,6 +1,6 @@
-# Coding Agent Executor
+# 🤖 Vaal AI Empire - Coding Agent Executor
 
-A lightweight Python CLI for coding assistance with optional local code execution.
+A powerful coding assistant powered by **Qwen3-Coder-Plus** via DashScope API.
 
 ## ⚠️ Security Warning
 
@@ -84,111 +84,202 @@ Apply Linux security modules to restrict system calls and file access.
 - [Piston](https://github.com/engineer-man/piston) - Code execution engine
 - [CodeBox](https://github.com/judge0/codebox) - Lightweight code executor
 
+---
+
+## Features
+
+- 🚀 **Streaming Responses** - Real-time code generation
+- 🐍 **Code Execution** - Run Python code with timeout protection (NOT sandboxed)
+- 💬 **Conversation Memory** - Maintains context across messages
+- 📊 **Usage Statistics** - Track API usage and tokens
+- 🔧 **Customizable** - Configure temperature, system prompts, and more
+
+---
+
 ## Installation
 
 ```bash
-# No additional installation required - uses Python stdlib
-python agents/coding_agent_executor.py --help
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-## Usage
+## Quick Start
 
-### Interactive Mode
+### 1. Set API Key
+
 ```bash
-# Set API key for LLM features
-export DASHSCOPE_API_KEY=your_key_here
+export DASHSCOPE_API_KEY=your_api_key_here
+```
 
-# Start interactive session
+Get your API key from: https://dashscope.aliyun.com/
+
+### 2. Run Interactive Session
+
+```bash
 python agents/coding_agent_executor.py -i
 ```
 
-### Single Message
+Or send a single message:
+
 ```bash
-python agents/coding_agent_executor.py -m "Write a Python web scraper"
+python agents/coding_agent_executor.py -m "Write a Python function to sort a list"
+```
+
+---
+
+## Usage Examples
+
+### Basic Chat
+
+```python
+from agents.coding_agent_executor import create_agent
+
+agent = create_agent()
+response = agent.chat("Write a Python function to calculate factorial", stream=True)
 ```
 
 ### With Code Execution
-```bash
-# Enable execution (WARNING: not sandboxed!)
-python agents/coding_agent_executor.py -m "Calculate pi" --enable-execution
 
-# With custom timeout
-python agents/coding_agent_executor.py -m "Long running task" --enable-execution --timeout 60
+```python
+response = agent.chat(
+    "Write a script to calculate pi using Monte Carlo method",
+    stream=True,
+    execute_code=True
+)
+
+if response.execution_result:
+    print(response.execution_result.stdout)
 ```
 
-### Using API Key File
-```bash
-# Safer than passing secrets on CLI
-echo "your_api_key" > ~/.secrets/dashscope_key
-python agents/coding_agent_executor.py -m "Hello" --api-key-file ~/.secrets/dashscope_key
+### Non-Streaming
+
+```python
+response = agent.chat("Explain Python generators", stream=False)
+print(response.content)
 ```
+
+### Custom Configuration
+
+```python
+agent = create_agent(
+    temperature=0.5,  # More deterministic
+    top_p=0.9,
+    system_prompt="You are a security-focused code reviewer...",
+    enable_code_execution=True,
+    execution_timeout=60
+)
+```
+
+---
 
 ## API Reference
 
-### CodingAgentExecutor
+### `CodingAgentExecutor`
 
-```python
-from coding_agent_executor import CodingAgentExecutor, AgentResult
+Main class for the coding agent.
 
-# Initialize
-executor = CodingAgentExecutor(
-    api_key=None,              # Optional, uses DASHSCOPE_API_KEY env
-    enable_code_execution=False,  # Must explicitly enable
-    execution_timeout=30       # Seconds before timeout
-)
+#### Constructor Parameters
 
-# Respond to message
-result: AgentResult = executor.respond("Write a function", execute=False)
-print(result.response)
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `api_key` | str | `DASHSCOPE_API_KEY` | DashScope API key |
+| `api_key_file` | str | None | Path to file containing API key (safer) |
+| `base_url` | str | DashScope URL | API base URL |
+| `model` | str | `qwen3-coder-plus` | Model name |
+| `system_prompt` | str | Default prompt | System instructions |
+| `temperature` | float | 0.7 | Sampling temperature (0-2) |
+| `top_p` | float | 0.8 | Nucleus sampling |
+| `max_tokens` | int | None | Max tokens to generate |
+| `enable_code_execution` | bool | True | Allow code execution (NOT sandboxed) |
+| `execution_timeout` | int | 30 | Code timeout in seconds |
+| `fallback_mode` | bool | False | Run in local mode when no API key |
 
-# Execute code directly
-if executor.enable_code_execution:
-    exec_result = executor.execute_python("print('Hello, World!')")
-    print(exec_result.output)
-    print(f"Success: {exec_result.success}")
-    print(f"Time: {exec_result.execution_time_ms}ms")
-```
+#### Methods
 
-### AgentResult
+##### `chat(message, stream=True, execute_code=False, on_chunk=None)`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| response | str | The agent's text response |
-| executed | bool | Whether code was executed |
-| execution_result | CodeExecutionResult \| None | Execution details if code ran |
+Send a message to the agent.
 
-### CodeExecutionResult
+**Returns:** `AgentResponse`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| success | bool | Whether execution succeeded (exit code 0) |
-| output | str | stdout from execution |
-| error | str \| None | stderr if any |
-| exit_code | int | Process exit code |
-| execution_time_ms | float | Execution time in milliseconds |
+- `content` - Response text
+- `code_blocks` - Extracted code blocks
+- `execution_result` - Code execution result (if enabled)
 
-## Running Examples
+##### `execute_python(code, timeout=None)`
+
+Execute Python code with timeout protection.
+
+**⚠️ SECURITY WARNING:** This is NOT a secure sandbox. See above for details.
+
+**Returns:** `CodeExecutionResult`
+
+- `success` - Whether execution succeeded
+- `stdout` - Standard output
+- `stderr` - Standard error
+- `exit_code` - Process exit code
+- `execution_time_ms` - Execution time
+
+##### `clear_history()`
+
+Clear conversation history.
+
+##### `get_stats()`
+
+Get usage statistics.
+
+##### `interactive_session()`
+
+Start interactive CLI session.
+
+---
+
+## Interactive Commands
+
+When in interactive mode:
+
+| Command | Description |
+|---------|-------------|
+| `/exit` | End session |
+| `/clear` | Clear conversation history |
+| `/run` | Execute last Python code |
+| `/stats` | Show usage statistics |
+
+---
+
+## Examples
+
+Run examples with:
 
 ```bash
-# List available examples
-python agents/coding_agent_example.py --help
+python agents/coding_agent_example.py <number>
 
-# Run example 1: Web scraper snippet
-python agents/coding_agent_example.py 1
-
-# Run example 3: With code execution
-python agents/coding_agent_example.py 3
+# Examples:
+python agents/coding_agent_example.py 1  # Basic chat
+python agents/coding_agent_example.py 3  # Code execution
+python agents/coding_agent_example.py 9  # Interactive session
+python agents/coding_agent_example.py all  # Run all
 ```
 
-## Testing
+---
 
-```bash
-# Run tests
-pytest agents/tests/test_coding_agent.py -v
+## Environment Variables
 
-# With coverage
-pytest agents/tests/test_coding_agent.py --cov=coding_agent_executor
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DASHSCOPE_API_KEY` | Yes* | Your DashScope API key (*or use api_key parameter) |
+
+---
+
+## Model Information
+
+**Qwen3-Coder-Plus** is a powerful code generation model optimized for:
+- Code generation and completion
+- Code review and debugging
+- Refactoring and optimization
+- Multi-language support
+
+---
 
 ## Architecture
 
@@ -196,14 +287,15 @@ pytest agents/tests/test_coding_agent.py --cov=coding_agent_executor
 ┌─────────────────────────────────────────────────┐
 │              CodingAgentExecutor                │
 ├─────────────────────────────────────────────────┤
-│ - respond(message, execute) → AgentResult       │
-│ - execute_python(code) → CodeExecutionResult    │
-│ - _resolve_api_key() → str | None               │
+│ - chat(message, stream, execute_code)           │
+│ - execute_python(code, timeout)                 │
+│ - clear_history()                               │
+│ - get_stats()                                   │
 ├─────────────────────────────────────────────────┤
 │ Configuration:                                  │
 │ - enable_code_execution: bool                   │
 │ - execution_timeout: int                        │
-│ - api_key: str | None                           │
+│ - temperature, top_p, max_tokens                │
 └─────────────────────────────────────────────────┘
            │
            ▼
@@ -218,9 +310,11 @@ pytest agents/tests/test_coding_agent.py --cov=coding_agent_executor
 └─────────────────────────────────────────────────┘
 ```
 
+---
+
 ## License
 
-Part of Vaal AI Empire - Proprietary © 2025
+© 2025 Vaal AI Empire - Proprietary
 
 ---
 

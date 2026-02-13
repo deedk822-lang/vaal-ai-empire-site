@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Coding Agent Executor - Local Code Execution for AI Assistants
+Vaal AI Empire - Coding Agent Executor
+Powered by Qwen3-Coder-Plus via DashScope API
 
 SECURITY WARNING: This module provides TIME-LIMITED code execution, NOT a secure sandbox.
 Code is executed directly via subprocess with only a timeout guard. There is:
@@ -14,21 +15,58 @@ For production use with untrusted code, consider:
 - Using nsjail or bubblewrap for process isolation
 - Applying seccomp/AppArmor profiles
 - Using a dedicated code execution service (e.g., Judge0, Piston)
+
+Usage:
+    export DASHSCOPE_API_KEY=your_key_here
+    
+    # Interactive mode
+    python agents/coding_agent_executor.py -i
+    
+    # Single message
+    python agents/coding_agent_executor.py -m "Write a Python web scraper"
+    
+    # With code execution
+    python agents/coding_agent_executor.py -m "Calculate pi" -e
+    
+    # Load key from file (safer than CLI args)
+    python agents/coding_agent_executor.py -m "Hello" --api-key-file ~/.dashscope_key
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
-import math
 import os
-import subprocess
 import sys
+import re
+import subprocess
 import tempfile
 import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Iterator, Dict, List, Optional, Callable, Any
+from datetime import datetime
+
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+
+@dataclass
+class CodeExecutionResult:
+    """
+    Result of code execution.
+    
+    WARNING: This execution is NOT sandboxed. Code runs with the same
+    permissions as the parent process. Only use with trusted input.
+    """
+    success: bool
+    stdout: str
+    stderr: str
+    exit_code: int
+    execution_time_ms: float
+    files_created: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -36,42 +74,34 @@ class AgentResponse:
     """Response from the coding agent."""
     content: str
     role: str = "assistant"
-    metadata: dict = field(default_factory=dict)
-
-
-@dataclass
-class CodeExecutionResult:
-    """Result of local code execution.
-    
-    WARNING: This execution is NOT sandboxed. Code runs with the same
-    permissions as the parent process. Only use with trusted input.
-    """
-    success: bool
-    output: str
-    error: Optional[str] = None
-    exit_code: int = 0
-    execution_time_ms: float = 0.0
-
-
-@dataclass
-class AgentResult:
-    """Result from the coding agent including optional execution."""
-    response: str
-    executed: bool = False
+    timestamp: datetime = field(default_factory=datetime.now)
+    code_blocks: List[Dict[str, str]] = field(default_factory=list)
     execution_result: Optional[CodeExecutionResult] = None
+
+
+def load_api_key_from_file(api_key_file: Optional[str]) -> Optional[str]:
+    """Load API key from file path if provided."""
+    if not api_key_file:
+        return None
+    
+    key_path = Path(api_key_file).expanduser()
+    if not key_path.exists():
+        raise FileNotFoundError(f"API key file not found: {key_path}")
+    
+    key = key_path.read_text(encoding="utf-8").strip()
+    return key or None
 
 
 class CodingAgentExecutor:
     """
-    A lightweight local coding assistant for demos and examples.
+    Coding Agent Executor using Qwen3-Coder-Plus via DashScope API.
     
-    This executor provides optional local Python code execution with the
-    following characteristics:
-    
-    ## Execution Model
-    - Code runs via subprocess using the current Python interpreter
-    - A timeout guard prevents infinite loops (configurable)
-    - Output is captured from stdout/stderr
+    Features:
+    - Streaming responses for real-time feedback
+    - Code extraction and execution
+    - Conversation memory
+    - Time-limited local code execution (NOT isolated)
+    - Local fallback mode when API key is not available
     
     ## Security Limitations (IMPORTANT)
     This is NOT a secure sandbox. The following protections are NOT in place:
@@ -86,319 +116,703 @@ class CodingAgentExecutor:
     2. **Process sandboxing**: Use nsjail, bubblewrap, or firejail
     3. **Kernel-level security**: Apply seccomp filters or AppArmor profiles
     4. **Dedicated services**: Use Judge0, Piston, or similar execution services
-    
-    ## Configuration
-    - `api_key`: API key for LLM services (optional, can use DASHSCOPE_API_KEY env)
-    - `enable_code_execution`: Whether to allow local code execution (default: False)
-    - `execution_timeout`: Maximum seconds for code execution (default: 30)
     """
     
+    DEFAULT_SYSTEM_PROMPT = """You are an expert coding assistant powered by Qwen3-Coder-Plus. 
+Your capabilities include:
+
+1. **Code Generation**: Write clean, efficient, well-documented code
+2. **Code Review**: Analyze code for bugs, security issues, and improvements
+3. **Refactoring**: Restructure code for better readability and performance
+4. **Debugging**: Identify and fix errors in code
+5. **Explanation**: Explain complex concepts clearly with examples
+
+Guidelines:
+- Always provide complete, runnable code examples
+- Include comments explaining key logic
+- Follow best practices and coding standards
+- When suggesting fixes, explain WHY the fix works
+- For Python code, follow PEP 8 style guidelines
+- Warn about any security considerations
+
+When writing code, wrap it in appropriate markdown code blocks with language specified."""
+
     def __init__(
         self,
         api_key: Optional[str] = None,
-        enable_code_execution: bool = False,
-        execution_timeout: int = 30
-    ) -> None:
-        self.api_key = self._resolve_api_key(api_key)
+        api_key_file: Optional[str] = None,
+        base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        model: str = "qwen3-coder-plus",
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.7,
+        top_p: float = 0.8,
+        max_tokens: Optional[int] = None,
+        enable_code_execution: bool = True,
+        execution_timeout: int = 30,
+        fallback_mode: bool = False
+    ):
+        """
+        Initialize the Coding Agent Executor.
+        
+        Args:
+            api_key: DashScope API key (defaults to DASHSCOPE_API_KEY env var)
+            api_key_file: Path to file containing API key (safer than CLI args)
+            base_url: API base URL
+            model: Model name to use
+            system_prompt: Custom system prompt
+            temperature: Sampling temperature (0-2)
+            top_p: Nucleus sampling parameter
+            max_tokens: Maximum tokens to generate
+            enable_code_execution: Whether to enable local Python execution via subprocess.run
+            execution_timeout: Timeout for code execution in seconds (time limit only, not isolation)
+            fallback_mode: If True, run in local fallback mode when no API key
+        """
+        # Resolve API key from multiple sources
+        self.api_key = self._resolve_api_key(api_key, api_key_file)
+        self.fallback_mode = fallback_mode and not self.api_key
+        
+        if not self.api_key and not self.fallback_mode:
+            raise ValueError(
+                "API key is required. Set DASHSCOPE_API_KEY environment variable, "
+                "pass api_key parameter, use --api-key-file, or enable fallback_mode."
+            )
+        
+        self.client = None
+        if self.api_key:
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=base_url
+            )
+        
+        self.model = model
+        self.system_prompt = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+        self.temperature = temperature
+        self.top_p = top_p
+        self.max_tokens = max_tokens
         self.enable_code_execution = enable_code_execution
         self.execution_timeout = execution_timeout
-
-    @staticmethod
-    def _resolve_api_key(api_key: Optional[str]) -> Optional[str]:
-        """Resolve API key from explicit value first, then DASHSCOPE_API_KEY."""
+        
+        # Conversation history
+        self.messages: List[Dict[str, str]] = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+        
+        # Statistics
+        self.total_requests = 0
+        self.total_tokens_used = 0
+    
+    def _resolve_api_key(
+        self, 
+        api_key: Optional[str], 
+        api_key_file: Optional[str]
+    ) -> Optional[str]:
+        """Resolve API key from multiple sources in priority order."""
+        # 1. Explicit API key
         if api_key and api_key.strip():
             return api_key.strip()
-
+        
+        # 2. API key from file
+        if api_key_file:
+            return load_api_key_from_file(api_key_file)
+        
+        # 3. Environment variable
         env_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-        return env_key or None
-
+        if env_key:
+            return env_key
+        
+        return None
+    
     @property
     def has_api_key(self) -> bool:
-        return bool(self.api_key)
-
-    def _build_scraper_snippet(self) -> str:
-        return textwrap.dedent(
-            """\
-            Here's a Python web scraper starter using `requests` + `BeautifulSoup`:
-
-            ```python
-            import requests
-            from bs4 import BeautifulSoup
-
-            url = "https://example.com"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            titles = [h2.get_text(strip=True) for h2 in soup.select("h2")]
-
-            for idx, title in enumerate(titles, start=1):
-                print(f"{idx}. {title}")
-            ```
-
-            Tip: Respect robots.txt and website terms before scraping.
-            """
-        ).strip()
-
-    def _execute_known_task(self, message: str) -> str:
+        """Check if API key is configured."""
+        return bool(self.api_key and self.client)
+    
+    def _generate_fallback_response(self, message: str) -> str:
+        """Generate a local fallback response when API is unavailable."""
         normalized = message.lower().strip()
-        if "calculate pi" in normalized:
-            return f"Calculated π = {math.pi}"
-        return "No known executable task detected."
-
-    def execute_python(
-        self,
-        code: str,
-        timeout: Optional[int] = None
-    ) -> CodeExecutionResult:
-        """
-        Execute Python code locally via subprocess.
         
+        if "web scraper" in normalized or "scrape" in normalized:
+            return textwrap.dedent(
+                """\
+                Here's a Python web scraper using `requests` + `BeautifulSoup`:
+
+                ```python
+                import requests
+                from bs4 import BeautifulSoup
+
+                def scrape_website(url):
+                    try:
+                        response = requests.get(url, timeout=10)
+                        response.raise_for_status()
+                        
+                        soup = BeautifulSoup(response.text, "html.parser")
+                        
+                        # Extract all headings
+                        headings = [h.get_text(strip=True) for h in soup.find_all(["h1", "h2", "h3"])]
+                        
+                        # Extract all paragraphs
+                        paragraphs = [p.get_text(strip=True) for p in soup.find_all("p")[:5]]
+                        
+                        return {
+                            "headings": headings,
+                            "paragraphs": paragraphs,
+                            "title": soup.title.string if soup.title else None
+                        }
+                    except requests.RequestException as e:
+                        print(f"Error fetching {url}: {e}")
+                        return None
+
+                # Example usage
+                if __name__ == "__main__":
+                    result = scrape_website("https://example.com")
+                    if result:
+                        print(f"Title: {result['title']}")
+                        for h in result['headings'][:5]:
+                            print(f"Heading: {h}")
+                ```
+
+                Tip: Always respect robots.txt and website terms of service. Consider adding delays between requests to be polite.
+                """
+            ).strip()
+        
+        elif "factorial" in normalized:
+            return (
+                "Here's a Python function to calculate factorial:\n\n"
+                "```python\n"
+                "def factorial(n):\n"
+                "    \"\"\"Calculate factorial of n.\"\"\"\n"
+                "    if n < 0:\n"
+                '        raise ValueError("Factorial not defined for negative numbers")\n'
+                "    if n == 0 or n == 1:\n"
+                "        return 1\n"
+                "    return n * factorial(n - 1)\n"
+                "\n"
+                "# Iterative version (better for large numbers)\n"
+                "def factorial_iterative(n):\n"
+                "    \"\"\"Calculate factorial iteratively.\"\"\"\n"
+                "    if n < 0:\n"
+                '        raise ValueError("Factorial not defined for negative numbers")\n'
+                "    result = 1\n"
+                "    for i in range(2, n + 1):\n"
+                "        result *= i\n"
+                "    return result\n"
+                "\n"
+                "# Example usage\n"
+                "print(factorial(5))  # 120\n"
+                "print(factorial_iterative(5))  # 120\n"
+                "```"
+            )
+        elif "fibonacci" in normalized:
+            return (
+                "Here's a Python function to generate Fibonacci numbers:\n\n"
+                "```python\n"
+                "def fibonacci(n):\n"
+                "    \"\"\"Generate first n Fibonacci numbers.\"\"\"\n"
+                "    if n <= 0:\n"
+                "        return []\n"
+                "    elif n == 1:\n"
+                "        return [0]\n"
+                "    \n"
+                "    fibs = [0, 1]\n"
+                "    for i in range(2, n):\n"
+                "        fibs.append(fibs[i-1] + fibs[i-2])\n"
+                "    return fibs\n"
+                "\n"
+                "# Generator version (memory efficient)\n"
+                "def fibonacci_generator(limit=None):\n"
+                "    \"\"\"Generate Fibonacci sequence.\"\"\"\n"
+                "    a, b = 0, 1\n"
+                "    count = 0\n"
+                "    while limit is None or count < limit:\n"
+                "        yield a\n"
+                "        a, b = b, a + b\n"
+                "        count += 1\n"
+                "\n"
+                "# Example usage\n"
+                "print(fibonacci(10))\n"
+                "print(list(fibonacci_generator(10)))\n"
+                "```"
+            )
+        return f"I received your request: {message}\n\n[Note: Running in local fallback mode. Set DASHSCOPE_API_KEY for AI-powered responses.]"
+
+    def chat(
+        self,
+        message: str,
+        stream: bool = True,
+        execute_code: bool = False,
+        on_chunk: Optional[Callable[[str], None]] = None
+    ) -> AgentResponse:
+        """
+        Send a message to the coding agent and get a response.
+        
+        Args:
+            message: User message
+            stream: Whether to stream the response
+            execute_code: Whether to automatically execute extracted Python code
+            on_chunk: Callback function for streaming chunks
+            
+        Returns:
+            AgentResponse with content and metadata
+        """
+        # Add user message to history
+        self.messages.append({"role": "user", "content": message})
+        
+        # Handle fallback mode
+        if self.fallback_mode or not self.client:
+            content = self._generate_fallback_response(message)
+            if not self.has_api_key:
+                content = (
+                    "[Note] DASHSCOPE_API_KEY is not set; running in local fallback mode.\n\n"
+                    f"{content}"
+                )
+            
+            code_blocks = self._extract_code_blocks(content)
+            
+            # Execute code if requested
+            execution_result = None
+            if execute_code and self.enable_code_execution and code_blocks:
+                python_code = self._get_python_code(code_blocks)
+                if python_code:
+                    execution_result = self.execute_python(python_code)
+            
+            self.messages.append({"role": "assistant", "content": content})
+            
+            return AgentResponse(
+                content=content,
+                code_blocks=code_blocks,
+                execution_result=execution_result
+            )
+        
+        # Build completion parameters
+        params = {
+            "model": self.model,
+            "messages": self.messages,
+            "stream": stream,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+        }
+        
+        if self.max_tokens:
+            params["max_tokens"] = self.max_tokens
+        
+        # Get completion
+        completion = self.client.chat.completions.create(**params)
+
+        if stream:
+            content = self._handle_streaming_response(completion, on_chunk) or ""
+        else:
+            content = completion.choices[0].message.content or ""
+
+        usage = getattr(completion, "usage", None)
+        if usage:
+            self.total_tokens_used += usage.total_tokens
+        
+        # Extract code blocks
+        code_blocks = self._extract_code_blocks(content)
+        
+        # Execute code if requested and enabled
+        execution_result = None
+        if execute_code and self.enable_code_execution and code_blocks:
+            python_code = self._get_python_code(code_blocks)
+            if python_code:
+                execution_result = self.execute_python(python_code)
+        
+        # Add assistant response to history
+        self.messages.append({"role": "assistant", "content": content})
+        
+        self.total_requests += 1
+        
+        return AgentResponse(
+            content=content,
+            code_blocks=code_blocks,
+            execution_result=execution_result
+        )
+    
+    def respond(
+        self,
+        message: str,
+        execute: bool = False,
+        stream: bool = False
+    ) -> AgentResponse:
+        """
+        Simple interface for getting a response (alias for chat with different defaults).
+        
+        Args:
+            message: User message
+            execute: Whether to execute extracted code
+            stream: Whether to stream (default False for simpler interface)
+            
+        Returns:
+            AgentResponse
+        """
+        return self.chat(message, stream=stream, execute_code=execute)
+    
+    def _handle_streaming_response(
+        self,
+        completion: Iterator,
+        on_chunk: Optional[Callable[[str], None]] = None
+    ) -> str:
+        """Handle streaming response from API."""
+        content_parts = []
+        
+        for chunk in completion:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content_parts.append(delta.content)
+                if on_chunk:
+                    on_chunk(delta.content)
+                else:
+                    print(delta.content, end="", flush=True)
+        
+        if not on_chunk:
+            print()  # New line after streaming
+
+        return "".join(content_parts) or ""
+    
+    def _extract_code_blocks(self, content: str) -> List[Dict[str, str]]:
+        """Extract code blocks from markdown content."""
+        pattern = r'```(\w+)?\n(.*?)```'
+        matches = re.findall(pattern, content, re.DOTALL)
+        
+        code_blocks = []
+        for lang, code in matches:
+            code_blocks.append({
+                "language": lang.strip() if lang else "text",
+                "code": code.strip()
+            })
+        
+        return code_blocks
+    
+    def _get_python_code(self, code_blocks: List[Dict[str, str]]) -> Optional[str]:
+        """Extract Python code from code blocks."""
+        for block in code_blocks:
+            if block["language"].lower() in ("python", "py"):
+                return block["code"]
+        return None
+    
+    def execute_python(self, code: str, timeout: Optional[int] = None) -> CodeExecutionResult:
+        """
+        Execute Python code locally with a timeout.
+
         ⚠️ SECURITY WARNING ⚠️
         
-        This method does NOT provide a secure sandbox. The code will execute
-        with the same permissions and access as this Python process, including:
-        - Full filesystem access (read/write)
-        - Network access (no firewall)
-        - Ability to spawn subprocesses
-        - Access to environment variables
+        This is NOT a secure sandbox. It runs code with the current process's
+        user privileges and does not provide filesystem, network, or privilege isolation.
         
-        This is NOT suitable for executing untrusted or LLM-generated code
-        in production environments. Use only for:
-        - Local development and testing
-        - Trusted demo environments
-        - Code you have manually reviewed
-        
-        For secure execution, consider:
-        - Docker containers with dropped capabilities
-        - nsjail (https://github.com/google/nsjail)
-        - bubblewrap (https://github.com/containers/bubblewrap)
-        - seccomp/AppArmor profiles
-        - Dedicated code execution services
+        For real sandboxing, run code inside hardened containers/VMs or use tools
+        such as nsjail, bubblewrap, and OS policies like seccomp/AppArmor.
         
         Args:
             code: Python code to execute
-            timeout: Maximum execution time in seconds (default: self.execution_timeout)
+            timeout: Execution timeout in seconds
             
         Returns:
-            CodeExecutionResult with output, status, and timing information
+            CodeExecutionResult with output and status
         """
         if not self.enable_code_execution:
             return CodeExecutionResult(
                 success=False,
-                output="",
-                error="Code execution is disabled. Set enable_code_execution=True to allow.",
-                exit_code=-1
+                stdout="",
+                stderr="Code execution is disabled",
+                exit_code=-1,
+                execution_time_ms=0
             )
         
-        actual_timeout = timeout or self.execution_timeout
-        import time
-        start_time = time.monotonic()
+        timeout = timeout or self.execution_timeout
+        start_time = datetime.now()
         
-        # Create a temporary file for the code
-        # Note: This file is visible to other processes and persists until deleted
+        # Create temporary file for the code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(code)
+            temp_file = f.name
+        
         try:
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix='.py',
-                delete=False,
-                encoding='utf-8'
-            ) as temp_file:
-                temp_file.write(code)
-                temp_path = temp_file.name
+            # Run the code with timeout
+            # WARNING: No sandboxing - code runs with full user permissions
+            result = subprocess.run(
+                [sys.executable, temp_file],
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
             
-            try:
-                # Execute using the current Python interpreter
-                # WARNING: No sandboxing - code runs with full user permissions
-                result = subprocess.run(
-                    [sys.executable, temp_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=actual_timeout,
-                    # Note: No sandboxing options are applied here
-                    # The subprocess inherits the parent's environment and permissions
-                )
-                
-                execution_time = (time.monotonic() - start_time) * 1000
-                
-                return CodeExecutionResult(
-                    success=result.returncode == 0,
-                    output=result.stdout,
-                    error=result.stderr if result.stderr else None,
-                    exit_code=result.returncode,
-                    execution_time_ms=round(execution_time, 2)
-                )
-                
-            except subprocess.TimeoutExpired:
-                execution_time = (time.monotonic() - start_time) * 1000
-                return CodeExecutionResult(
-                    success=False,
-                    output="",
-                    error=f"Execution timed out after {actual_timeout} seconds",
-                    exit_code=-1,
-                    execution_time_ms=round(execution_time, 2)
-                )
-            except Exception as e:
-                execution_time = (time.monotonic() - start_time) * 1000
-                return CodeExecutionResult(
-                    success=False,
-                    output="",
-                    error=f"Execution failed: {str(e)}",
-                    exit_code=-1,
-                    execution_time_ms=round(execution_time, 2)
-                )
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_path)
-                except OSError:
-                    pass
-                    
-        except Exception as e:
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            return CodeExecutionResult(
+                success=result.returncode == 0,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.returncode,
+                execution_time_ms=execution_time,
+                files_created=[temp_file]
+            )
+            
+        except subprocess.TimeoutExpired:
             return CodeExecutionResult(
                 success=False,
-                output="",
-                error=f"Failed to create execution environment: {str(e)}",
-                exit_code=-1
+                stdout="",
+                stderr=f"Execution timed out after {timeout} seconds",
+                exit_code=-1,
+                execution_time_ms=timeout * 1000,
+                files_created=[temp_file]
             )
-
-    def respond(self, message: str, execute: bool = False) -> AgentResult:
-        """
-        Generate a response to the user message.
-        
-        Args:
-            message: User's input message
-            execute: Whether to attempt code execution
-            
-        Returns:
-            AgentResult with response and optional execution result
-        """
-        if "web scraper" in message.lower():
-            base_response = self._build_scraper_snippet()
-        else:
-            base_response = f"I received your request: {message}"
-
-        if not self.has_api_key:
-            base_response = (
-                "[Note] DASHSCOPE_API_KEY is not set; running in local fallback mode.\n\n"
-                f"{base_response}"
+        except (OSError, IOError, subprocess.SubprocessError) as e:
+            return CodeExecutionResult(
+                success=False,
+                stdout="",
+                stderr=str(e),
+                exit_code=-1,
+                execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+                files_created=[temp_file]
             )
-
-        execution_result = None
-        
-        if execute and self.enable_code_execution:
-            # Try to execute any known tasks
-            execution_output = self._execute_known_task(message)
-            if execution_output != "No known executable task detected.":
-                exec_result = self.execute_python(f'print("{execution_output}")')
-                execution_result = exec_result
-                combined = f"{base_response}\n\nExecution Result:\n{exec_result.output}"
-                if exec_result.error:
-                    combined += f"\n\nErrors:\n{exec_result.error}"
-                return AgentResult(response=combined, executed=True, execution_result=exec_result)
-
-        if execute:
-            execution_output = self._execute_known_task(message)
-            combined = f"{base_response}\n\nExecution Result:\n{execution_output}"
-            return AgentResult(response=combined, executed=True)
-
-        return AgentResult(response=base_response, executed=False)
-
-
-def run_interactive(executor: CodingAgentExecutor, execute: bool = False) -> None:
-    """Run the agent in interactive mode."""
-    print("Coding Agent interactive mode. Type 'exit' to quit.")
-    print(f"Code execution: {'enabled' if executor.enable_code_execution else 'disabled'}")
-    print()
+        finally:
+            # Cleanup
+            try:
+                os.unlink(temp_file)
+            except Exception:
+                pass
     
-    while True:
-        try:
-            user_input = input("you> ").strip()
-        except EOFError:
-            print()
-            break
-        except KeyboardInterrupt:
-            print("\nInterrupted. Exiting interactive mode.")
-            break
+    def clear_history(self):
+        """Clear conversation history except system prompt."""
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get usage statistics."""
+        return {
+            "total_requests": self.total_requests,
+            "total_tokens_used": self.total_tokens_used,
+            "conversation_length": len(self.messages)
+        }
+    
+    def interactive_session(self):
+        """Start an interactive coding session."""
+        print("=" * 60)
+        print("🚀 Vaal AI Empire - Coding Agent Executor")
+        print(f"🤖 Model: {self.model}")
+        print("=" * 60)
+        print("Commands:")
+        print("  /exit     - End session")
+        print("  /clear    - Clear conversation history")
+        print("  /run      - Execute last Python code")
+        print("  /stats    - Show usage statistics")
+        print("=" * 60)
+        print()
+        
+        last_code = None
+        
+        while True:
+            try:
+                user_input = input("\n👤 You: ").strip()
+                
+                if not user_input:
+                    continue
+                
+                # Handle commands
+                if user_input == "/exit":
+                    print("\n👋 Goodbye!")
+                    break
+                elif user_input == "/clear":
+                    self.clear_history()
+                    print("\n🧹 Conversation history cleared.")
+                    continue
+                elif user_input == "/run":
+                    if last_code:
+                        print("\n⚙️  Executing code...")
+                        result = self.execute_python(last_code)
+                        print(f"\n{'✅' if result.success else '❌'} Execution {'successful' if result.success else 'failed'}")
+                        print(f"⏱️  Time: {result.execution_time_ms:.2f}ms")
+                        if result.stdout:
+                            print(f"\n📤 Output:\n{result.stdout}")
+                        if result.stderr:
+                            print(f"\n📛 Error:\n{result.stderr}")
+                    else:
+                        print("\n⚠️ No code to execute. Generate some code first!")
+                    continue
+                elif user_input == "/stats":
+                    stats = self.get_stats()
+                    print(f"\n📊 Statistics:")
+                    for key, value in stats.items():
+                        print(f"  {key}: {value}")
+                    continue
+                
+                # Normal chat
+                print("\n🤖 Assistant: ", end="", flush=True)
+                response = self.chat(user_input, stream=True)
+                
+                # Store Python code for potential execution
+                for block in response.code_blocks:
+                    if block["language"] in ("python", "py"):
+                        last_code = block["code"]
+                        break
+                
+            except KeyboardInterrupt:
+                print("\n\n⚠️ Interrupted. Use /exit to quit.")
+            except Exception as e:
+                print(f"\n❌ Error: {e}")
 
-        if user_input.lower() in {"exit", "quit"}:
-            break
 
-        result = executor.respond(user_input, execute=execute)
-        print(f"agent> {result.response}\n")
+# Convenience function for quick usage
+def create_agent(
+    api_key: Optional[str] = None,
+    **kwargs
+) -> CodingAgentExecutor:
+    """Create a new CodingAgentExecutor instance."""
+    return CodingAgentExecutor(api_key=api_key, **kwargs)
 
 
-def load_api_key_from_file(api_key_file: Optional[str]) -> Optional[str]:
-    """Load API key from file path if provided."""
-    if not api_key_file:
-        return None
-
-    key_path = Path(api_key_file).expanduser()
-    key = key_path.read_text(encoding="utf-8").strip()
-    return key or None
+def quick_chat(message: str, **kwargs) -> str:
+    """Quick one-off chat with the coding agent."""
+    agent = create_agent(**kwargs)
+    response = agent.chat(message, stream=False)
+    return response.content
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run the coding agent executor.",
-        epilog=textwrap.dedent("""
-            Examples:
-              # Interactive mode
-              python coding_agent_executor.py -i
-              
-              # Single message
-              python coding_agent_executor.py -m "Write a Python web scraper"
-              
-              # With code execution enabled
-              python coding_agent_executor.py -m "Calculate pi" -e --enable-execution
-              
-            Note: Code execution is NOT sandboxed. Only use with trusted input.
-        """)
+        description="Vaal AI Empire Coding Agent - Powered by Qwen3-Coder-Plus",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Interactive mode
+  python coding_agent_executor.py -i
+  
+  # Single message
+  python coding_agent_executor.py -m "Write a Python web scraper"
+  
+  # With code execution (WARNING: not sandboxed!)
+  python coding_agent_executor.py -m "Calculate pi" -e
+  
+  # Load API key from file (safer than CLI args)
+  python coding_agent_executor.py -m "Hello" --api-key-file ~/.dashscope_key
+  
+  # Fallback mode (no API key required)
+  python coding_agent_executor.py -m "Write a web scraper" --fallback
+
+Note: Code execution is NOT sandboxed. Only use with trusted input.
+        """
     )
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("-i", "--interactive", action="store_true", help="Start interactive mode")
-    group.add_argument("-m", "--message", type=str, help="Send a single message")
-    parser.add_argument("-e", "--execute", action="store_true", help="Enable local task execution")
-    parser.add_argument(
-        "--enable-execution",
+    
+    # Mode selection (mutually exclusive)
+    mode_group = parser.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument(
+        "-i", "--interactive",
         action="store_true",
-        help="Enable Python code execution (WARNING: not sandboxed)"
+        help="Start interactive session"
     )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=30,
-        help="Execution timeout in seconds (default: 30)"
+    mode_group.add_argument(
+        "-m", "--message",
+        type=str,
+        help="Send a single message"
     )
-    parser.add_argument(
+    
+    # API Configuration
+    api_group = parser.add_argument_group("API Configuration")
+    api_group.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="DashScope API key (or set DASHSCOPE_API_KEY env var)"
+    )
+    api_group.add_argument(
         "--api-key-file",
         type=str,
         default=None,
-        help="Path to file containing API key (safer than passing secrets on CLI)"
+        help="Path to file containing API key (safer than CLI args)"
     )
+    api_group.add_argument(
+        "--fallback",
+        action="store_true",
+        help="Run in fallback mode (no API key required, limited functionality)"
+    )
+    
+    # Generation parameters
+    gen_group = parser.add_argument_group("Generation Parameters")
+    gen_group.add_argument(
+        "-t", "--temp",
+        type=float,
+        default=0.7,
+        help="Sampling temperature (0-2, default: 0.7)"
+    )
+    gen_group.add_argument(
+        "--top-p",
+        type=float,
+        default=0.8,
+        help="Nucleus sampling parameter (default: 0.8)"
+    )
+    gen_group.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Maximum tokens to generate"
+    )
+    gen_group.add_argument(
+        "--no-stream",
+        action="store_true",
+        help="Disable streaming response"
+    )
+    
+    # Execution options
+    exec_group = parser.add_argument_group("Execution Options")
+    exec_group.add_argument(
+        "-e", "--execute",
+        action="store_true",
+        help="Execute generated Python code (WARNING: not sandboxed!)"
+    )
+    exec_group.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Code execution timeout in seconds (default: 30)"
+    )
+    exec_group.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Disable code execution (override default)"
+    )
+    
     return parser.parse_args()
 
 
 def main() -> None:
+    """Main entry point."""
     args = parse_args()
-    executor = CodingAgentExecutor(
-        api_key=load_api_key_from_file(args.api_key_file),
-        enable_code_execution=args.enable_execution,
-        execution_timeout=args.timeout
-    )
-
-    if args.interactive:
-        run_interactive(executor, execute=args.execute)
-        return
-
-    result = executor.respond(args.message, execute=args.execute)
-    print(result.response)
     
-    if result.execution_result:
-        print(f"\n--- Execution Info ---")
-        print(f"Success: {result.execution_result.success}")
-        print(f"Exit code: {result.execution_result.exit_code}")
-        print(f"Time: {result.execution_result.execution_time_ms}ms")
+    # Determine code execution setting
+    enable_execution = args.execute and not args.no_execute
+    
+    executor = CodingAgentExecutor(
+        api_key=args.api_key,
+        api_key_file=args.api_key_file,
+        temperature=args.temp,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        enable_code_execution=enable_execution,
+        execution_timeout=args.timeout,
+        fallback_mode=args.fallback
+    )
+    
+    if args.interactive:
+        executor.interactive_session()
+    else:
+        response = executor.chat(
+            args.message,
+            stream=not args.no_stream,
+            execute_code=args.execute
+        )
+        
+        if args.no_stream:
+            print(response.content)
+        
+        if response.execution_result:
+            print(f"\n--- Execution Result ---")
+            print(f"Success: {response.execution_result.success}")
+            print(f"Exit code: {response.execution_result.exit_code}")
+            print(f"Time: {response.execution_result.execution_time_ms:.2f}ms")
+            if response.execution_result.stdout:
+                print(f"Output:\n{response.execution_result.stdout}")
+            if response.execution_result.stderr:
+                print(f"Errors:\n{response.execution_result.stderr}")
 
 
 if __name__ == "__main__":

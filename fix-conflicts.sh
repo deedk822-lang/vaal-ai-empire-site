@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # fix-conflicts.sh - Detect and optionally resolve Git merge conflicts
 #
 # Usage:
-#   ./fix-conflicts.sh [--strip] [--dry-run] [--backup-dir DIR]
+#   ./fix-conflicts.sh [directory] [--strip] [--dry-run] [--backup-dir DIR]
 #
 # Options:
+#   directory     Directory to scan (default: current directory)
 #   --strip       Automatically strip conflict markers (keeps "ours" side)
 #   --dry-run     Show what would be done without making changes
 #   --backup-dir  Directory to store backups (default: ./conflict-backups)
@@ -13,15 +14,15 @@
 # This script detects Git merge conflict markers in files and can optionally
 # strip them. By default, it only detects conflicts without modifying files.
 #
+# NOTE: This script only detects standard Git conflict markers:
+#   <<<<<<< 
+#   =======
+#   >>>>>>>
+# It intentionally does NOT match branch-name patterns to avoid false positives
+# on MIME types, import paths, and other legitimate content.
+#
 
 set -euo pipefail
-
-# Configuration
-STRIP_MODE=false
-DRY_RUN=false
-BACKUP_DIR="./conflict-backups"
-FILES_PROCESSED=0
-CONFLICTS_FOUND=0
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,6 +30,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Configuration
+STRIP_MODE=false
+DRY_RUN=false
+BACKUP_DIR="./conflict-backups"
+TARGET_DIR="."
+FILES_PROCESSED=0
+CONFLICTS_FOUND=0
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -46,25 +55,39 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [--strip] [--dry-run] [--backup-dir DIR]"
+            echo "Usage: $0 [directory] [--strip] [--dry-run] [--backup-dir DIR]"
             echo ""
             echo "Options:"
+            echo "  directory     Directory to scan (default: current directory)"
             echo "  --strip       Automatically strip conflict markers (keeps 'ours' side)"
             echo "  --dry-run     Show what would be done without making changes"
             echo "  --backup-dir  Directory to store backups (default: ./conflict-backups)"
+            echo ""
+            echo "This script detects Git merge conflict markers in files."
+            echo "Use --strip with caution and always review changes after."
             exit 0
             ;;
-        *)
+        -*)
             echo "Unknown option: $1"
             exit 1
+            ;;
+        *)
+            TARGET_DIR="$1"
+            shift
             ;;
     esac
 done
 
+# Ensure target directory exists
+if [[ ! -d "$TARGET_DIR" ]]; then
+    echo -e "${RED}Error: Directory '$TARGET_DIR' not found${NC}"
+    exit 1
+fi
+
 # Conflict patterns - only standard Git conflict markers
-# Note: We intentionally do NOT include branch-name patterns as they cause
-# false positives (e.g., matching MIME types like "text/html", import paths,
-# or legitimate content that matches the pattern)
+# Note: We intentionally do NOT include branch-name patterns like '^[a-z-]+/[^/]+$'
+# as they cause false positives (e.g., matching MIME types like "text/html",
+# import paths, or other legitimate content that matches the pattern)
 CONFLICT_PATTERNS=(
     '^<<<<<<< '          # Git conflict start
     '^=======$'          # Git conflict separator
@@ -121,7 +144,7 @@ strip_conflicts_from_file() {
             changes_made=true
             continue
         elif [[ "$line" =~ ^'=======$' ]]; then
-            # Skip the separator line
+            # Skip the separator line - but also skip "theirs" section
             continue
         elif [[ "$line" =~ ^'>>>>>>> ' ]]; then
             in_conflict=false
@@ -140,6 +163,7 @@ strip_conflicts_from_file() {
     if [[ "$changes_made" == true ]]; then
         if [[ "$DRY_RUN" == true ]]; then
             echo -e "${BLUE}Would strip conflicts from: $file${NC}"
+            rm -f "$temp_file"
         else
             mv "$temp_file" "$file"
             echo -e "${GREEN}Stripped conflicts from: $file (backup: $backup_path)${NC}"
@@ -152,31 +176,43 @@ strip_conflicts_from_file() {
 # Main logic
 echo -e "${BLUE}=== Git Conflict Detection ===${NC}"
 echo ""
+echo "Scanning directory: $TARGET_DIR"
+echo ""
 
 # Check if we're in a Git repository
-if ! git rev-parse --is-inside-work-tree &>/dev/null; then
-    echo -e "${RED}Error: Not in a Git repository${NC}"
-    exit 1
+if git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo -e "${GREEN}Git repository detected${NC}"
+else
+    echo -e "${YELLOW}Not in a Git repository - scanning all files${NC}"
 fi
+echo ""
 
-# Find files to check (exclude .git directory and node_modules)
+# Find files to check (exclude common binary/cache directories)
 echo "Scanning for conflict markers..."
 echo ""
 
-# Get list of tracked files
+# Get list of files to check
 while IFS= read -r -d '' file; do
     # Skip binary files, .git, node_modules, etc.
     if [[ "$file" == *".git"* ]] || \
        [[ "$file" == *"node_modules"* ]] || \
+       [[ "$file" == *"__pycache__"* ]] || \
        [[ "$file" == *".png" ]] || \
        [[ "$file" == *".jpg" ]] || \
        [[ "$file" == *".jpeg" ]] || \
        [[ "$file" == *".gif" ]] || \
        [[ "$file" == *".ico" ]] || \
+       [[ "$file" == *".svg" ]] || \
        [[ "$file" == *".woff"* ]] || \
        [[ "$file" == *".ttf" ]] || \
        [[ "$file" == *".eot" ]] || \
-       [[ "$file" == *".pdf" ]]; then
+       [[ "$file" == *".otf" ]] || \
+       [[ "$file" == *".mp4" ]] || \
+       [[ "$file" == *".webm" ]] || \
+       [[ "$file" == *".mp3" ]] || \
+       [[ "$file" == *".pdf" ]] || \
+       [[ "$file" == *".zip" ]] || \
+       [[ "$file" == *".tar.gz" ]]; then
         continue
     fi
     
@@ -189,7 +225,7 @@ while IFS= read -r -d '' file; do
             strip_conflicts_from_file "$file"
         fi
     fi
-done < <(git ls-files -z 2>/dev/null || find . -type f -not -path "./.git/*" -print0)
+done < <(find "$TARGET_DIR" -type f -not -path "*/.git/*" -not -path "*/node_modules/*" -print0 2>/dev/null)
 
 echo ""
 echo -e "${BLUE}=== Summary ===${NC}"
@@ -199,12 +235,14 @@ echo -e "Conflicts found: ${CONFLICTS_FOUND}"
 if [[ "$CONFLICTS_FOUND" -gt 0 ]]; then
     if [[ "$STRIP_MODE" == true ]]; then
         echo -e "${GREEN}Conflicts have been processed. Backups stored in: $BACKUP_DIR${NC}"
+        echo -e "${YELLOW}⚠️  Please review all changes before committing!${NC}"
     else
         echo -e "${YELLOW}Run with --strip to automatically resolve conflicts.${NC}"
+        echo -e "${YELLOW}(Use with caution and always review changes after)${NC}"
         exit 1
     fi
 else
-    echo -e "${GREEN}No conflicts found.${NC}"
+    echo -e "${GREEN}✅ No conflicts found.${NC}"
 fi
 
 exit 0
