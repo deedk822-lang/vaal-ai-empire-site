@@ -371,12 +371,15 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
         
         # Get completion
         completion = self.client.chat.completions.create(**params)
-        
+
         if stream:
-            content = self._handle_streaming_response(completion, on_chunk)
+            content = self._handle_streaming_response(completion, on_chunk) or ""
         else:
-            content = completion.choices[0].message.content
-            self.total_tokens_used += completion.usage.total_tokens if completion.usage else 0
+            content = completion.choices[0].message.content or ""
+
+        usage = getattr(completion, "usage", None)
+        if usage:
+            self.total_tokens_used += usage.total_tokens
         
         # Extract code blocks
         code_blocks = self._extract_code_blocks(content)
@@ -437,8 +440,8 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
         
         if not on_chunk:
             print()  # New line after streaming
-            
-        return "".join(content_parts)
+
+        return "".join(content_parts) or ""
     
     def _extract_code_blocks(self, content: str) -> List[Dict[str, str]]:
         """Extract code blocks from markdown content."""

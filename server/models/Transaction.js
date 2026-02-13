@@ -460,7 +460,6 @@ transactionSchema.methods.calculateFees = function () {
     baseFee = zarBaseFee;
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
     baseFee = zarBaseFee / this.exchangeRate.rate;
-
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
     baseFee = zarBaseFee / this.exchangeRate;
   }
@@ -563,8 +562,8 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
   if (refundAmount !== undefined && refundAmount !== null) {
     const numericRefundAmount = Number(refundAmount);
 
-    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount <= 0) {
-      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a positive number.`);
+    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount < 0) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`);
     }
 
     if (numericRefundAmount > this.amount) {
@@ -574,7 +573,10 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     validatedRefundAmount = numericRefundAmount;
   }
 
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-eu3mz0
 
+
+ merge/develop-to-main
   await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
 
   this.refundData = {
