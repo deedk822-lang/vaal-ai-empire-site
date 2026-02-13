@@ -462,12 +462,9 @@ transactionSchema.methods.calculateFees = function () {
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
     // Convert ZAR baseFee to transaction currency
     baseFee = zarBaseFee / this.exchangeRate.rate;
-<<<<<<< codex/remove-git-merge-artifacts-and-fix-echo-logic-v5zkre
-=======
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
     // Convert ZAR baseFee to transaction currency
     baseFee = zarBaseFee / this.exchangeRate;
->>>>>>> merge/develop-to-main
   }
   // Note: Non-ZAR currencies without exchange rate data get baseFee = 0
 
