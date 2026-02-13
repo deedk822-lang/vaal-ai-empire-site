@@ -1,41 +1,23 @@
- feat/auth-error-handling-5447018483623698560
-
 /**
  * TRANSACTION MODEL - PRODUCTION READY
  * 
  * Features:
  * - Automatic transaction ID generation
  * - Multi-currency support (ZAR, USD, EUR, GBP, BTC, ETH)
- * - Fee calculation (Stripe-compliant: 2.9% + R2.50)
+ * - Fee calculation (Stripe-compliant: 2.9% + R2.50 for ZAR)
  * - Risk scoring algorithm (0-100)
  * - Status history audit trail
  * - Settlement tracking
  * - Refund & chargeback management
  * - KYC/AML compliance tracking
  * - Geolocation tracking
+ * - PII protection in serialization
  */
 
- main
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const transactionSchema = new mongoose.Schema({
- feat/auth-error-handling-5447018483623698560
-    transactionId: {
-        type: String,
-        unique: true,
-        required: true
-    },
-    user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
-    },
-    amount: {
-        type: Number,
-        required: [true, 'Transaction amount is required'],
-        min: [0.01, 'Transaction amount must be positive']
-
     // Transaction Identification
     transactionId: {
         type: String,
@@ -69,65 +51,11 @@ const transactionSchema = new mongoose.Schema({
         required: [true, 'Transaction amount is required'],
         min: [0, 'Amount cannot be negative'],
         get: v => Math.round(v * 100) / 100 // Round to 2 decimals
- main
     },
     currency: {
         type: String,
         required: true,
         enum: ['ZAR', 'USD', 'EUR', 'GBP', 'BTC', 'ETH'],
- feat/auth-error-handling-5447018483623698560
-        default: 'ZAR'
-    },
-    paymentMethod: {
-        type: String,
-        enum: ['card', 'eft', 'crypto', 'wallet'],
-        required: true
-    },
-    status: {
-        type: String,
-        enum: ['pending', 'completed', 'failed', 'refunded', 'disputed'],
-        default: 'pending'
-    },
-    fees: {
-        processing: Number,
-        gateway: Number,
-        currencyConversion: Number,
-        total: Number
-    },
-    riskScore: {
-        type: Number,
-        default: 0
-    },
-    complianceFlags: {
-        flaggedForReview: {
-            type: Boolean,
-            default: false
-        }
-    },
-    auditTrail: [
-        {
-            status: String,
-            timestamp: {
-                type: Date,
-                default: Date.now
-            },
-            reason: String,
-            user: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'User'
-            },
-            metadata: Object
-        }
-    ],
-    refund: {
-        refundedTransactionId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Transaction'
-        },
-        amount: Number,
-        reason: String,
-        processedBy: {
-
         default: 'ZAR',
         uppercase: true
     },
@@ -323,45 +251,10 @@ const transactionSchema = new mongoose.Schema({
         refundReason: String,
         processedAt: Date,
         refundedBy: {
- main
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User'
         }
     },
- feat/auth-error-handling-5447018483623698560
-    chargeback: {
-        reasonCode: String,
-        evidenceDueDate: Date,
-        status: {
-            type: String,
-            enum: ['won', 'lost', 'pending']
-        },
-        timeline: [
-            {
-                status: String,
-                date: Date
-            }
-        ]
-    }
-}, {
-    timestamps: true
-});
-
-// Generate transaction ID before saving
-transactionSchema.pre('save', function(next) {
-    if (!this.isNew) return next();
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const random = crypto.randomBytes(3).toString('hex').toUpperCase();
-    this.transactionId = `TXN_${date}_${random}`;
-    next();
-});
-
-// Add initial status to audit trail
-transactionSchema.pre('save', function(next) {
-    if (this.isNew) {
-        this.auditTrail.push({
-            status: 'pending',
-
     
     // Chargeback Information
     chargebackData: {
@@ -416,8 +309,32 @@ transactionSchema.pre('save', function(next) {
     
 }, {
     timestamps: true,
-    toJSON: { virtuals: true, getters: true },
-    toObject: { virtuals: true, getters: true }
+    toJSON: { 
+        virtuals: true, 
+        getters: true,
+        transform: function(doc, ret) {
+            // PII Protection: Remove sensitive fields from JSON output
+            delete ret.customerEmail;
+            delete ret.customerInfo?.ipAddress;
+            delete ret.customerInfo?.userAgent;
+            delete ret.customerInfo?.deviceFingerprint;
+            delete ret.__v;
+            return ret;
+        }
+    },
+    toObject: { 
+        virtuals: true, 
+        getters: true,
+        transform: function(doc, ret) {
+            // PII Protection: Remove sensitive fields from object output
+            delete ret.customerEmail;
+            delete ret.customerInfo?.ipAddress;
+            delete ret.customerInfo?.userAgent;
+            delete ret.customerInfo?.deviceFingerprint;
+            delete ret.__v;
+            return ret;
+        }
+    }
 });
 
 // ============================================
@@ -464,55 +381,11 @@ transactionSchema.pre('save', function(next) {
         this.statusHistory.push({
             status: this.status,
             timestamp: new Date(),
- main
             reason: 'Transaction created'
         });
     }
     next();
 });
-
- feat/auth-error-handling-5447018483623698560
-// Calculate fees method
-transactionSchema.methods.calculateFees = function() {
-    this.fees = {
-        processing: 0,
-        gateway: 0,
-        currencyConversion: 0,
-        total: 0
-    };
-    this.fees.processing = Math.round((this.amount * 0.029 + 2.50) * 100) / 100;
-    this.fees.gateway = 1.00;
-    if (this.currency !== 'ZAR') {
-        this.fees.currencyConversion = Math.round((this.amount * 0.005) * 100) / 100;
-    }
-    this.fees.total = this.fees.processing + this.fees.gateway + this.fees.currencyConversion;
-};
-
-// Calculate risk score method
-transactionSchema.methods.calculateRiskScore = function(country = 'ZA', sanctionsCheck = { passed: true }, amlCheck = { passed: true }) {
-    let score = 0;
-    if (this.amount > 10000) score += 20;
-    if (country !== 'ZA') score += 15;
-    if (this.paymentMethod === 'crypto') score += 25;
-    if (!sanctionsCheck.passed) score += 50;
-    if (!amlCheck.passed) score += 40;
-    this.riskScore = Math.min(score, 100);
-    if (this.riskScore >= 70) {
-        this.complianceFlags.flaggedForReview = true;
-    }
-};
-
-// Statistics method
-transactionSchema.statics.getStatistics = async function(startDate, endDate) {
-    const match = {
-        createdAt: {
-            $gte: new Date(startDate),
-            $lte: new Date(endDate)
-        }
-    };
-
-    const stats = await this.aggregate([
-        { $match: match },
 
 // ============================================
 // INSTANCE METHODS
@@ -546,14 +419,22 @@ transactionSchema.methods.updateStatus = async function(newStatus, reason, updat
 };
 
 // Calculate transaction fees (Stripe-compliant for ZAR)
+// NOTE: The R2.50 base fee is only applied for ZAR transactions
+// For other currencies, only the percentage fee (2.9%) is applied
 transactionSchema.methods.calculateFees = function() {
     // Base fee structure (adjust per your payment processor)
-    const baseFee = 2.50; // ZAR flat fee
+    const zarBaseFee = 2.50; // ZAR flat fee - ONLY for ZAR transactions
     const percentageFee = 0.029; // 2.9%
     const gatewayFee = 1.00; // Gateway processing fee
     
-    // Calculate processing fee: 2.9% + R2.50
-    this.fees.processing = Math.round((this.amount * percentageFee + baseFee) * 100) / 100;
+    // Calculate processing fee: 2.9% + R2.50 (only for ZAR)
+    // For non-ZAR currencies, apply only percentage fee to avoid incorrect flat fee
+    if (this.currency === 'ZAR') {
+        this.fees.processing = Math.round((this.amount * percentageFee + zarBaseFee) * 100) / 100;
+    } else {
+        // For non-ZAR: Only percentage fee (2.9%), no ZAR flat fee
+        this.fees.processing = Math.round((this.amount * percentageFee) * 100) / 100;
+    }
     
     // Gateway fee
     this.fees.gateway = gatewayFee;
@@ -576,6 +457,9 @@ transactionSchema.methods.calculateFees = function() {
 // Calculate risk score based on various factors
 transactionSchema.methods.calculateRiskScore = function() {
     let score = 0;
+    
+    // Clear existing risk factors before recalculating to avoid duplicates
+    this.riskFactors = [];
     
     // High amount transactions (>R10,000)
     if (this.amount > 10000) {
@@ -639,11 +523,28 @@ transactionSchema.methods.calculateRiskScore = function() {
     return this.riskScore;
 };
 
-// Process refund
+// Process refund with validation
 transactionSchema.methods.processRefund = async function(refundAmount, reason, refundedBy) {
+    // Validate refundAmount - must be positive and not exceed original amount
+    const actualRefundAmount = refundAmount !== undefined ? refundAmount : this.amount;
+    
+    if (typeof actualRefundAmount !== 'number' || isNaN(actualRefundAmount)) {
+        throw new Error(`Invalid refund amount: must be a valid number`);
+    }
+    
+    if (actualRefundAmount <= 0) {
+        throw new Error(`Refund amount must be positive: got ${actualRefundAmount}`);
+    }
+    
+    if (actualRefundAmount > this.amount) {
+        throw new Error(
+            `Refund amount (${actualRefundAmount}) cannot exceed original transaction amount (${this.amount}) for transaction ${this.transactionId}`
+        );
+    }
+    
     this.refundData = {
         originalTransactionId: this.transactionId,
-        refundAmount: refundAmount || this.amount,
+        refundAmount: actualRefundAmount,
         refundReason: reason,
         processedAt: new Date(),
         refundedBy
@@ -700,42 +601,12 @@ transactionSchema.statics.getStatistics = async function(dateFrom, dateTo) {
     
     const stats = await this.aggregate([
         matchStage,
- main
         {
             $group: {
                 _id: null,
                 totalAmount: { $sum: '$amount' },
                 totalTransactions: { $sum: 1 },
                 totalFees: { $sum: '$fees.total' },
- feat/auth-error-handling-5447018483623698560
-                completedTransactions: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-                failedTransactions: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
-                refundedTransactions: { $sum: { $cond: [{ $eq: ['$status', 'refunded'] }, 1, 0] } },
-                highRiskTransactions: { $sum: { $cond: [{ $gte: ['$riskScore', 70] }, 1, 0] } }
-            }
-        }
-    ]);
-
-    if (stats.length > 0) {
-        const { totalAmount, totalTransactions, totalFees, completedTransactions, failedTransactions, refundedTransactions, highRiskTransactions } = stats[0];
-        return {
-            totalAmount: parseFloat(totalAmount.toFixed(2)),
-            totalTransactions,
-            totalFees: parseFloat(totalFees.toFixed(2)),
-            avgTransactionValue: parseFloat((totalAmount / totalTransactions).toFixed(2)),
-            completedTransactions,
-            failedTransactions,
-            refundedTransactions,
-            highRiskTransactions,
-            successRate: parseFloat(((completedTransactions / totalTransactions) * 100).toFixed(1))
-        };
-    }
-    return {};
-};
-
-const Transaction = mongoose.model('Transaction', transactionSchema);
-module.exports = Transaction;
-
                 avgTransactionValue: { $avg: '$amount' },
                 completedTransactions: {
                     $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
@@ -813,5 +684,5 @@ transactionSchema.index({ isDeleted: 1, status: 1 });
 transactionSchema.index({ customerEmail: 1 });
 transactionSchema.index({ 'refundData.originalTransactionId': 1 });
 
-module.exports = mongoose.model('Transaction', transactionSchema);
- main
+const Transaction = mongoose.model('Transaction', transactionSchema);
+module.exports = Transaction;
