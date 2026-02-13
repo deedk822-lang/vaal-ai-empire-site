@@ -458,8 +458,23 @@ transactionSchema.methods.calculateFees = function () {
   let baseFee = 0;
   if (this.currency === 'ZAR') {
     baseFee = zarBaseFee;
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-3nm2nb
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
     baseFee = zarBaseFee / this.exchangeRate.rate;
+
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
+  } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate.rate;
+
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-eu3mz0
+  } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate.rate;
+
+  } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
+    baseFee = zarBaseFee / this.exchangeRate;
+ merge/develop-to-main
+ merge/develop-to-main
+ merge/develop-to-main
   }
 
   // Calculate processing fee: 2.9% + currency-adjusted flat fee
@@ -560,8 +575,18 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
   if (refundAmount !== undefined && refundAmount !== null) {
     const numericRefundAmount = Number(refundAmount);
 
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-3nm2nb
     if (!Number.isFinite(numericRefundAmount) || numericRefundAmount < 0) {
       throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`);
+
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
+    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount < 0) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`);
+
+    if (!Number.isFinite(numericRefundAmount) || numericRefundAmount <= 0) {
+      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a positive number.`);
+ merge/develop-to-main
+ merge/develop-to-main
     }
 
     if (numericRefundAmount > this.amount) {
@@ -571,6 +596,17 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     validatedRefundAmount = numericRefundAmount;
   }
 
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-3nm2nb
+
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
+
+ codex/remove-git-merge-artifacts-and-fix-echo-logic-eu3mz0
+
+  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+
+ merge/develop-to-main
+ merge/develop-to-main
+ merge/develop-to-main
   this.refundData = {
     originalTransactionId: this.transactionId,
     refundAmount: validatedRefundAmount,
@@ -579,7 +615,7 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     refundedBy,
   };
 
-  await this.updateStatus('refunded', `Refund processed: ${reason}`, refundedBy);
+  await this.save();
   return this;
 };
 
