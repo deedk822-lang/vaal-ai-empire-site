@@ -1,12 +1,20 @@
+#!/usr/bin/env python3
 """
 Vaal AI Empire - Coding Agent Executor
 Powered by Qwen3-Coder-Plus via DashScope API
 
-This module provides a coding agent that can:
-- Generate, analyze, and refactor code
-- Execute Python code with a timeout (NOT a security sandbox)
-- Stream responses for real-time feedback
-- Maintain conversation context
+SECURITY WARNING: This module provides TIME-LIMITED code execution, NOT a secure sandbox.
+Code is executed directly via subprocess with only a timeout guard. There is:
+- NO filesystem isolation
+- NO network restriction
+- NO privilege drop/seccomp/AppArmor
+
+This is suitable for trusted environments and demo purposes only.
+For production use with untrusted code, consider:
+- Running inside a container (Docker, Podman)
+- Using nsjail or bubblewrap for process isolation
+- Applying seccomp/AppArmor profiles
+- Using a dedicated code execution service (e.g., Judge0, Piston)
 
 Usage:
     export DASHSCOPE_API_KEY=your_key_here
@@ -33,9 +41,9 @@ import re
 import subprocess
 import tempfile
 import textwrap
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, field
 from datetime import datetime
 
 from openai import OpenAI
@@ -47,7 +55,12 @@ load_dotenv()
 
 @dataclass
 class CodeExecutionResult:
-    """Result of code execution"""
+    """
+    Result of code execution.
+    
+    WARNING: This execution is NOT sandboxed. Code runs with the same
+    permissions as the parent process. Only use with trusted input.
+    """
     success: bool
     stdout: str
     stderr: str
@@ -58,7 +71,7 @@ class CodeExecutionResult:
 
 @dataclass
 class AgentResponse:
-    """Response from the coding agent"""
+    """Response from the coding agent."""
     content: str
     role: str = "assistant"
     timestamp: datetime = field(default_factory=datetime.now)
@@ -89,6 +102,20 @@ class CodingAgentExecutor:
     - Conversation memory
     - Time-limited local code execution (NOT isolated)
     - Local fallback mode when API key is not available
+    
+    ## Security Limitations (IMPORTANT)
+    This is NOT a secure sandbox. The following protections are NOT in place:
+    - **Filesystem isolation**: Code can read/write any files accessible to the user
+    - **Network isolation**: Code can make network requests
+    - **Process isolation**: Code can spawn child processes
+    - **Privilege restrictions**: Code runs with the user's permissions
+    
+    ## Recommendations for Secure Execution
+    For production environments with untrusted code, consider:
+    1. **Container isolation**: Run inside Docker/Podman with resource limits
+    2. **Process sandboxing**: Use nsjail, bubblewrap, or firejail
+    3. **Kernel-level security**: Apply seccomp filters or AppArmor profiles
+    4. **Dedicated services**: Use Judge0, Piston, or similar execution services
     """
     
     DEFAULT_SYSTEM_PROMPT = """You are an expert coding assistant powered by Qwen3-Coder-Plus. 
@@ -467,10 +494,13 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
         """
         Execute Python code locally with a timeout.
 
-        Security note:
-            This is NOT a secure sandbox. It runs code with the current process's user privileges and does not provide filesystem, network, or privilege isolation.
-            For real sandboxing, run code inside hardened containers/VMs or use tools
-            such as nsjail, bubblewrap, and OS policies like seccomp/AppArmor.
+        ⚠️ SECURITY WARNING ⚠️
+        
+        This is NOT a secure sandbox. It runs code with the current process's
+        user privileges and does not provide filesystem, network, or privilege isolation.
+        
+        For real sandboxing, run code inside hardened containers/VMs or use tools
+        such as nsjail, bubblewrap, and OS policies like seccomp/AppArmor.
         
         Args:
             code: Python code to execute
@@ -498,6 +528,7 @@ When writing code, wrap it in appropriate markdown code blocks with language spe
         
         try:
             # Run the code with timeout
+            # WARNING: No sandboxing - code runs with full user permissions
             result = subprocess.run(
                 [sys.executable, temp_file],
                 capture_output=True,
@@ -649,7 +680,7 @@ Examples:
   # Single message
   python coding_agent_executor.py -m "Write a Python web scraper"
   
-  # With code execution
+  # With code execution (WARNING: not sandboxed!)
   python coding_agent_executor.py -m "Calculate pi" -e
   
   # Load API key from file (safer than CLI args)
@@ -657,6 +688,8 @@ Examples:
   
   # Fallback mode (no API key required)
   python coding_agent_executor.py -m "Write a web scraper" --fallback
+
+Note: Code execution is NOT sandboxed. Only use with trusted input.
         """
     )
     
@@ -724,7 +757,7 @@ Examples:
     exec_group.add_argument(
         "-e", "--execute",
         action="store_true",
-        help="Execute generated Python code"
+        help="Execute generated Python code (WARNING: not sandboxed!)"
     )
     exec_group.add_argument(
         "--timeout",
@@ -745,59 +778,41 @@ def main() -> None:
     """Main entry point."""
     args = parse_args()
     
-    # Determine execution mode
-    enable_execution = not args.no_execute
+    # Determine code execution setting
+    enable_execution = args.execute and not args.no_execute
     
-    try:
-        # Create agent
-        agent = CodingAgentExecutor(
-            api_key=args.api_key,
-            api_key_file=args.api_key_file,
-            temperature=args.temp,
-            top_p=args.top_p,
-            max_tokens=args.max_tokens,
-            enable_code_execution=enable_execution,
-            execution_timeout=args.timeout,
-            fallback_mode=args.fallback
-        )
-    except ValueError as e:
-        print(f"❌ Error: {e}")
-        print("\nTip: Use --fallback flag to run without API key, or set DASHSCOPE_API_KEY")
-        sys.exit(1)
-    except FileNotFoundError as e:
-        print(f"❌ Error: {e}")
-        sys.exit(1)
+    executor = CodingAgentExecutor(
+        api_key=args.api_key,
+        api_key_file=args.api_key_file,
+        temperature=args.temp,
+        top_p=args.top_p,
+        max_tokens=args.max_tokens,
+        enable_code_execution=enable_execution,
+        execution_timeout=args.timeout,
+        fallback_mode=args.fallback
+    )
     
     if args.interactive:
-        # Interactive mode
-        agent.interactive_session()
-        
-    elif args.message:
-        # Single message mode
-        print(f"🤖 Prompt: {args.message}\n")
-        
-        response = agent.chat(
+        executor.interactive_session()
+    else:
+        response = executor.chat(
             args.message,
             stream=not args.no_stream,
             execute_code=args.execute
         )
         
-        # Print response if not streaming
         if args.no_stream:
             print(response.content)
         
-        # Show execution result if code was executed
         if response.execution_result:
-            result = response.execution_result
-            print(f"\n{'='*60}")
-            print(f"⚙️  Code Execution Result:")
-            print(f"{'='*60}")
-            print(f"Success: {'✅ Yes' if result.success else '❌ No'}")
-            print(f"Time: {result.execution_time_ms:.2f}ms")
-            if result.stdout:
-                print(f"\n📤 Output:\n{result.stdout}")
-            if result.stderr:
-                print(f"\n📛 Error:\n{result.stderr}")
+            print(f"\n--- Execution Result ---")
+            print(f"Success: {response.execution_result.success}")
+            print(f"Exit code: {response.execution_result.exit_code}")
+            print(f"Time: {response.execution_result.execution_time_ms:.2f}ms")
+            if response.execution_result.stdout:
+                print(f"Output:\n{response.execution_result.stdout}")
+            if response.execution_result.stderr:
+                print(f"Errors:\n{response.execution_result.stderr}")
 
 
 if __name__ == "__main__":

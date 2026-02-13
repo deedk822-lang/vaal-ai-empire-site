@@ -1,0 +1,72 @@
+# Vaal AI Empire - Benchmark Docker Image
+# Multi-stage build for benchmark execution
+
+# ============================================
+# Build Stage
+# ============================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --target=/build/deps -r requirements.txt
+
+# ============================================
+# Production Stage
+# ============================================
+FROM python:3.11-slim AS production
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN groupadd -r benchmark -g 1001 && \
+    useradd -r -g benchmark -u 1001 -m -d /home/benchmark benchmark
+
+# Create app directory
+WORKDIR /app
+
+# Copy Python dependencies from builder
+COPY --from=builder /build/deps /usr/local/lib/python3.11/site-packages
+
+# Copy application code
+COPY --chown=benchmark:benchmark agents/ ./agents/
+COPY --chown=benchmark:benchmark benchmark_data/ ./benchmark_data/
+
+# Create results directory
+RUN mkdir -p /app/benchmark_results && \
+    chown -R benchmark:benchmark /app/benchmark_results
+
+# Switch to non-root user
+USER benchmark
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    BENCHMARK_OUTPUT_DIR=/app/benchmark_results
+
+# Expose metrics port (if needed)
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command
+CMD ["python", "agents/benchmark_executor.py", "--run-all", "--report"]

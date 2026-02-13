@@ -4,20 +4,25 @@
  * Features:
  * - Automatic transaction ID generation
  * - Multi-currency support (ZAR, USD, EUR, GBP, BTC, ETH)
- * - Fee calculation (Stripe-compliant: 2.9% + R2.50)
+ * - Fee calculation (Stripe-compliant: 2.9% + R2.50 for ZAR only)
  * - Risk scoring algorithm (0-100)
  * - Status history audit trail
  * - Settlement tracking
  * - Refund & chargeback management
  * - KYC/AML compliance tracking
  * - Geolocation tracking
+ * - PII protection in serialization
  */
 
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
-
+/**
+ * Redact sensitive fields for PII protection
+ * Used in toJSON/toObject transforms to prevent data leakage
+ */
 const redactSensitiveFields = (doc, ret) => {
+  // Remove customer PII
   delete ret.customerEmail;
 
   if (ret.customerInfo) {
@@ -26,6 +31,7 @@ const redactSensitiveFields = (doc, ret) => {
     delete ret.customerInfo.deviceFingerprint;
   }
 
+  // Remove sensitive payment provider data
   if (ret.providerData) {
     if (ret.providerData.stripe) {
       delete ret.providerData.stripe.paymentMethodId;
@@ -48,10 +54,12 @@ const redactSensitiveFields = (doc, ret) => {
     }
   }
 
+  // Remove sensitive settlement data
   if (ret.settlement) {
     delete ret.settlement.bankAccount;
   }
 
+  delete ret.__v;
   return ret;
 };
 
@@ -89,7 +97,7 @@ const transactionSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Transaction amount is required'],
       min: [0, 'Amount cannot be negative'],
-      get: v => Math.round(v * 100) / 100, // Round to 2 decimals
+      get: (v) => Math.round(v * 100) / 100, // Round to 2 decimals
     },
     currency: {
       type: String,
@@ -185,22 +193,22 @@ const transactionSchema = new mongoose.Schema(
       processing: {
         type: Number,
         default: 0,
-        get: v => Math.round(v * 100) / 100,
+        get: (v) => Math.round(v * 100) / 100,
       },
       gateway: {
         type: Number,
         default: 0,
-        get: v => Math.round(v * 100) / 100,
+        get: (v) => Math.round(v * 100) / 100,
       },
       currencyConversion: {
         type: Number,
         default: 0,
-        get: v => Math.round(v * 100) / 100,
+        get: (v) => Math.round(v * 100) / 100,
       },
       total: {
         type: Number,
         default: 0,
-        get: v => Math.round(v * 100) / 100,
+        get: (v) => Math.round(v * 100) / 100,
       },
     },
 
@@ -383,7 +391,7 @@ transactionSchema.virtual('needsReview').get(function () {
   return (
     this.complianceFlags.flaggedForReview ||
     this.riskScore >= 70 ||
-    this.riskFactors.some(f => f.severity === 'critical')
+    this.riskFactors.some((f) => f.severity === 'critical')
   );
 });
 
@@ -416,12 +424,7 @@ transactionSchema.pre('save', function (next) {
 // ============================================
 
 // Update transaction status with audit trail
-transactionSchema.methods.updateStatus = async function (
-  newStatus,
-  reason,
-  updatedBy,
-  metadata = {}
-) {
+transactionSchema.methods.updateStatus = async function (newStatus, reason, updatedBy, metadata = {}) {
   const oldStatus = this.status;
   this.status = newStatus;
 
@@ -447,7 +450,16 @@ transactionSchema.methods.updateStatus = async function (
   return this.save();
 };
 
-// Calculate transaction fees (Stripe-compliant for ZAR)
+/**
+ * Calculate transaction fees (Stripe-compliant for ZAR)
+ *
+ * IMPORTANT: The R2.50 base fee is ONLY applied for ZAR transactions.
+ * For other currencies, we apply only the percentage fee (2.9%) to avoid
+ * incorrectly adding a ZAR-denominated flat fee to USD/EUR/GBP/BTC/ETH transactions.
+ *
+ * If an exchange rate is available for non-ZAR transactions, we can convert
+ * the ZAR base fee to the transaction currency.
+ */
 transactionSchema.methods.calculateFees = function () {
   // Base fee structure (adjust per your payment processor)
   const zarBaseFee = 2.5; // ZAR flat fee
@@ -463,7 +475,7 @@ transactionSchema.methods.calculateFees = function () {
     // Convert ZAR baseFee to transaction currency
     baseFee = zarBaseFee / this.exchangeRate.rate;
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
-    // Convert ZAR baseFee to transaction currency
+    // Convert ZAR baseFee to transaction currency (alternative format)
     baseFee = zarBaseFee / this.exchangeRate;
   }
   // Note: Non-ZAR currencies without exchange rate data get baseFee = 0
@@ -483,13 +495,17 @@ transactionSchema.methods.calculateFees = function () {
 
   // Total fees
   this.fees.total =
-    Math.round((this.fees.processing + this.fees.gateway + this.fees.currencyConversion) * 100) /
-    100;
+    Math.round((this.fees.processing + this.fees.gateway + this.fees.currencyConversion) * 100) / 100;
 
   return this.fees;
 };
 
-// Calculate risk score based on various factors
+/**
+ * Calculate risk score based on various factors
+ *
+ * Note: This method clears existing riskFactors before recalculating
+ * to prevent duplicates on repeated calls.
+ */
 transactionSchema.methods.calculateRiskScore = function () {
   // Reset risk factors to prevent accumulation across repeated calls
   this.riskFactors = [];
@@ -526,10 +542,7 @@ transactionSchema.methods.calculateRiskScore = function () {
   }
 
   // Failed compliance checks
-  if (
-    this.complianceFlags.sanctionsScreening?.checked &&
-    !this.complianceFlags.sanctionsScreening?.passed
-  ) {
+  if (this.complianceFlags.sanctionsScreening?.checked && !this.complianceFlags.sanctionsScreening?.passed) {
     score += 50;
     this.riskFactors.push({
       factorType: 'sanctions_hit',
@@ -558,7 +571,14 @@ transactionSchema.methods.calculateRiskScore = function () {
   return this.riskScore;
 };
 
-// Process refund
+/**
+ * Process refund with validation
+ *
+ * Validates that refundAmount:
+ * - Is a valid number
+ * - Is not negative
+ * - Does not exceed the original transaction amount
+ */
 transactionSchema.methods.processRefund = async function (refundAmount, reason, refundedBy) {
   let validatedRefundAmount = this.amount;
 
@@ -566,11 +586,15 @@ transactionSchema.methods.processRefund = async function (refundAmount, reason, 
     const numericRefundAmount = Number(refundAmount);
 
     if (!Number.isFinite(numericRefundAmount) || numericRefundAmount < 0) {
-      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`);
+      throw new Error(
+        `Invalid refund amount for transaction ${this.transactionId}: amount must be a valid number greater than or equal to 0.`
+      );
     }
 
     if (numericRefundAmount > this.amount) {
-      throw new Error(`Invalid refund amount for transaction ${this.transactionId}: requested refund (${numericRefundAmount}) exceeds original amount (${this.amount}).`);
+      throw new Error(
+        `Invalid refund amount for transaction ${this.transactionId}: requested refund (${numericRefundAmount}) exceeds original amount (${this.amount}).`
+      );
     }
 
     validatedRefundAmount = numericRefundAmount;

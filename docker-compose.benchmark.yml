@@ -1,0 +1,172 @@
+# Vaal AI Empire - Benchmark Docker Compose
+# Multi-stage build with non-root user and healthcheck
+#
+# Usage:
+#   docker compose -f docker-compose.benchmark.yml up
+#   docker compose -f docker-compose.benchmark.yml run benchmark --category security
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Benchmark Runner Service
+  # ============================================
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.benchmark
+      args:
+        PYTHON_VERSION: "3.11"
+        NODE_VERSION: "20"
+    container_name: vaal-benchmark-runner
+    hostname: benchmark-runner
+    
+    # Run as non-root user (created in Dockerfile)
+    user: "benchmark:benchmark"
+    
+    # Environment configuration
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - GLM5_API_KEY=${GLM5_API_KEY:-}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - BENCHMARK_OUTPUT_DIR=/app/benchmark_results
+    
+    # Volume mounts
+    volumes:
+      - ./benchmark_data:/app/benchmark_data:ro
+      - benchmark_results:/app/benchmark_results
+      - ./agents:/app/agents:ro
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Default command
+    command: ["python", "agents/benchmark_executor.py", "--run-all", "--report"]
+
+  # ============================================
+  # Prometheus Metrics Collector
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: vaal-benchmark-prometheus
+    hostname: prometheus
+    
+    # Run as non-root
+    user: "nobody:nobody"
+    
+    # Configuration
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+    
+    volumes:
+      - ./benchmark_data/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    
+    ports:
+      - "9090:9090"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    
+    depends_on:
+      - benchmark
+
+  # ============================================
+  # Grafana Dashboard (Optional)
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: vaal-benchmark-grafana
+    hostname: grafana
+    
+    # Run as non-root (Grafana defaults to uid 472)
+    user: "472:472"
+    
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./benchmark_data/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./benchmark_data/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    
+    ports:
+      - "3000:3000"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    depends_on:
+      - prometheus
+
+# ============================================
+# Named Volumes
+# ============================================
+volumes:
+  benchmark_results:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  default:
+    name: vaal-benchmark-network
+    driver: bridge
