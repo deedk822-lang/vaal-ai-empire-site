@@ -460,8 +460,11 @@ transactionSchema.methods.calculateFees = function () {
     baseFee = zarBaseFee;
   } else if (Number.isFinite(this.exchangeRate?.rate) && this.exchangeRate.rate > 0) {
     baseFee = zarBaseFee / this.exchangeRate.rate;
+<<<<<<< codex/remove-git-merge-artifacts-and-fix-echo-logic-v5zkre
+=======
   } else if (Number.isFinite(this.exchangeRate) && this.exchangeRate > 0) {
     baseFee = zarBaseFee / this.exchangeRate;
+>>>>>>> merge/develop-to-main
   }
 
   // Calculate processing fee: 2.9% + currency-adjusted flat fee

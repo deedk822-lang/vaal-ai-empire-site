@@ -163,6 +163,14 @@ jobs:
         run: |
           echo "Checking for common secret patterns..."
           
+<<<<<<< codex/remove-git-merge-artifacts-and-fix-echo-logic-v5zkre
+          # Create regex patterns file (no leading whitespace in patterns)
+          : > /tmp/secret_patterns.txt
+          echo 'sk_live_[a-zA-Z0-9]{24,}' >> /tmp/secret_patterns.txt
+          echo 'AKIA[0-9A-Z]{16}' >> /tmp/secret_patterns.txt
+          echo 'ghp_[a-zA-Z0-9]{36}' >> /tmp/secret_patterns.txt
+          echo 'glpat-[a-zA-Z0-9\-]{20}' >> /tmp/secret_patterns.txt
+=======
           # Create regex patterns file
           printf '%s\n' \
             'sk_live_[a-zA-Z0-9]{24,}' \
@@ -173,6 +181,7 @@ jobs:
 
  codex/remove-git-merge-artifacts-and-fix-echo-logic-blkxko
 
+>>>>>>> merge/develop-to-main
           
  merge/develop-to-main
  merge/develop-to-main
