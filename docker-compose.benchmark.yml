@@ -1,0 +1,96 @@
+# Vaal AI Empire - Benchmark Docker Compose
+# Multi-stage build with non-root user and healthcheck
+
+version: '3.8'
+
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.benchmark
+      args:
+        PYTHON_VERSION: "3.11"
+    container_name: vaal-benchmark-runner
+    hostname: benchmark-runner
+
+    user: "benchmark:benchmark"
+
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - GLM5_API_KEY=${GLM5_API_KEY:-}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - BENCHMARK_OUTPUT_DIR=/app/benchmark_results
+
+    volumes:
+      - ./benchmark_data:/app/benchmark_data:ro
+      - benchmark_results:/app/benchmark_results
+      - ./agents:/app/agents:ro
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    command: ["python", "agents/benchmark_executor.py", "--run-all", "--report"]
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: vaal-benchmark-prometheus
+    hostname: prometheus
+
+    user: "nobody:nobody"
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+
+    volumes:
+      - ./benchmark_data/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    ports:
+      - "9090:9090"
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    depends_on:
+      - benchmark
+
+volumes:
+  benchmark_results:
+    driver: local
+  prometheus_data:
+    driver: local
+
+networks:
+  default:
+    name: vaal-benchmark-network
+    driver: bridge
