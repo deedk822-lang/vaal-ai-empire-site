@@ -1,72 +1,115 @@
 # Vaal AI Empire - Benchmark Docker Image
-# Multi-stage build for benchmark execution
+# Multi-stage build with non-root user and healthcheck
+# 
+# Build: docker build -f Dockerfile.benchmark -t vaal-benchmark .
+# Run: docker run -v $(pwd)/benchmark_results:/app/benchmark_results vaal-benchmark
+
+ARG PYTHON_VERSION=3.11
+ARG NODE_VERSION=20
 
 # ============================================
-# Build Stage
+# Stage 1: Base Python Dependencies
 # ============================================
-FROM python:3.11-slim AS builder
-
-WORKDIR /build
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --target=/build/deps -r requirements.txt
-
-# ============================================
-# Production Stage
-# ============================================
-FROM python:3.11-slim AS production
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    dumb-init \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user for security
-RUN groupadd -r benchmark -g 1001 && \
-    useradd -r -g benchmark -u 1001 -m -d /home/benchmark benchmark
-
-# Create app directory
-WORKDIR /app
-
-# Copy Python dependencies from builder
-COPY --from=builder /build/deps /usr/local/lib/python3.11/site-packages
-
-# Copy application code
-COPY --chown=benchmark:benchmark agents/ ./agents/
-COPY --chown=benchmark:benchmark benchmark_data/ ./benchmark_data/
-
-# Create results directory
-RUN mkdir -p /app/benchmark_results && \
-    chown -R benchmark:benchmark /app/benchmark_results
-
-# Switch to non-root user
-USER benchmark
+FROM python:${PYTHON_VERSION}-slim AS python-base
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app \
-    BENCHMARK_OUTPUT_DIR=/app/benchmark_results
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Expose metrics port (if needed)
-EXPOSE 8000
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt || true
+
+# Install additional benchmark dependencies
+RUN pip install --no-cache-dir \
+    prometheus-client \
+    aiohttp \
+    pytest-asyncio
+
+# ============================================
+# Stage 2: Node.js Dependencies
+# ============================================
+FROM node:${NODE_VERSION}-slim AS node-base
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# ============================================
+# Stage 3: Final Runtime Image
+# ============================================
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+# Build arguments
+ARG USERNAME=benchmark
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    BENCHMARK_OUTPUT_DIR=/app/benchmark_results \
+    NODE_ENV=production \
+    PATH="/home/$USERNAME/.local/bin:$PATH"
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && mkdir -p /app/benchmark_results \
+    && chown -R $USERNAME:$USERNAME /app
+
+# Copy Python packages from python-base
+COPY --from=python-base /usr/local/lib/python${PYTHON_VERSION}/site-packages /usr/local/lib/python${PYTHON_VERSION}/site-packages
+COPY --from=python-base /usr/local/bin /usr/local/bin
+
+# Copy Node.js from node-base
+COPY --from=node-base /usr/local/bin/node /usr/local/bin/
+COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+# Copy application code
+WORKDIR /app
+
+# Copy benchmark files with proper ownership
+COPY --chown=$USERNAME:$USERNAME agents/ ./agents/
+COPY --chown=$USERNAME:$USERNAME benchmark_data/ ./benchmark_data/
+COPY --chown=$USERNAME:$USERNAME server/ ./server/
+
+# Create benchmark results directory
+RUN mkdir -p /app/benchmark_results && chown -R $USERNAME:$USERNAME /app/benchmark_results
+
+# Switch to non-root user
+USER $USERNAME
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import sys; sys.exit(0)" || exit 1
 
-# Use dumb-init for proper signal handling
-ENTRYPOINT ["dumb-init", "--"]
+# Labels for metadata
+LABEL maintainer="Vaal AI Empire" \
+      description="Benchmark suite for AI model evaluation" \
+      version="1.0.0" \
+      org.opencontainers.image.source="https://github.com/vaal-ai-empire/vaal-ai-empire-site"
 
 # Default command
-CMD ["python", "agents/benchmark_executor.py", "--run-all", "--report"]
+ENTRYPOINT ["python", "agents/benchmark_executor.py"]
+CMD ["--run-all", "--report"]

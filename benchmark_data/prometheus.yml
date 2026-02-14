@@ -1,42 +1,90 @@
-# Vaal AI Empire - Prometheus Configuration for Benchmark Metrics
-# Scrape configuration for benchmark runner
+# Vaal AI Empire - Prometheus Configuration
+# For monitoring benchmark execution and application metrics
+#
+# Usage:
+#   docker compose -f docker-compose.benchmark.yml up prometheus
 
+# Global configuration
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 15s      # How frequently to scrape targets
+  evaluation_interval: 15s  # How frequently to evaluate rules
   external_labels:
-    monitor: 'vaal-benchmark'
+    cluster: 'vaal-ai-empire'
+    replica: '{{.ExternalURL}}'
 
 # Alertmanager configuration (optional)
 alerting:
   alertmanagers:
     - static_configs:
         - targets: []
+      # Uncomment and configure if using Alertmanager
+      # - alertmanager:9093
 
-# Load rules once and periodically evaluate them
-rule_files: []
+# Load rules from directory
+rule_files:
+  # - 'rules/*.yml'
+  # Uncomment when alert rules are defined
 
+# Scrape configurations
 scrape_configs:
-  # Prometheus self-monitoring
+  # ============================================
+  # Prometheus Self-Monitoring
+  # ============================================
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-        labels:
-          environment: 'benchmark'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
 
-  # Benchmark runner metrics
+  # ============================================
+  # Benchmark Runner Metrics
+  # ============================================
   - job_name: 'vaal-benchmark'
     static_configs:
-      - targets: ['benchmark:8000']
+      - targets: ['benchmark-runner:9090']
         labels:
           service: 'benchmark-executor'
-          environment: 'benchmark'
+          environment: 'ci'
     metrics_path: '/metrics'
     scrape_interval: 10s
+    scrape_timeout: 5s
 
-  # Node exporter (if available)
-  - job_name: 'node'
+  # ============================================
+  # Node Exporter (if running)
+  # ============================================
+  - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+
+  # ============================================
+  # Application Server Metrics
+  # ============================================
+  - job_name: 'vaal-server'
+    static_configs:
+      - targets: ['host.docker.internal:4242']
         labels:
-          environment: 'benchmark'
+          service: 'vaal-ai-empire'
+          component: 'api-server'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # Docker Daemon Metrics (if enabled)
+  # ============================================
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+    scrape_interval: 30s
+
+# Remote write configuration for Grafana Cloud (optional)
+# Uncomment and configure to send metrics to Grafana Cloud
+# remote_write:
+#   - url: "${PROMETHEUS_URL}/push"
+#     basic_auth:
+#       username: "${PROMETHEUS_USER}"
+#       password: "${PROMETHEUS_PASSWORD}"
+#     write_relabel_configs:
+#       - source_labels: [__name__]
+#         regex: 'vaal_.*'
+#         action: keep

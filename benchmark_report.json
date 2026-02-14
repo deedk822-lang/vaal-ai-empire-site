@@ -1,0 +1,1508 @@
+{
+  "timestamp": "2026-02-14T15:29:14.596394",
+  "summary": {
+    "total_tests": 50,
+    "passed_tests": 0,
+    "failed_tests": 50,
+    "overall_score": 0.0,
+    "avg_execution_time_ms": 0.0035190582275390625,
+    "avg_response_time_ms": 0.00018596649169921875,
+    "total_tokens_used": 0
+  },
+  "category_scores": {
+    "security": 5.0,
+    "efficiency": 5.0,
+    "edge_cases": 5.0,
+    "code_generation": 5.0,
+    "refactoring": 5.0,
+    "debugging": 5.0
+  },
+  "results": [
+    {
+      "test_id": "SEC001",
+      "test_name": "SQL Injection Prevention",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.013828277587890625,
+      "response_time_ms": 0.0011920928955078125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "parameterized",
+          "?",
+          "cursor.execute",
+          "prepared"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC002",
+      "test_name": "XSS Prevention",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.00858306884765625,
+      "response_time_ms": 0.0007152557373046875,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.5,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "html.escape",
+          "escape",
+          "sanitize",
+          "encode"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC003",
+      "test_name": "Password Hashing",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.006198883056640625,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "bcrypt",
+          "argon2",
+          "scrypt",
+          "salt",
+          "hashlib.pbkdf2"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC004",
+      "test_name": "Input Validation",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.00476837158203125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 4.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "regex",
+          "re.match",
+          "validate",
+          "@",
+          "sanitize"
+        ],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "SEC005",
+      "test_name": "CSRF Token Generation",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.0040531158447265625,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "secrets",
+          "token_hex",
+          "random",
+          "session",
+          "validate"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC006",
+      "test_name": "Path Traversal Prevention",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.003814697265625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "os.path.realpath",
+          "startswith",
+          "basename",
+          "normpath"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "SEC007",
+      "test_name": "Command Injection Prevention",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "subprocess.run",
+          "shell=False",
+          "args",
+          "shlex.quote"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "SEC008",
+      "test_name": "JWT Token Security",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "jwt",
+          "secret",
+          "HS256",
+          "expires",
+          "verify"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC009",
+      "test_name": "Rate Limiting",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "limit",
+          "window",
+          "requests",
+          "throttle",
+          "cache"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC010",
+      "test_name": "Secure File Upload",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "magic",
+          "mimetype",
+          "allowed",
+          "extension",
+          "validate"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EFF001",
+      "test_name": "Efficient List Filtering",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0040531158447265625,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 3.333333333333333,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "filter",
+          "list comprehension",
+          "generator"
+        ],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EFF002",
+      "test_name": "String Concatenation Optimization",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0054836273193359375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "join",
+          "StringIO",
+          "list",
+          "append"
+        ],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EFF003",
+      "test_name": "Dictionary Lookup Optimization",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0040531158447265625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.5,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "get",
+          "defaultdict",
+          "setdefault",
+          "in"
+        ],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EFF004",
+      "test_name": "Large File Processing",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "csv.reader",
+          "iterator",
+          "chunk",
+          "with open"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EFF005",
+      "test_name": "Caching Implementation",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.5,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "functools.lru_cache",
+          "cache",
+          "maxsize",
+          "OrderedDict"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EFF006",
+      "test_name": "Efficient Sorting Algorithm",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.00286102294921875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "quicksort",
+          "mergesort",
+          "heapsort",
+          "O(n log n)"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EFF007",
+      "test_name": "Binary Search Implementation",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "binary",
+          "mid",
+          "left",
+          "right",
+          "O(log n)"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EFF008",
+      "test_name": "Memory-Efficient Data Structure",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0030994415283203125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "array",
+          "numpy",
+          "struct",
+          "bytearray",
+          "generator"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EFF009",
+      "test_name": "Parallel Processing",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.5,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "multiprocessing",
+          "Pool",
+          "concurrent.futures",
+          "parallel"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EFF010",
+      "test_name": "Database Query Optimization",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "index",
+          "EXPLAIN",
+          "JOIN",
+          "WHERE",
+          "LIMIT"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EDGE001",
+      "test_name": "Empty Input Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0026226043701171875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EDGE002",
+      "test_name": "Null/None Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0026226043701171875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EDGE003",
+      "test_name": "String Edge Cases",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.002384185791015625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EDGE004",
+      "test_name": "Integer Overflow Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.002384185791015625,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EDGE005",
+      "test_name": "Division by Zero",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0021457672119140625,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "EDGE006",
+      "test_name": "Nested Structure Parsing",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0019073486328125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EDGE007",
+      "test_name": "Timezone Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "pytz",
+          "timezone",
+          "utc",
+          "astimezone",
+          "datetime"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EDGE008",
+      "test_name": "Circular Reference Detection",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "visited",
+          "set",
+          "cycle",
+          "recursion",
+          "id()"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EDGE009",
+      "test_name": "Regex Edge Cases",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.003814697265625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EDGE010",
+      "test_name": "Encoding Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.0035762786865234375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "utf-8",
+          "encoding",
+          "decode",
+          "encode",
+          "errors"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN001",
+      "test_name": "REST API Endpoint",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "GET",
+          "POST",
+          "PUT",
+          "DELETE",
+          "jsonify",
+          "request"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN002",
+      "test_name": "Database Model",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.00286102294921875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "class",
+          "ForeignKey",
+          "relationship",
+          "Column",
+          "Integer"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN003",
+      "test_name": "CLI Tool",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.00286102294921875,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.5,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "argparse",
+          "ArgumentParser",
+          "add_argument",
+          "parse_args"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN004",
+      "test_name": "Unit Tests",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.0030994415283203125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "unittest",
+          "TestCase",
+          "assertEqual",
+          "setUp",
+          "test_"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN005",
+      "test_name": "Data Pipeline",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.0030994415283203125,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "extract",
+          "transform",
+          "load",
+          "pipeline",
+          "steps"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "GEN006",
+      "test_name": "Web Scraper",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "requests",
+          "BeautifulSoup",
+          "rate limit",
+          "timeout",
+          "headers"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN007",
+      "test_name": "API Client",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.0030994415283203125,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "requests",
+          "Session",
+          "auth",
+          "headers",
+          "token"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN008",
+      "test_name": "Configuration Handler",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.0030994415283203125,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 6.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "yaml",
+          "json",
+          "dotenv",
+          "config",
+          "load"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN009",
+      "test_name": "Logging System",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.003337860107421875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 4.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "logging",
+          "Logger",
+          "Handler",
+          "Formatter",
+          "level"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "GEN010",
+      "test_name": "Task Queue",
+      "category": "code_generation",
+      "passed": false,
+      "execution_time_ms": 0.0045299530029296875,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 2.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "Queue",
+          "PriorityQueue",
+          "worker",
+          "enqueue",
+          "dequeue"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "REF001",
+      "test_name": "Extract Method",
+      "category": "refactoring",
+      "passed": false,
+      "execution_time_ms": 0.002384185791015625,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "REF002",
+      "test_name": "Replace Magic Numbers",
+      "category": "refactoring",
+      "passed": false,
+      "execution_time_ms": 0.0019073486328125,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "REF003",
+      "test_name": "Simplify Conditionals",
+      "category": "refactoring",
+      "passed": false,
+      "execution_time_ms": 0.0021457672119140625,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "REF004",
+      "test_name": "Add Type Hints",
+      "category": "refactoring",
+      "passed": false,
+      "execution_time_ms": 0.0021457672119140625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "REF005",
+      "test_name": "Convert to Async",
+      "category": "refactoring",
+      "passed": false,
+      "execution_time_ms": 0.0019073486328125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "DBG001",
+      "test_name": "Fix Off-By-One Error",
+      "category": "debugging",
+      "passed": false,
+      "execution_time_ms": 0.0050067901611328125,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "DBG002",
+      "test_name": "Fix Memory Leak",
+      "category": "debugging",
+      "passed": false,
+      "execution_time_ms": 0.0019073486328125,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "DBG003",
+      "test_name": "Fix Race Condition",
+      "category": "debugging",
+      "passed": false,
+      "execution_time_ms": 0.0016689300537109375,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "DBG004",
+      "test_name": "Fix Resource Leak",
+      "category": "debugging",
+      "passed": false,
+      "execution_time_ms": 0.0019073486328125,
+      "response_time_ms": 0.0,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    },
+    {
+      "test_id": "DBG005",
+      "test_name": "Fix Recursion Depth",
+      "category": "debugging",
+      "passed": false,
+      "execution_time_ms": 0.0021457672119140625,
+      "response_time_ms": 0.0002384185791015625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "medium"
+      }
+    }
+  ]
+}

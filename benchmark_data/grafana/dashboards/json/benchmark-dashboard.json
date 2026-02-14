@@ -12,7 +12,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -58,13 +58,23 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vaal_benchmark_duration_seconds",
+          "refId": "A"
+        }
+      ],
       "title": "Benchmark Duration",
       "type": "gauge"
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -134,13 +144,24 @@
           "sort": "none"
         }
       },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vaal_benchmark_quality_score",
+          "legendFormat": "Quality Score - {{ category }}",
+          "refId": "A"
+        }
+      ],
       "title": "Quality Scores by Category",
       "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -180,6 +201,35 @@
         },
         "textMode": "auto"
       },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vaal_benchmark_tests_total",
+          "legendFormat": "Total Tests",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vaal_benchmark_tests_passed_total",
+          "legendFormat": "Passed",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vaal_benchmark_tests_failed_total",
+          "legendFormat": "Failed",
+          "refId": "C"
+        }
+      ],
       "title": "Test Results Summary",
       "type": "stat"
     }
@@ -189,7 +239,26 @@
   "style": "dark",
   "tags": ["benchmark", "vaal-ai"],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
   },
   "time": {
     "from": "now-1h",
@@ -199,6 +268,5 @@
   "timezone": "",
   "title": "Vaal AI Benchmark Dashboard",
   "uid": "vaal-benchmark",
-  "version": 1,
-  "weekStart": ""
+  "version": 1
 }

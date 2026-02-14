@@ -1,428 +1,613 @@
 {
+  "version": "1.0.0",
+  "description": "Vaal AI Empire - Comprehensive Benchmark Test Cases",
+  "categories": [
+    "security",
+    "efficiency",
+    "edge_cases",
+    "code_generation",
+    "refactoring",
+    "debugging"
+  ],
   "metadata": {
-    "version": "1.0.0",
-    "created": "2025-01-17",
-    "description": "Vaal AI Empire Benchmark Test Cases - 50 comprehensive tests"
+    "total_tests": 50,
+    "created_date": "2026-02-14",
+    "author": "Vaal AI Empire",
+    "glm5_enabled": true,
+    "prometheus_enabled": true
   },
   "test_cases": [
     {
       "id": "SEC001",
       "name": "SQL Injection Prevention",
       "category": "security",
-      "prompt": "Write a Python function to safely query a user by ID from a SQLite database",
-      "expected_patterns": ["parameterized", "?", "cursor.execute", "prepared"],
+      "difficulty": "medium",
+      "prompt": "Write a Python function to safely query a user by ID from a SQLite database using parameterized queries",
+      "expected_patterns": ["parameterized", "?", "cursor.execute", "sqlite3"],
+      "forbidden_patterns": ["f\"", "format(", "%" , "+"],
       "security_check": true,
-      "difficulty": "medium"
+      "time_limit_ms": 5000,
+      "test_inputs": ["1", "' OR '1'='1", "1; DROP TABLE users;--"],
+      "tags": ["sql_injection", "database", "input_validation"]
     },
     {
       "id": "SEC002",
-      "name": "XSS Prevention",
+      "name": "XSS Prevention - HTML Escape",
       "category": "security",
-      "prompt": "Create a function to sanitize user input for safe HTML display in Python",
-      "expected_patterns": ["html.escape", "escape", "sanitize", "encode"],
+      "difficulty": "medium",
+      "prompt": "Create a Python function to sanitize user input for safe HTML display, preventing XSS attacks",
+      "expected_patterns": ["html.escape", "escape", "sanitize", "&lt;", "&gt;", "&amp;"],
+      "forbidden_patterns": ["innerHTML", "document.write"],
       "security_check": true,
-      "difficulty": "medium"
+      "time_limit_ms": 3000,
+      "test_inputs": ["<script>alert('xss')</script>", "<img src=x onerror=alert('xss')>", "normal text"],
+      "tags": ["xss", "html_escape", "sanitization"]
     },
     {
       "id": "SEC003",
       "name": "Password Hashing",
       "category": "security",
-      "prompt": "Implement secure password hashing for user authentication",
-      "expected_patterns": ["bcrypt", "argon2", "scrypt", "salt", "hashlib.pbkdf2"],
+      "difficulty": "medium",
+      "prompt": "Implement a secure password hashing function in Python using bcrypt or similar with salt",
+      "expected_patterns": ["bcrypt", "hashlib", "pbkdf2", "salt", "hashpw", "gensalt"],
+      "forbidden_patterns": ["md5", "sha1", "unsalted"],
       "security_check": true,
-      "difficulty": "medium"
+      "time_limit_ms": 5000,
+      "tags": ["password_hashing", "cryptography", "salt"]
     },
     {
       "id": "SEC004",
-      "name": "Input Validation",
+      "name": "JWT Token Validation",
       "category": "security",
-      "prompt": "Create a function to validate and sanitize email addresses",
-      "expected_patterns": ["regex", "re.match", "validate", "@", "sanitize"],
+      "difficulty": "hard",
+      "prompt": "Write a Python function to validate a JWT token with proper signature verification and expiration check",
+      "expected_patterns": ["jwt.decode", "verify", "exp", "algorithm", "HS256", "RS256"],
+      "forbidden_patterns": ["verify=False", "None"],
       "security_check": true,
-      "difficulty": "easy"
+      "time_limit_ms": 3000,
+      "tags": ["jwt", "token_validation", "authentication"]
     },
     {
       "id": "SEC005",
-      "name": "CSRF Token Generation",
+      "name": "Path Traversal Prevention",
       "category": "security",
-      "prompt": "Implement CSRF token generation and validation in Python",
-      "expected_patterns": ["secrets", "token_hex", "random", "session", "validate"],
+      "difficulty": "medium",
+      "prompt": "Create a function to safely open a file given a user-provided filename, preventing directory traversal attacks",
+      "expected_patterns": ["os.path.abspath", "startswith", "realpath", "resolve"],
+      "forbidden_patterns": ["../", "..\\"],
       "security_check": true,
-      "difficulty": "medium"
+      "time_limit_ms": 3000,
+      "test_inputs": ["../etc/passwd", "../../../windows/system32/config/sam", "safe_file.txt"],
+      "tags": ["path_traversal", "file_security", "directory_traversal"]
     },
     {
       "id": "SEC006",
-      "name": "Path Traversal Prevention",
+      "name": "Command Injection Prevention",
       "category": "security",
-      "prompt": "Write a function to safely serve files while preventing path traversal attacks",
-      "expected_patterns": ["os.path.realpath", "startswith", "basename", "normpath"],
+      "difficulty": "hard",
+      "prompt": "Write a Python function to safely execute a ping command with user-provided host, preventing command injection",
+      "expected_patterns": ["subprocess.run", "shell=False", "list", "args"],
+      "forbidden_patterns": ["os.system", "shell=True", "subprocess.call", "subprocess.Popen"],
       "security_check": true,
-      "difficulty": "hard"
+      "time_limit_ms": 5000,
+      "test_inputs": ["8.8.8.8", "8.8.8.8; rm -rf /", "google.com && cat /etc/passwd"],
+      "tags": ["command_injection", "subprocess", "input_validation"]
     },
     {
       "id": "SEC007",
-      "name": "Command Injection Prevention",
+      "name": "CSRF Token Generation",
       "category": "security",
-      "prompt": "Create a function to safely execute system commands without shell injection",
-      "expected_patterns": ["subprocess.run", "shell=False", "args", "shlex.quote"],
+      "difficulty": "medium",
+      "prompt": "Implement a CSRF token generation and validation system in Python using cryptographically secure random",
+      "expected_patterns": ["secrets.token", "random.SystemRandom", "secrets.choice", "uuid"],
+      "forbidden_patterns": ["random.random", "random.randint", "math.random"],
       "security_check": true,
-      "difficulty": "hard"
+      "time_limit_ms": 3000,
+      "tags": ["csrf", "token_generation", "cryptography"]
     },
     {
       "id": "SEC008",
-      "name": "JWT Token Security",
+      "name": "Secure API Key Storage",
       "category": "security",
-      "prompt": "Implement secure JWT token generation and validation",
-      "expected_patterns": ["jwt", "secret", "HS256", "expires", "verify"],
+      "difficulty": "easy",
+      "prompt": "Write a Python class to securely handle API keys, never storing them in code and loading from environment variables",
+      "expected_patterns": ["os.environ", "os.getenv", "load_dotenv", "getenv"],
+      "forbidden_patterns": ["api_key = \"", "password = \"", "secret = \""],
       "security_check": true,
-      "difficulty": "medium"
+      "time_limit_ms": 2000,
+      "tags": ["api_keys", "environment_variables", "secrets_management"]
     },
     {
       "id": "SEC009",
-      "name": "Rate Limiting",
+      "name": "Rate Limiting Implementation",
       "category": "security",
-      "prompt": "Implement rate limiting for an API endpoint",
-      "expected_patterns": ["limit", "window", "requests", "throttle", "cache"],
-      "security_check": true,
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Implement a token bucket rate limiter in Python to prevent API abuse",
+      "expected_patterns": ["bucket", "token", "rate", "timestamp", "time.time"],
+      "security_check": false,
+      "time_limit_ms": 5000,
+      "tags": ["rate_limiting", "api_protection", "token_bucket"]
     },
     {
       "id": "SEC010",
-      "name": "Secure File Upload",
+      "name": "Input Validation - Email",
       "category": "security",
-      "prompt": "Create a secure file upload handler that validates file types",
-      "expected_patterns": ["magic", "mimetype", "allowed", "extension", "validate"],
+      "difficulty": "easy",
+      "prompt": "Create a robust email validation function in Python using regex that checks format and common attack patterns",
+      "expected_patterns": ["re.match", "regex", "@", "domain", "validate"],
+      "forbidden_patterns": [],
       "security_check": true,
-      "difficulty": "hard"
+      "time_limit_ms": 2000,
+      "test_inputs": ["test@example.com", "invalid-email", "<script>@test.com", "' OR 1=1@test.com"],
+      "tags": ["input_validation", "email", "regex"]
     },
     {
       "id": "EFF001",
-      "name": "Efficient List Filtering",
+      "name": "Efficient Sorting Algorithm",
       "category": "efficiency",
-      "prompt": "Implement efficient filtering of a large list using Python",
-      "expected_patterns": ["filter", "list comprehension", "generator"],
-      "time_limit_ms": 500,
-      "difficulty": "easy"
+      "difficulty": "medium",
+      "prompt": "Implement an efficient sorting algorithm for large datasets (100k+ elements) with O(n log n) complexity",
+      "expected_patterns": ["quicksort", "mergesort", "timsort", "sorted", "O(n log n)"],
+      "time_limit_ms": 2000,
+      "test_size": 100000,
+      "tags": ["sorting", "algorithm", "big_o"]
     },
     {
       "id": "EFF002",
-      "name": "String Concatenation Optimization",
+      "name": "Fibonacci with Memoization",
       "category": "efficiency",
-      "prompt": "Write efficient code to concatenate many strings in Python",
-      "expected_patterns": ["join", "StringIO", "list", "append"],
-      "time_limit_ms": 300,
-      "difficulty": "easy"
+      "difficulty": "medium",
+      "prompt": "Write an efficient Fibonacci function that can calculate fib(1000) without recursion stack overflow",
+      "expected_patterns": ["memo", "cache", "lru_cache", "dynamic programming", "dp", "iterative"],
+      "time_limit_ms": 1000,
+      "test_inputs": [10, 100, 500, 1000],
+      "tags": ["fibonacci", "memoization", "dynamic_programming"]
     },
     {
       "id": "EFF003",
-      "name": "Dictionary Lookup Optimization",
+      "name": "Binary Search Implementation",
       "category": "efficiency",
-      "prompt": "Optimize repeated lookups in a dictionary with default values",
-      "expected_patterns": ["get", "defaultdict", "setdefault", "in"],
-      "time_limit_ms": 200,
-      "difficulty": "easy"
+      "difficulty": "medium",
+      "prompt": "Implement binary search with O(log n) complexity to find an element in a sorted array",
+      "expected_patterns": ["mid", "left", "right", "log n", "binary"],
+      "time_limit_ms": 1000,
+      "tags": ["binary_search", "algorithm", "logarithmic"]
     },
     {
       "id": "EFF004",
-      "name": "Large File Processing",
+      "name": "Efficient String Concatenation",
       "category": "efficiency",
-      "prompt": "Process a large CSV file efficiently without loading it all into memory",
-      "expected_patterns": ["csv.reader", "iterator", "chunk", "with open"],
-      "time_limit_ms": 1000,
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Write an efficient function to concatenate a large list of strings (avoiding O(n²) complexity)",
+      "expected_patterns": ["join", "StringIO", "io.StringIO", "list comprehension"],
+      "forbidden_patterns": ["+=", "for.*in.*:", "result = result +"],
+      "time_limit_ms": 2000,
+      "test_size": 10000,
+      "tags": ["string_concatenation", "performance", "optimization"]
     },
     {
       "id": "EFF005",
-      "name": "Caching Implementation",
+      "name": "Dictionary Lookup Optimization",
       "category": "efficiency",
-      "prompt": "Implement an LRU cache for expensive function calls",
-      "expected_patterns": ["functools.lru_cache", "cache", "maxsize", "OrderedDict"],
-      "time_limit_ms": 500,
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Optimize a function that counts word frequencies in a large text using appropriate data structures",
+      "expected_patterns": ["dict", "Counter", "defaultdict", "get", "setdefault"],
+      "time_limit_ms": 3000,
+      "tags": ["hash_map", "frequency_count", "optimization"]
     },
     {
       "id": "EFF006",
-      "name": "Efficient Sorting Algorithm",
+      "name": "Generator for Large Files",
       "category": "efficiency",
-      "prompt": "Implement an efficient sorting algorithm for large datasets",
-      "expected_patterns": ["quicksort", "mergesort", "heapsort", "O(n log n)"],
-      "time_limit_ms": 1000,
-      "difficulty": "hard"
+      "difficulty": "medium",
+      "prompt": "Write a generator function to process a large file line by line without loading it entirely into memory",
+      "expected_patterns": ["yield", "generator", "readline", "for line in"],
+      "forbidden_patterns": ["readlines", "read()", "splitlines"],
+      "time_limit_ms": 2000,
+      "tags": ["generators", "memory_efficiency", "streaming"]
     },
     {
       "id": "EFF007",
-      "name": "Binary Search Implementation",
+      "name": "Set Operations Optimization",
       "category": "efficiency",
-      "prompt": "Implement binary search for a sorted list",
-      "expected_patterns": ["binary", "mid", "left", "right", "O(log n)"],
-      "time_limit_ms": 200,
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Optimize finding common elements between two large lists using appropriate data structures",
+      "expected_patterns": ["set", "intersection", "&", "set()"],
+      "time_limit_ms": 2000,
+      "tags": ["set_operations", "hash_set", "intersection"]
     },
     {
       "id": "EFF008",
-      "name": "Memory-Efficient Data Structure",
+      "name": "Database Query Optimization",
       "category": "efficiency",
-      "prompt": "Create a memory-efficient data structure for storing millions of integers",
-      "expected_patterns": ["array", "numpy", "struct", "bytearray", "generator"],
-      "difficulty": "hard"
+      "difficulty": "hard",
+      "prompt": "Write an efficient database query function that uses batching and connection pooling for bulk operations",
+      "expected_patterns": ["batch", "executemany", "pool", "commit", "transaction"],
+      "time_limit_ms": 5000,
+      "tags": ["database", "batching", "connection_pool"]
     },
     {
       "id": "EFF009",
-      "name": "Parallel Processing",
+      "name": "Caching with LRU",
       "category": "efficiency",
-      "prompt": "Implement parallel processing for CPU-bound tasks",
-      "expected_patterns": ["multiprocessing", "Pool", "concurrent.futures", "parallel"],
-      "time_limit_ms": 2000,
-      "difficulty": "hard"
+      "difficulty": "medium",
+      "prompt": "Implement an LRU (Least Recently Used) cache with O(1) get and put operations",
+      "expected_patterns": ["OrderedDict", "lru_cache", "deque", "hashmap", "linked list"],
+      "time_limit_ms": 3000,
+      "tags": ["lru_cache", "caching", "o_1"]
     },
     {
       "id": "EFF010",
-      "name": "Database Query Optimization",
+      "name": "Async Concurrent Requests",
       "category": "efficiency",
-      "prompt": "Optimize a database query with proper indexing hints",
-      "expected_patterns": ["index", "EXPLAIN", "JOIN", "WHERE", "LIMIT"],
-      "difficulty": "hard"
+      "difficulty": "hard",
+      "prompt": "Write an async function to make concurrent HTTP requests with proper rate limiting and error handling",
+      "expected_patterns": ["async", "await", "aiohttp", "asyncio", "gather", "semaphore"],
+      "time_limit_ms": 10000,
+      "tags": ["asyncio", "concurrency", "http_requests"]
     },
     {
       "id": "EDGE001",
       "name": "Empty Input Handling",
       "category": "edge_cases",
-      "prompt": "Write a function to find the maximum value in a list, handling empty lists",
+      "difficulty": "easy",
+      "prompt": "Write a function to find the maximum value in a list that handles empty lists gracefully",
+      "expected_patterns": ["if not", "len(", "is None", "raise", "return None"],
+      "time_limit_ms": 1000,
       "test_inputs": [[], [1], [1, 2, 3], [-1, -2, -3], [0]],
       "expected_outputs": [null, 1, 3, -1, 0],
-      "difficulty": "easy"
+      "tags": ["empty_input", "null_handling", "validation"]
     },
     {
       "id": "EDGE002",
-      "name": "Null/None Handling",
+      "name": "Division by Zero",
       "category": "edge_cases",
-      "prompt": "Create a function that safely handles None/null inputs",
-      "test_inputs": [null, "", [], {}, 0],
-      "difficulty": "easy"
+      "difficulty": "easy",
+      "prompt": "Create a safe division function that handles division by zero and other edge cases",
+      "expected_patterns": ["try", "except", "ZeroDivisionError", "if divisor", "is None"],
+      "time_limit_ms": 1000,
+      "test_inputs": [[10, 2], [10, 0], [0, 10], [10, null], [-5, 2]],
+      "tags": ["division_by_zero", "exception_handling", "safety"]
     },
     {
       "id": "EDGE003",
-      "name": "String Edge Cases",
+      "name": "Unicode and Special Characters",
       "category": "edge_cases",
-      "prompt": "Write a function to reverse a string handling Unicode and empty strings",
-      "test_inputs": ["", "a", "hello", "こんにちは", "🚀🌟"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Write a function to reverse a string that handles Unicode characters, emojis, and special characters correctly",
+      "expected_patterns": ["encode", "decode", "utf-8", "unicode", "grapheme"],
+      "time_limit_ms": 2000,
+      "test_inputs": ["hello", "👋🌍", "café", "🎉🎊", "नमस्ते"],
+      "tags": ["unicode", "emoji", "internationalization"]
     },
     {
       "id": "EDGE004",
-      "name": "Integer Overflow Handling",
+      "name": "Very Large Numbers",
       "category": "edge_cases",
-      "prompt": "Create a function to safely add large numbers with overflow detection",
-      "test_inputs": [[9223372036854775807, 1], [0, 0], [-1, 1]],
-      "difficulty": "hard"
+      "difficulty": "medium",
+      "prompt": "Implement factorial calculation that handles very large numbers without overflow",
+      "expected_patterns": ["Decimal", "math.factorial", "big", "int", "overflow"],
+      "time_limit_ms": 3000,
+      "test_inputs": [5, 20, 100, 1000],
+      "tags": ["large_numbers", "factorial", "precision"]
     },
     {
       "id": "EDGE005",
-      "name": "Division by Zero",
+      "name": "Circular Reference Detection",
       "category": "edge_cases",
-      "prompt": "Implement safe division with proper error handling",
-      "test_inputs": [[10, 2], [10, 0], [0, 10], [0, 0]],
-      "difficulty": "easy"
+      "difficulty": "hard",
+      "prompt": "Write a function to deep copy a nested dictionary that detects and handles circular references",
+      "expected_patterns": ["visited", "seen", "id(", "is", "circular", "reference"],
+      "time_limit_ms": 3000,
+      "tags": ["circular_reference", "deep_copy", "graph_traversal"]
     },
     {
       "id": "EDGE006",
-      "name": "Nested Structure Parsing",
+      "name": "Null and Undefined Handling",
       "category": "edge_cases",
-      "prompt": "Parse deeply nested JSON structures safely",
-      "test_inputs": ["{}", "{\"a\":{\"b\":{\"c\":{\"d\":1}}}}", "{\"a\":null}"],
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Create a function that safely accesses nested dictionary keys, returning None for missing keys",
+      "expected_patterns": ["get", "try", "except", "KeyError", "in", "dict.get"],
+      "time_limit_ms": 1000,
+      "test_inputs": [{"a": {"b": 1}}, {"a": {}}, {}, null],
+      "tags": ["null_safety", "dictionary", "safe_access"]
     },
     {
       "id": "EDGE007",
-      "name": "Timezone Handling",
+      "name": "Date/Time Edge Cases",
       "category": "edge_cases",
-      "prompt": "Create a function to convert timestamps between timezones",
-      "expected_patterns": ["pytz", "timezone", "utc", "astimezone", "datetime"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Write a function to parse dates that handles leap years, timezone changes, and invalid dates",
+      "expected_patterns": ["datetime", "try", "except", "ValueError", "leap", "timezone"],
+      "time_limit_ms": 2000,
+      "test_inputs": ["2024-02-29", "2023-02-29", "2024-13-01", "2024-01-32"],
+      "tags": ["datetime", "leap_year", "timezone", "parsing"]
     },
     {
       "id": "EDGE008",
-      "name": "Circular Reference Detection",
+      "name": "Floating Point Precision",
       "category": "edge_cases",
-      "prompt": "Detect circular references in a nested data structure",
-      "expected_patterns": ["visited", "set", "cycle", "recursion", "id()"],
-      "difficulty": "hard"
+      "difficulty": "medium",
+      "prompt": "Implement a function to compare floating point numbers with proper precision handling",
+      "expected_patterns": ["abs", "epsilon", "math.isclose", "decimal", "tolerance"],
+      "time_limit_ms": 1000,
+      "test_inputs": [[0.30000000000000004, 0.3], [1.0, 1.0000001], [0.0, -0.0]],
+      "tags": ["floating_point", "precision", "comparison"]
     },
     {
       "id": "EDGE009",
-      "name": "Regex Edge Cases",
+      "name": "Concurrent Modification",
       "category": "edge_cases",
-      "prompt": "Create a regex pattern that handles edge cases in email validation",
-      "test_inputs": ["test@example.com", "", "invalid", "a@b.c", "test+tag@example.co.uk"],
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Write a thread-safe function to remove items from a list while iterating",
+      "expected_patterns": ["threading.Lock", "mutex", "lock", "thread-safe", "copy"],
+      "time_limit_ms": 3000,
+      "tags": ["concurrency", "thread_safety", "iteration"]
     },
     {
       "id": "EDGE010",
-      "name": "Encoding Handling",
+      "name": "Memory Exhaustion Prevention",
       "category": "edge_cases",
-      "prompt": "Handle different character encodings when reading files",
-      "expected_patterns": ["utf-8", "encoding", "decode", "encode", "errors"],
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Implement a function to process large data streams with memory usage limits and backpressure",
+      "expected_patterns": ["yield", "generator", "memory", "limit", "chunk", "batch"],
+      "time_limit_ms": 5000,
+      "tags": ["memory_management", "streaming", "backpressure"]
     },
     {
       "id": "GEN001",
       "name": "REST API Endpoint",
       "category": "code_generation",
-      "prompt": "Create a REST API endpoint for CRUD operations on users",
-      "expected_patterns": ["GET", "POST", "PUT", "DELETE", "jsonify", "request"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Generate a Flask REST API endpoint for CRUD operations on a 'Product' resource with validation",
+      "expected_patterns": ["@app.route", "flask", "jsonify", "request", "GET", "POST", "PUT", "DELETE"],
+      "time_limit_ms": 5000,
+      "tags": ["flask", "rest_api", "crud", "validation"]
     },
     {
       "id": "GEN002",
-      "name": "Database Model",
+      "name": "Data Class with Validation",
       "category": "code_generation",
-      "prompt": "Create a database model for an e-commerce product with relationships",
-      "expected_patterns": ["class", "ForeignKey", "relationship", "Column", "Integer"],
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Create a Python dataclass for a User with email validation and type hints",
+      "expected_patterns": ["@dataclass", "pydantic", "BaseModel", "typing", "validate", "field"],
+      "time_limit_ms": 3000,
+      "tags": ["dataclass", "validation", "type_hints"]
     },
     {
       "id": "GEN003",
-      "name": "CLI Tool",
+      "name": "Context Manager",
       "category": "code_generation",
-      "prompt": "Create a command-line tool for file processing with argparse",
-      "expected_patterns": ["argparse", "ArgumentParser", "add_argument", "parse_args"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Implement a custom context manager for database connections with automatic cleanup",
+      "expected_patterns": ["__enter__", "__exit__", "contextmanager", "yield", "close"],
+      "time_limit_ms": 3000,
+      "tags": ["context_manager", "database", "resource_management"]
     },
     {
       "id": "GEN004",
-      "name": "Unit Tests",
+      "name": "Decorator with Arguments",
       "category": "code_generation",
-      "prompt": "Write comprehensive unit tests for a calculator class",
-      "expected_patterns": ["unittest", "TestCase", "assertEqual", "setUp", "test_"],
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Write a Python decorator that accepts arguments for retry logic with exponential backoff",
+      "expected_patterns": ["decorator", "wrapper", "functools.wraps", "retry", "sleep", "exponential"],
+      "time_limit_ms": 5000,
+      "tags": ["decorator", "retry", "exponential_backoff"]
     },
     {
       "id": "GEN005",
-      "name": "Data Pipeline",
+      "name": "Unit Test Generation",
       "category": "code_generation",
-      "prompt": "Create a data pipeline for ETL processing",
-      "expected_patterns": ["extract", "transform", "load", "pipeline", "steps"],
-      "difficulty": "hard"
+      "difficulty": "medium",
+      "prompt": "Generate comprehensive unit tests for a calculator function using pytest",
+      "expected_patterns": ["def test_", "pytest", "assert", "parametrize", "fixture", "unittest"],
+      "time_limit_ms": 5000,
+      "tags": ["testing", "pytest", "unit_tests"]
     },
     {
       "id": "GEN006",
-      "name": "Web Scraper",
+      "name": "CSV Parser",
       "category": "code_generation",
-      "prompt": "Create an ethical web scraper with rate limiting and error handling",
-      "expected_patterns": ["requests", "BeautifulSoup", "rate limit", "timeout", "headers"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Create a robust CSV parser that handles quoted fields, newlines, and malformed data",
+      "expected_patterns": ["csv", "csv.reader", "StringIO", "Dialect", "quotechar"],
+      "time_limit_ms": 3000,
+      "tags": ["csv", "parsing", "data_processing"]
     },
     {
       "id": "GEN007",
-      "name": "API Client",
+      "name": "Configuration Loader",
       "category": "code_generation",
-      "prompt": "Create a Python client for a REST API with authentication",
-      "expected_patterns": ["requests", "Session", "auth", "headers", "token"],
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Write a configuration loader that supports JSON, YAML, and environment variables with precedence",
+      "expected_patterns": ["json", "yaml", "os.environ", "config", "load", "merge"],
+      "time_limit_ms": 3000,
+      "tags": ["configuration", "json", "yaml", "env_vars"]
     },
     {
       "id": "GEN008",
-      "name": "Configuration Handler",
+      "name": "Logger Setup",
       "category": "code_generation",
-      "prompt": "Create a configuration handler supporting multiple formats (YAML, JSON, ENV)",
-      "expected_patterns": ["yaml", "json", "dotenv", "config", "load"],
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Create a properly configured logger with rotation, formatting, and multiple handlers",
+      "expected_patterns": ["logging", "RotatingFileHandler", "StreamHandler", "Formatter", "getLogger"],
+      "time_limit_ms": 3000,
+      "tags": ["logging", "configuration", "rotation"]
     },
     {
       "id": "GEN009",
-      "name": "Logging System",
+      "name": "Singleton Pattern",
       "category": "code_generation",
-      "prompt": "Implement a configurable logging system with multiple handlers",
-      "expected_patterns": ["logging", "Logger", "Handler", "Formatter", "level"],
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Implement a thread-safe Singleton pattern in Python",
+      "expected_patterns": ["__new__", "_instance", "threading", "Lock", "singleton"],
+      "time_limit_ms": 2000,
+      "tags": ["singleton", "design_pattern", "thread_safe"]
     },
     {
       "id": "GEN010",
-      "name": "Task Queue",
+      "name": "WebSocket Handler",
       "category": "code_generation",
-      "prompt": "Implement a simple task queue with priority support",
-      "expected_patterns": ["Queue", "PriorityQueue", "worker", "enqueue", "dequeue"],
-      "difficulty": "hard"
+      "difficulty": "hard",
+      "prompt": "Create a WebSocket handler with connection management, heartbeat, and message broadcasting",
+      "expected_patterns": ["websocket", "async", "connection", "heartbeat", "broadcast", "on_message"],
+      "time_limit_ms": 5000,
+      "tags": ["websocket", "async", "real_time", "broadcasting"]
     },
     {
       "id": "REF001",
-      "name": "Extract Method",
+      "name": "Refactor Callbacks to Async",
       "category": "refactoring",
-      "prompt": "Refactor a long function by extracting reusable components",
-      "input_code": "def process_data(data):\n    # 50 lines of mixed logic\n    pass",
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Refactor callback-based asynchronous code to use modern async/await syntax",
+      "expected_patterns": ["async", "await", "asyncio", "async def"],
+      "forbidden_patterns": ["callback", "def.*callback", "lambda.*callback"],
+      "time_limit_ms": 5000,
+      "tags": ["refactoring", "async_await", "modernization"]
     },
     {
       "id": "REF002",
-      "name": "Replace Magic Numbers",
+      "name": "List Comprehension Optimization",
       "category": "refactoring",
-      "prompt": "Replace magic numbers with named constants",
-      "input_code": "result = value * 0.0825 + 2.50",
-      "difficulty": "easy"
+      "difficulty": "easy",
+      "prompt": "Refactor nested loops into efficient list/dict comprehensions",
+      "expected_patterns": ["[for", "{for", "comprehension"],
+      "forbidden_patterns": ["for.*:\n.*for.*:\n.*append"],
+      "time_limit_ms": 2000,
+      "tags": ["refactoring", "comprehension", "optimization"]
     },
     {
       "id": "REF003",
-      "name": "Simplify Conditionals",
+      "name": "Extract Method",
       "category": "refactoring",
-      "prompt": "Simplify nested if-else statements using guard clauses",
-      "input_code": "def process(value):\n    if value is not None:\n        if value > 0:\n            if value < 100:\n                return True\n    return False",
-      "difficulty": "easy"
+      "difficulty": "medium",
+      "prompt": "Refactor a long function by extracting logical sections into well-named helper methods",
+      "expected_patterns": ["def ", "extract", "helper", "method"],
+      "time_limit_ms": 3000,
+      "tags": ["refactoring", "extract_method", "clean_code"]
     },
     {
       "id": "REF004",
-      "name": "Add Type Hints",
+      "name": "Remove Magic Numbers",
       "category": "refactoring",
-      "prompt": "Add Python type hints to a function without them",
-      "input_code": "def calculate(a, b, c=0):\n    return a + b + c",
-      "difficulty": "easy"
+      "difficulty": "easy",
+      "prompt": "Refactor code to replace magic numbers with named constants",
+      "expected_patterns": ["CONSTANT", "MAX_", "MIN_", "DEFAULT_", "= "],
+      "forbidden_patterns": ["if.*== [0-9]", "return [0-9]"],
+      "time_limit_ms": 2000,
+      "tags": ["refactoring", "constants", "readability"]
     },
     {
       "id": "REF005",
-      "name": "Convert to Async",
+      "name": "Type Hint Addition",
       "category": "refactoring",
-      "prompt": "Convert synchronous code to async/await pattern",
-      "input_code": "def fetch_data(url):\n    response = requests.get(url)\n    return response.json()",
-      "difficulty": "medium"
+      "difficulty": "easy",
+      "prompt": "Add comprehensive type hints to existing Python code for better IDE support",
+      "expected_patterns": [": ", "-> ", "from typing", "List[", "Dict[", "Optional", "Union"],
+      "time_limit_ms": 3000,
+      "tags": ["refactoring", "type_hints", "mypy"]
+    },
+    {
+      "id": "REF006",
+      "name": "Error Handling Improvement",
+      "category": "refactoring",
+      "difficulty": "medium",
+      "prompt": "Refactor code to use specific exception types instead of bare except clauses",
+      "expected_patterns": ["except ValueError", "except KeyError", "except SpecificError"],
+      "forbidden_patterns": ["except:", "except Exception:"],
+      "time_limit_ms": 3000,
+      "tags": ["refactoring", "exception_handling", "best_practices"]
+    },
+    {
+      "id": "REF007",
+      "name": "String Format Modernization",
+      "category": "refactoring",
+      "difficulty": "easy",
+      "prompt": "Refactor string formatting from % and .format() to f-strings",
+      "expected_patterns": ["f\"", "f'"],
+      "forbidden_patterns": ["\" % ", "\".format("],
+      "time_limit_ms": 2000,
+      "tags": ["refactoring", "f_strings", "modernization"]
+    },
+    {
+      "id": "REF008",
+      "name": "Class Extraction",
+      "category": "refactoring",
+      "difficulty": "hard",
+      "prompt": "Refactor complex data structures into proper classes with encapsulation",
+      "expected_patterns": ["class ", "__init__", "self.", "@property"],
+      "time_limit_ms": 5000,
+      "tags": ["refactoring", "oop", "encapsulation"]
+    },
+    {
+      "id": "REF009",
+      "name": "Import Organization",
+      "category": "refactoring",
+      "difficulty": "easy",
+      "prompt": "Organize imports following PEP 8 (stdlib, third-party, local) and remove unused",
+      "expected_patterns": ["import ", "from ", "isort", "sorted imports"],
+      "time_limit_ms": 2000,
+      "tags": ["refactoring", "imports", "pep8"]
+    },
+    {
+      "id": "REF010",
+      "name": "Docstring Addition",
+      "category": "refactoring",
+      "difficulty": "easy",
+      "prompt": "Add comprehensive Google-style docstrings to all functions",
+      "expected_patterns": ["\"\"\"", "Args:", "Returns:", "Raises:", "Examples:"],
+      "time_limit_ms": 3000,
+      "tags": ["refactoring", "documentation", "docstrings"]
     },
     {
       "id": "DBG001",
-      "name": "Fix Off-By-One Error",
+      "name": "Fix Off-by-One Error",
       "category": "debugging",
-      "prompt": "Find and fix the off-by-one error in this loop",
-      "input_code": "for i in range(len(items)):\n    print(items[i + 1])",
-      "difficulty": "easy"
+      "difficulty": "easy",
+      "prompt": "Debug and fix an off-by-one error in a loop that processes array elements",
+      "expected_patterns": ["range(", "len(", "-1", "+1", "< len"],
+      "time_limit_ms": 2000,
+      "tags": ["debugging", "off_by_one", "indexing"]
     },
     {
       "id": "DBG002",
-      "name": "Fix Memory Leak",
+      "name": "Fix Race Condition",
       "category": "debugging",
-      "prompt": "Identify and fix the memory leak in this code",
-      "input_code": "cache = []\ndef add_to_cache(item):\n    cache.append(item)\n    return cache",
-      "difficulty": "medium"
+      "difficulty": "hard",
+      "prompt": "Debug and fix a race condition in multi-threaded code accessing shared resources",
+      "expected_patterns": ["Lock", "acquire", "release", "with", "threading"],
+      "time_limit_ms": 5000,
+      "tags": ["debugging", "race_condition", "threading"]
     },
     {
       "id": "DBG003",
-      "name": "Fix Race Condition",
+      "name": "Fix Memory Leak",
       "category": "debugging",
-      "prompt": "Fix the race condition in this threaded code",
-      "input_code": "counter = 0\ndef increment():\n    global counter\n    temp = counter\n    counter = temp + 1",
-      "difficulty": "hard"
+      "difficulty": "hard",
+      "prompt": "Debug and fix a memory leak caused by circular references or unclosed resources",
+      "expected_patterns": ["weakref", "close", "del ", "gc.collect", "context manager"],
+      "time_limit_ms": 5000,
+      "tags": ["debugging", "memory_leak", "garbage_collection"]
     },
     {
       "id": "DBG004",
-      "name": "Fix Resource Leak",
+      "name": "Fix Infinite Loop",
       "category": "debugging",
-      "prompt": "Fix the resource leak in this file handling code",
-      "input_code": "def read_file(path):\n    f = open(path)\n    return f.read()",
-      "difficulty": "easy"
+      "difficulty": "medium",
+      "prompt": "Debug and fix an infinite loop condition in a while loop",
+      "expected_patterns": ["break", "condition", "increment", "update"],
+      "time_limit_ms": 3000,
+      "tags": ["debugging", "infinite_loop", "termination"]
     },
     {
       "id": "DBG005",
-      "name": "Fix Recursion Depth",
+      "name": "Fix Scope Issue",
       "category": "debugging",
-      "prompt": "Fix the potential stack overflow in this recursive function",
-      "input_code": "def factorial(n):\n    return n * factorial(n - 1)",
-      "difficulty": "medium"
+      "difficulty": "medium",
+      "prompt": "Debug and fix a variable scope issue in nested functions/closures",
+      "expected_patterns": ["nonlocal", "global", "closure", "lambda"],
+      "time_limit_ms": 3000,
+      "tags": ["debugging", "scope", "closures"]
     }
   ]
 }
