@@ -66,6 +66,7 @@ jobs:
         run: mkdir -p benchmark_results
 
       - name: Run benchmark suite
+        id: benchmark_run
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
@@ -89,7 +90,18 @@ jobs:
           fi
           
           echo "Running: $CMD"
-          eval $CMD || echo "Benchmark completed with some failures"
+          eval "$CMD"
+          BENCHMARK_EXIT=$?
+          
+          # Output the exit code for downstream steps
+          echo "benchmark_exit=$BENCHMARK_EXIT" >> $GITHUB_OUTPUT
+          
+          # Report failure but don't fail the step if benchmarks partially fail
+          if [ $BENCHMARK_EXIT -ne 0 ]; then
+            echo "⚠️ Benchmark completed with some failures (exit code $BENCHMARK_EXIT)"
+          fi
+          
+          exit 0
 
       - name: Generate benchmark summary
         if: always()
@@ -107,15 +119,6 @@ jobs:
               summary = data.get('summary', {})
               print('## 📊 Benchmark Results')
               print('')
- fix/coderabbit-issues-resolved
-              print(f'| Metric | Value |')
-              print(f'|--------|-------|')
-              print(f\"| Total Tests | {summary.get('total_tests', 0)} |\")
-              print(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\")
-              print(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\")
-              print(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\")
-              print(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\")
-
               print('| Metric | Value |')
               print('|--------|-------|')
               print(f"| Total Tests | {summary.get('total_tests', 0)} |")
@@ -123,27 +126,18 @@ jobs:
               print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
               print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
               print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
- merge/develop-to-main
 
-              # Write to GITHUB_STEP_SUMMARY
+              # Write to GITHUB_STEP_SUMMARY (append mode to preserve prior summaries)
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-              with open(summary_file, 'w') as f:
+              with open(summary_file, 'a') as f:
                   f.write('## 📊 Benchmark Results\n\n')
                   f.write('| Metric | Value |\n')
                   f.write('|--------|-------|\n')
- fix/coderabbit-issues-resolved
-                  f.write(f\"| Total Tests | {summary.get('total_tests', 0)} |\n\")
-                  f.write(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\n\")
-                  f.write(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\n\")
-                  f.write(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n\")
-                  f.write(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n\")
-
                   f.write(f"| Total Tests | {summary.get('total_tests', 0)} |\n")
                   f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
                   f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
                   f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
                   f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
- merge/develop-to-main
 
               # Category scores
               categories = data.get('category_scores', {})
@@ -152,13 +146,8 @@ jobs:
                   print('### Category Scores')
                   print('')
                   for cat, score in categories.items():
- fix/coderabbit-issues-resolved
-                      print(f'- **{cat}**: {score:.1f}/10')
-          "
-
                       print(f"- **{cat}**: {score:.1f}/10")
           PYEOF
- merge/develop-to-main
 
       - name: Upload benchmark results
         if: always()
@@ -235,7 +224,6 @@ jobs:
         run: |
           python -c "
           import json
-          import os
           from pathlib import Path
 
           # Load current results
@@ -255,11 +243,12 @@ jobs:
           print(f'overall_score={overall_score}')
 
           # Fail if score drops below threshold
-          if overall_score < 70:
-              print('::warning::Benchmark score below 70% threshold')
-          elif overall_score < 50:
+          # Check < 50 FIRST (more critical), then < 70
+          if overall_score < 50:
               print('::error::Benchmark score critically low')
               exit(1)
+          elif overall_score < 70:
+              print('::warning::Benchmark score below 70% threshold')
           "
 
       - name: Comment on PR
