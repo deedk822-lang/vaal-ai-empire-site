@@ -42,8 +42,10 @@ from enum import Enum
 # Import base executor
 try:
     from coding_agent_executor import CodingAgentExecutor, CodeExecutionResult, AgentResponse
+    _HAS_BASE_CLASS = True
 except ImportError:
     # Fallback for standalone execution
+    _HAS_BASE_CLASS = False
     CodingAgentExecutor = None
     CodeExecutionResult = None
     AgentResponse = None
@@ -134,7 +136,7 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
     ):
         """Initialize the BenchmarkExecutor."""
         # Initialize parent class if available
-        if CodingAgentExecutor is not None:
+        if _HAS_BASE_CLASS and CodingAgentExecutor is not None:
             super().__init__(
                 api_key=api_key,
                 enable_code_execution=enable_code_execution,
