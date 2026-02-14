@@ -88,6 +88,7 @@ jobs:
         run: |
           python -c "
           import json
+          import os
           from pathlib import Path
 
           report_path = Path('benchmark_results/report.json')
@@ -100,17 +101,18 @@ jobs:
               print('')
               print(f'| Metric | Value |')
               print(f'|--------|-------|')
-              print(f"| Total Tests | {summary.get('total_tests', 0)} |")
-              print(f"| Passed | {summary.get('passed_tests', 0)} ✅ |")
-              print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
-              print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
-              print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
+              print(f\"| Total Tests | {summary.get('total_tests', 0)} |\")
+              print(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\")
+              print(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\")
+              print(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\")
+              print(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\")
 
               # Write to GITHUB_STEP_SUMMARY
-              with open(os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout'), 'w') as f:
+              summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
+              with open(summary_file, 'w') as f:
                   f.write('## 📊 Benchmark Results\n\n')
-                  f.write(f'| Metric | Value |\n')
-                  f.write(f'|--------|-------|\n')
+                  f.write('| Metric | Value |\n')
+                  f.write('|--------|-------|\n')
                   f.write(f\"| Total Tests | {summary.get('total_tests', 0)} |\n\")
                   f.write(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\n\")
                   f.write(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\n\")
@@ -124,7 +126,7 @@ jobs:
                   print('### Category Scores')
                   print('')
                   for cat, score in categories.items():
-                      print(f"- **{cat}**: {score:.1f}/10")
+                      print(f'- **{cat}**: {score:.1f}/10')
           "
 
       - name: Upload benchmark results
@@ -202,6 +204,7 @@ jobs:
         run: |
           python -c "
           import json
+          import os
           from pathlib import Path
 
           # Load current results
