@@ -5,3 +5,6 @@ coverage/
 __pycache__/
 .pytest_cache/
 .eslintcache
+
+# Kimi workspace
+.kimi/
