@@ -44,7 +44,9 @@ try:
     from coding_agent_executor import CodingAgentExecutor, CodeExecutionResult, AgentResponse
 except ImportError:
     # Fallback for standalone execution
-    pass
+    CodingAgentExecutor = None
+    CodeExecutionResult = None
+    AgentResponse = None
 
 
 class BenchmarkCategory(Enum):
@@ -91,7 +93,7 @@ class BenchmarkReport:
     overall_score: float = 0.0
 
 
-class BenchmarkExecutor(CodingAgentExecutor if 'CodingAgentExecutor' in dir() else object):
+class BenchmarkExecutor(CodingAgentExecutor if CodingAgentExecutor is not None else object):
     """
     Professional benchmark suite extending CodingAgentExecutor.
     
@@ -132,7 +134,7 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
     ):
         """Initialize the BenchmarkExecutor."""
         # Initialize parent class if available
-        if CodingAgentExecutor in dir():
+        if CodingAgentExecutor is not None:
             super().__init__(
                 api_key=api_key,
                 enable_code_execution=enable_code_execution,
