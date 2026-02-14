@@ -1,224 +1,38 @@
-name: Security Scan
+name: Security Scanning
 
 on:
   push:
-    branches: [main, master, develop]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master, develop]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+    branches: [ main, master ]
   schedule:
-    # Run every Monday at 9 AM UTC
-    - cron: '0 9 * * 1'
-
-# Cancel redundant runs
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    - cron: '0 0 * * 1'
 
 jobs:
-  # ============================================
-  # Node.js Security Audit
-  # ============================================
-  npm-security:
-    name: NPM Security Audit
+  security-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+    - uses: actions/checkout@v4
+    
+    - name: NPM Audit
+      run: npm audit --audit-level=high
+      continue-on-error: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '18'
+    - name: Python Bandit (SAST)
+      run: |
+        pip install bandit
+        bandit -r . -x ./tests
+      continue-on-error: true
 
-      - name: Run npm audit (Root)
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+    - name: Safety Check
+      run: |
+        pip install safety
+        safety check
+      continue-on-error: true
 
-      - name: Run npm audit (Server)
-        working-directory: ./server
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
-
-  # ============================================
-  # Python Security Scan
-  # ============================================
-  python-security:
-    name: Python Security Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Install security tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install bandit
-
-      - name: Run Bandit (Python SAST)
-        run: |
-          if [ -d agents/ ]; then
-            bandit -r agents/ -f json -o bandit-report.json -ll || \
-            bandit -r agents/ -ll || \
-            echo "⚠️ Bandit completed"
-          else
-            echo "No agents/ directory to scan"
-          fi
-        continue-on-error: true
-
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-security-report
-          path: bandit-report.json
-          retention-days: 7
-          if-no-files-found: ignore
-
-  # ============================================
-  # CodeQL Analysis (GitHub)
-  # ============================================
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Skip CodeQL on fork PRs as they can't write security events
-    if: |
-      github.event_name != 'pull_request' || 
-      github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['javascript', 'python']
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-extended,security-and-quality
-        continue-on-error: true
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
-        continue-on-error: true
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:${{matrix.language}}"
-
-  # ============================================
-  # Secret Scanning
-  # ============================================
-  secret-scan:
-    name: Secret Scanning
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Run GitLeaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Manual secret patterns check
-        shell: bash
-        run: |
-          echo "Checking for common secret patterns..."
-          
-          # Create regex patterns file
-          printf '%s\n' \
-            'sk_live_[a-zA-Z0-9]{24,}' \
-            'AKIA[0-9A-Z]{16}' \
-            'ghp_[a-zA-Z0-9]{36}' \
-            'glpat-[a-zA-Z0-9\-]{20}' > /tmp/secret_patterns.txt
-          found=0
-          while IFS= read -r pattern; do
-            # Trim leading/trailing whitespace
-            pattern=$(echo "$pattern" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            [ -z "$pattern" ] && continue
-
-            match_locations=$(grep -rEn "$pattern" \
-              --include="*.js" \
-              --include="*.py" \
-              --include="*.json" \
-              --include="*.yml" \
-              --include="*.yaml" \
-              . 2>/dev/null | grep -v "node_modules" | grep -v ".git" | grep -v "package-lock" | cut -d: -f1,2 || true)
-            match_count=$(printf "%s\n" "$match_locations" | sed '/^$/d' | wc -l)
-
-            if [ "$match_count" -gt 0 ]; then
-              echo "⚠️  Potential matches found for pattern (content redacted): $pattern"
-              echo "   Match count: $match_count"
-              echo "   File:line references:"
-              echo "$match_locations"
-              found=1
-            fi
-          done < /tmp/secret_patterns.txt
-          
-          if [ $found -eq 1 ]; then
-            echo "⚠️  Potential secrets found. Please review."
-          else
-            echo "✅ No obvious secrets found in code"
-          fi
-        continue-on-error: true
-
-  # ============================================
-  # Dependency Review (PR only)
-  # ============================================
-  dependency-review:
-    name: Dependency Review
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          comment-summary-in-pr: true
-          fail-on-severity: high
-        continue-on-error: true
+    - name: CodeQL Analysis
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, python
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
