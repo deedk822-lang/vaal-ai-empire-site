@@ -1,7 +1,160 @@
+# ============================================
+# Dependencies
+# ============================================
 node_modules/
-coverage/
-.env
+server/node_modules/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# NOTE: package-lock.json and yarn.lock are committed for reproducible builds
+
+
+# ============================================
+# Python
+# ============================================
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+# Python build artifacts (narrowed from broad lib/ pattern)
+build/lib/
+*.egg-info/
+.Python
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ============================================
+# Environment Variables
+# ============================================
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+.venv
+venv/
+ENV/
+env/
+
+# ============================================
+# IDE / Editors
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================================
+# Build / Distribution
+# ============================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
 .eslintcache
+.stylelintcache
+
+# ============================================
+# Testing
+# ============================================
+coverage/
+.nyc_output/
+*.lcov
+
+# ============================================
+# Data / Uploads (large files)
+# ============================================
+uploads/
+temp/
+tmp/
+*.tmp
+*.temp
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# Logs
+# ============================================
+logs/
+*.log
+log/
+
+# ============================================
+# Docker
+# ============================================
+# Only ignore transient/dev Docker files
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+docker-compose-local.yml
+*-local.yml
+.env
+.env.*
+# NOTE: Dockerfile and main docker-compose.yml are committed
+
+# ============================================
+# GitHub Actions (local testing)
+# ============================================
+.actrc
+
+# ============================================
+# Secrets (extra protection)
+# ============================================
+*.pem
+*.key
+*.crt
+secrets/
+.secret
+
+# CodeRabbit review exports (auto-generated for Kimi)
+
+# Allow CodeRabbit reviews (force-added by workflow)
+!.coderabbit-reviews.md
