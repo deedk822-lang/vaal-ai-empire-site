@@ -70,11 +70,18 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
         run: |
-          python agents/benchmark_executor.py \
-            --run-all \
-            --report \
-            --output benchmark_results/report.json \
-            ${{ github.event.inputs.category != 'all' && format('--category {0}', github.event.inputs.category) || '' }}
+          if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
+            python agents/benchmark_executor.py \
+              --run-all \
+              --report \
+              --output benchmark_results/report.json \
+              --category ${{ github.event.inputs.category }}
+          else
+            python agents/benchmark_executor.py \
+              --run-all \
+              --report \
+              --output benchmark_results/report.json
+          fi
 
       - name: Generate benchmark summary
         if: always()

@@ -44,7 +44,7 @@ try:
     from coding_agent_executor import CodingAgentExecutor, CodeExecutionResult, AgentResponse
     _HAS_BASE_CLASS = True
 except ImportError:
-    # Fallback for standalone execution - define placeholder classes
+    # Fallback for standalone execution
     _HAS_BASE_CLASS = False
     CodingAgentExecutor = None
     CodeExecutionResult = None
@@ -95,7 +95,7 @@ class BenchmarkReport:
     overall_score: float = 0.0
 
 
-class BenchmarkExecutor:
+class BenchmarkExecutor(CodingAgentExecutor if CodingAgentExecutor is not None else object):
     """
     Professional benchmark suite extending CodingAgentExecutor.
     
@@ -137,9 +137,7 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
         """Initialize the BenchmarkExecutor."""
         # Initialize parent class if available
         if _HAS_BASE_CLASS and CodingAgentExecutor is not None:
-            # Initialize as subclass
-            CodingAgentExecutor.__init__(
-                self,
+            super().__init__(
                 api_key=api_key,
                 enable_code_execution=enable_code_execution,
                 execution_timeout=execution_timeout
