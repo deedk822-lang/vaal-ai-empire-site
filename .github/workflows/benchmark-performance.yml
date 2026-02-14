@@ -2,9 +2,9 @@ name: Benchmark Performance
 
 on:
   push:
-    branches: [main, develop]
+    branches: [merge/develop-to-main]
   pull_request:
-    branches: [main]
+    branches: [merge/develop-to-main]
   workflow_dispatch:
     inputs:
       category:
@@ -94,7 +94,7 @@ jobs:
       - name: Generate benchmark summary
         if: always()
         run: |
-          python -c "
+          python3 << 'PYEOF'
           import json
           import os
           from pathlib import Path
@@ -107,6 +107,7 @@ jobs:
               summary = data.get('summary', {})
               print('## 📊 Benchmark Results')
               print('')
+ fix/coderabbit-issues-resolved
               print(f'| Metric | Value |')
               print(f'|--------|-------|')
               print(f\"| Total Tests | {summary.get('total_tests', 0)} |\")
@@ -115,17 +116,34 @@ jobs:
               print(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\")
               print(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\")
 
+              print('| Metric | Value |')
+              print('|--------|-------|')
+              print(f"| Total Tests | {summary.get('total_tests', 0)} |")
+              print(f"| Passed | {summary.get('passed_tests', 0)} ✅ |")
+              print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
+              print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
+              print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
+ merge/develop-to-main
+
               # Write to GITHUB_STEP_SUMMARY
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
               with open(summary_file, 'w') as f:
                   f.write('## 📊 Benchmark Results\n\n')
                   f.write('| Metric | Value |\n')
                   f.write('|--------|-------|\n')
+ fix/coderabbit-issues-resolved
                   f.write(f\"| Total Tests | {summary.get('total_tests', 0)} |\n\")
                   f.write(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\n\")
                   f.write(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\n\")
                   f.write(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n\")
                   f.write(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n\")
+
+                  f.write(f"| Total Tests | {summary.get('total_tests', 0)} |\n")
+                  f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
+                  f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
+                  f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
+                  f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
+ merge/develop-to-main
 
               # Category scores
               categories = data.get('category_scores', {})
@@ -134,8 +152,13 @@ jobs:
                   print('### Category Scores')
                   print('')
                   for cat, score in categories.items():
+ fix/coderabbit-issues-resolved
                       print(f'- **{cat}**: {score:.1f}/10')
           "
+
+                      print(f"- **{cat}**: {score:.1f}/10")
+          PYEOF
+ merge/develop-to-main
 
       - name: Upload benchmark results
         if: always()
@@ -253,17 +276,17 @@ jobs:
             }
 
             const summary = report.summary || {};
-            const body = `## 📊 Benchmark Results
+            const body = `## Benchmark Results
 
             | Metric | Value |
             |--------|-------|
             | Total Tests | ${summary.total_tests || 0} |
-            | Passed | ${summary.passed_tests || 0} ✅ |
-            | Failed | ${summary.failed_tests || 0} ❌ |
+            | Passed | ${summary.passed_tests || 0} |
+            | Failed | ${summary.failed_tests || 0} |
             | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
             | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
 
-            ${summary.overall_score >= 80 ? '✅ Benchmarks passing!' : '⚠️ Some benchmarks need attention'}`;
+            ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
 
             github.rest.issues.createComment({
               owner: context.repo.owner,

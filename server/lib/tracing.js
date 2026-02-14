@@ -9,9 +9,9 @@ class VaalTracer {
       projectName: config.projectName || 'vaal-ai-empire',
       environment: config.environment || 'production',
       enableMetrics: config.enableMetrics !== false,
-      ...config,
+      ...config
     };
-
+    
     this.traces = new Map();
     this.spans = new Map();
     this.metrics = [];
@@ -33,11 +33,11 @@ class VaalTracer {
       metadata: {
         ...metadata,
         project: this.config.projectName,
-        environment: this.config.environment,
+        environment: this.config.environment
       },
       spans: [],
       status: 'running',
-      error: null,
+      error: null
     };
 
     this.traces.set(traceId, trace);
@@ -66,7 +66,7 @@ class VaalTracer {
       this.recordMetric('trace_completed', {
         name: trace.name,
         duration: trace.duration,
-        status: trace.status,
+        status: trace.status
       });
     }
 
@@ -96,7 +96,7 @@ class VaalTracer {
       endTime: null,
       metadata,
       status: 'running',
-      error: null,
+      error: null
     };
 
     this.spans.set(spanId, span);
@@ -112,9 +112,7 @@ class VaalTracer {
    */
   endSpan(spanId, result = {}) {
     const span = this.spans.get(spanId);
-    if (!span) {
-      return;
-    }
+    if (!span) return;
 
     span.endTime = Date.now();
     span.duration = span.endTime - span.startTime;
@@ -132,7 +130,7 @@ class VaalTracer {
       timestamp: Date.now(),
       name,
       data,
-      project: this.config.projectName,
+      project: this.config.projectName
     };
 
     this.metrics.push(metric);
@@ -150,13 +148,11 @@ class VaalTracer {
    */
   getTrace(traceId) {
     const trace = this.traces.get(traceId);
-    if (!trace) {
-      return null;
-    }
+    if (!trace) return null;
 
     return {
       ...trace,
-      spans: trace.spans.map(spanId => this.spans.get(spanId)).filter(Boolean),
+      spans: trace.spans.map(spanId => this.spans.get(spanId)).filter(Boolean)
     };
   }
 
@@ -182,7 +178,7 @@ class VaalTracer {
 
     return traces.map(trace => ({
       ...trace,
-      spans: trace.spans.map(spanId => this.spans.get(spanId)).filter(Boolean),
+      spans: trace.spans.map(spanId => this.spans.get(spanId)).filter(Boolean)
     }));
   }
 
@@ -205,7 +201,7 @@ class VaalTracer {
     if (filters.limit) {
       metrics = metrics.slice(-filters.limit);
     }
-
+    
     return metrics;
   }
 
@@ -220,7 +216,7 @@ class VaalTracer {
       model: params.model,
       provider: params.provider,
       inputTokens: params.inputTokens,
-      prompt: params.prompt,
+      prompt: params.prompt
     });
 
     return spanId;
@@ -236,12 +232,12 @@ class VaalTracer {
       output: response.output,
       outputTokens: response.outputTokens,
       totalTokens: response.totalTokens,
-      cost: response.cost,
+      cost: response.cost
     });
 
     this.recordMetric('llm_call_completed', {
       outputTokens: response.outputTokens,
-      cost: response.cost,
+      cost: response.cost
     });
   }
 
@@ -266,12 +262,11 @@ class VaalTracer {
       totalTraces: traces.length,
       completedTraces: completedTraces.length,
       errorTraces: errorTraces.length,
-      averageDuration:
-        completedTraces.length > 0
-          ? completedTraces.reduce((sum, t) => sum + (t.duration || 0), 0) / completedTraces.length
-          : 0,
+      averageDuration: completedTraces.length > 0
+        ? completedTraces.reduce((sum, t) => sum + (t.duration || 0), 0) / completedTraces.length
+        : 0,
       totalSpans: this.spans.size,
-      totalMetrics: this.metrics.length,
+      totalMetrics: this.metrics.length
     };
   }
 
@@ -299,11 +294,11 @@ let globalTracer = null;
 
 module.exports = {
   VaalTracer,
-  getTracer: config => {
+  getTracer: (config) => {
     if (!globalTracer) {
       globalTracer = new VaalTracer(config);
     }
     return globalTracer;
   },
-  createTracer: config => new VaalTracer(config),
+  createTracer: (config) => new VaalTracer(config)
 };

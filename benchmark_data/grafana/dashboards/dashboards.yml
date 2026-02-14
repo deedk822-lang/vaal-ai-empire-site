@@ -1,14 +1,10 @@
-# Vaal AI Empire - Grafana Dashboard Provisioning
 apiVersion: 1
-
 providers:
-  - name: 'Vaal Benchmark'
+  - name: 'default'
     orgId: 1
-    folder: 'Benchmarks'
-    folderUid: 'benchmarks'
+    folder: ''
     type: file
     disableDeletion: false
-    updateIntervalSeconds: 30
-    allowUiUpdates: true
+    editable: true
     options:
-      path: /etc/grafana/provisioning/dashboards/json
+      path: /var/lib/grafana/dashboards

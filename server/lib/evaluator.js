@@ -21,7 +21,7 @@ class LLMEvaluator {
     const contextWords = new Set(contextText.toLowerCase().split(/\s+/));
 
     let supportedWords = 0;
-    const totalWords = outputWords.length;
+    let totalWords = outputWords.length;
 
     outputWords.forEach(word => {
       if (word.length > 3 && contextWords.has(word)) {
@@ -29,7 +29,7 @@ class LLMEvaluator {
       }
     });
 
-    const score = totalWords > 0 ? supportedWords / totalWords : 1.0;
+    const score = totalWords > 0 ? (supportedWords / totalWords) : 1.0;
 
     return {
       score: Math.min(score, 1.0),
@@ -38,8 +38,8 @@ class LLMEvaluator {
       metadata: {
         supportedWords,
         totalWords,
-        coveragePercent: (score * 100).toFixed(2),
-      },
+        coveragePercent: (score * 100).toFixed(2)
+      }
     };
   }
 
@@ -50,12 +50,7 @@ class LLMEvaluator {
    * @returns {object}
    */
   async evaluateAnswerRelevance(input, output) {
-    const inputWords = new Set(
-      input
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(w => w.length > 3)
-    );
+    const inputWords = new Set(input.toLowerCase().split(/\s+/).filter(w => w.length > 3));
     const outputWords = output.toLowerCase().split(/\s+/);
 
     let matchedWords = 0;
@@ -65,17 +60,16 @@ class LLMEvaluator {
       }
     });
 
-    const score = inputWords.size > 0 ? matchedWords / inputWords.size : 0;
+    const score = inputWords.size > 0 ? (matchedWords / inputWords.size) : 0;
 
     return {
       score: Math.min(score, 1.0),
-      reason:
-        score > 0.5 ? 'Answer is relevant to question' : 'Answer may not address the question',
+      reason: score > 0.5 ? 'Answer is relevant to question' : 'Answer may not address the question',
       value: score > 0.5 ? 1.0 : 0.0,
       metadata: {
         matchedWords,
-        totalQuestionWords: inputWords.size,
-      },
+        totalQuestionWords: inputWords.size
+      }
     };
   }
 
@@ -86,23 +80,16 @@ class LLMEvaluator {
    * @returns {object}
    */
   async evaluateContextPrecision(input, context) {
-    const inputWords = new Set(
-      input
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(w => w.length > 3)
-    );
+    const inputWords = new Set(input.toLowerCase().split(/\s+/).filter(w => w.length > 3));
     let relevantChunks = 0;
 
     context.forEach(chunk => {
       const chunkWords = chunk.toLowerCase().split(/\s+/);
       const hasRelevantWords = chunkWords.some(word => inputWords.has(word));
-      if (hasRelevantWords) {
-        relevantChunks++;
-      }
+      if (hasRelevantWords) relevantChunks++;
     });
 
-    const score = context.length > 0 ? relevantChunks / context.length : 0;
+    const score = context.length > 0 ? (relevantChunks / context.length) : 0;
 
     return {
       score,
@@ -110,8 +97,8 @@ class LLMEvaluator {
       value: score,
       metadata: {
         relevantChunks,
-        totalChunks: context.length,
-      },
+        totalChunks: context.length
+      }
     };
   }
 
@@ -123,14 +110,14 @@ class LLMEvaluator {
   async evaluateModeration(text) {
     const lowerText = text.toLowerCase();
     const flaggedTerms = ['offensive', 'hate', 'violence', 'explicit'];
-
+    
     const hasFlagged = flaggedTerms.some(term => lowerText.includes(term));
 
     return {
       score: hasFlagged ? 0.0 : 1.0,
       reason: hasFlagged ? 'Content flagged for review' : 'Content appears safe',
       value: hasFlagged ? 0.0 : 1.0,
-      flagged: hasFlagged,
+      flagged: hasFlagged
     };
   }
 
@@ -155,12 +142,12 @@ class LLMEvaluator {
     const scores = Object.values(results).map(r => r.score);
     results.overall = {
       score: scores.reduce((a, b) => a + b, 0) / scores.length,
-      passed: scores.every(s => s > 0.6),
+      passed: scores.every(s => s > 0.6)
     };
 
     this.results.push({
       timestamp: Date.now(),
-      ...results,
+      ...results
     });
 
     return results;
@@ -175,8 +162,7 @@ class LLMEvaluator {
       return { totalEvaluations: 0 };
     }
 
-    const avgScore =
-      this.results.reduce((sum, r) => sum + (r.overall?.score || 0), 0) / this.results.length;
+    const avgScore = this.results.reduce((sum, r) => sum + (r.overall?.score || 0), 0) / this.results.length;
     const passed = this.results.filter(r => r.overall?.passed).length;
 
     return {
@@ -184,7 +170,7 @@ class LLMEvaluator {
       averageScore: avgScore,
       passRate: (passed / this.results.length) * 100,
       passed,
-      failed: this.results.length - passed,
+      failed: this.results.length - passed
     };
   }
 }
