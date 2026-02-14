@@ -1,6 +1,8 @@
 // Vaal AI Empire - Dashboard JavaScript
 // Real-time analytics and observability
 
+/* global document, window, Chart, setInterval, clearInterval, console */
+
 // Sample data for demonstration
 const sampleTraces = [
     { timestamp: '2025-12-16 08:15:23', engine: 'Financial Sentinel', operation: 'Tax Recovery Scan', duration: '1.2s', status: 'success' },
