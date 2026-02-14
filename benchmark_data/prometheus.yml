@@ -1,0 +1,42 @@
+# Vaal AI Empire - Prometheus Configuration for Benchmark Metrics
+# Scrape configuration for benchmark runner
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'vaal-benchmark'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          environment: 'benchmark'
+
+  # Benchmark runner metrics
+  - job_name: 'vaal-benchmark'
+    static_configs:
+      - targets: ['benchmark:8000']
+        labels:
+          service: 'benchmark-executor'
+          environment: 'benchmark'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Node exporter (if available)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          environment: 'benchmark'

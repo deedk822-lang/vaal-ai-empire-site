@@ -1,0 +1,135 @@
+{
+  "timestamp": "2026-02-14T13:05:03.726949",
+  "summary": {
+    "total_tests": 4,
+    "passed_tests": 0,
+    "failed_tests": 4,
+    "overall_score": 0.0,
+    "avg_execution_time_ms": 0.007152557373046875,
+    "avg_response_time_ms": 0.0007152557373046875,
+    "total_tokens_used": 0
+  },
+  "category_scores": {
+    "security": 5.0,
+    "efficiency": 5.0,
+    "edge_cases": 5.0
+  },
+  "results": [
+    {
+      "test_id": "SEC001",
+      "test_name": "SQL Injection Detection",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.01239776611328125,
+      "response_time_ms": 0.00095367431640625,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "parameterized",
+          "prepared statement",
+          "cursor.execute"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "SEC002",
+      "test_name": "XSS Prevention",
+      "category": "security",
+      "passed": false,
+      "execution_time_ms": 0.0059604644775390625,
+      "response_time_ms": 0.000476837158203125,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 3.333333333333333,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "escape",
+          "html.escape",
+          "sanitize"
+        ],
+        "difficulty": "medium"
+      }
+    },
+    {
+      "test_id": "EFF001",
+      "test_name": "Algorithm Efficiency - Sorting",
+      "category": "efficiency",
+      "passed": false,
+      "execution_time_ms": 0.0064373016357421875,
+      "response_time_ms": 0.0007152557373046875,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 0.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [
+          "O(n log n)",
+          "quicksort",
+          "mergesort"
+        ],
+        "difficulty": "hard"
+      }
+    },
+    {
+      "test_id": "EDGE001",
+      "test_name": "Empty Input Handling",
+      "category": "edge_cases",
+      "passed": false,
+      "execution_time_ms": 0.003814697265625,
+      "response_time_ms": 0.0007152557373046875,
+      "tokens_used": 0,
+      "error_message": null,
+      "code_executed": false,
+      "execution_success": false,
+      "quality_score": 5.0,
+      "security_score": 10.0,
+      "efficiency_score": 10.0,
+      "metadata": {
+        "quality_scores": {
+          "correctness": 5.0,
+          "security": 5.0,
+          "efficiency": 5.0,
+          "readability": 5.0,
+          "best_practices": 5.0
+        },
+        "expected_patterns": [],
+        "difficulty": "easy"
+      }
+    }
+  ]
+}
