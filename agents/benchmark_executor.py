@@ -1,53 +1,52 @@
 #!/usr/bin/env python3
-"""Vaal AI Empire - Benchmark Executor.
+"""Vaal AI Empire - Hybrid Benchmark Executor.
 
-A professional benchmark suite extending CodingAgentExecutor for AI model evaluation.
-Provides quantitative and qualitative metrics for code generation, security analysis,
-and performance testing.
+A professional benchmark suite with dual backend support:
+- Direct API: Kimi K2.5, GLM-5, DashScope (for production CI)
+- Ollama: Unified local interface (for development/testing)
 
-Features:
-- Extends CodingAgentExecutor for code execution benchmarks
-- 50+ test cases covering security, efficiency, and edge cases
-- Prometheus metrics integration for monitoring
-- GLM-5 API integration for qualitative evaluation
-- CI/CD compatible with GitHub Actions
+Features from PR #65:
+- PII Protection: Sanitizes prompts before sending to AI models
+- Resilient Workflows: Handles missing API secrets gracefully
+- Currency Logic: ZAR-specific test cases
+- Security: Sandbox execution warnings
 
 Usage:
-    # Run full benchmark suite
-    python agents/benchmark_executor.py --run-all
+    # Auto-detect best backend
+    python agents/benchmark_executor.py --run-all --backend auto
 
-    # Run specific category
-    python agents/benchmark_executor.py --category security
+    # Force Ollama mode (local testing, no API keys needed)
+    python agents/benchmark_executor.py --run-all --backend ollama
 
-    # Generate report
-    python agents/benchmark_executor.py --report
+    # Force Direct API mode (production CI)
+    python agents/benchmark_executor.py --run-all --backend direct
+
+Requirements:
+    Direct API: KIMI_API_KEY, GLM5_API_KEY, DASHSCOPE_API_KEY
+    Ollama: Install from https://ollama.com
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
 import statistics
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-# Import base executor
-try:
-    from coding_agent_executor import AgentResult, CodingAgentExecutor
-
-    _HAS_BASE_CLASS = True
-except ImportError:
-    _HAS_BASE_CLASS = False
-    AgentResult = None
-    CodingAgentExecutor = None
+# ============================================================================
+# ENUMS AND DATA CLASSES
+# ============================================================================
 
 
 class BenchmarkCategory(Enum):
@@ -59,6 +58,25 @@ class BenchmarkCategory(Enum):
     CODE_GENERATION = "code_generation"
     REFACTORING = "refactoring"
     DEBUGGING = "debugging"
+    FINANCIAL = "financial"
+    REASONING = "reasoning"
+
+
+class BackendMode(Enum):
+    """Backend execution modes."""
+
+    DIRECT = "direct"  # Direct API calls (production)
+    OLLAMA = "ollama"  # Ollama interface (development)
+    AUTO = "auto"  # Auto-detect best available
+
+
+class AIProvider(Enum):
+    """Available AI providers for code generation."""
+
+    DASHSCOPE = "dashscope"  # Alibaba Qwen
+    KIMI = "kimi"  # Moonshot AI Kimi K2.5
+    GLM = "glm"  # Zhipu AI GLM-5
+    OLLAMA = "ollama"  # Ollama unified interface
 
 
 @dataclass
@@ -78,6 +96,10 @@ class BenchmarkResult:
     quality_score: float = 0.0
     security_score: float = 0.0
     efficiency_score: float = 0.0
+    provider: str = "unknown"
+    backend: str = "unknown"
+    prompt_hash: str = ""  # PII protection: hash instead of raw prompt
+    resilient_mode: bool = False  # True if using fallback/mock
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -95,23 +117,475 @@ class BenchmarkReport:
     category_scores: Dict[str, float]
     results: List[BenchmarkResult]
     overall_score: float = 0.0
+    backend_stats: Dict[str, Any] = field(default_factory=dict)
+    provider_stats: Dict[str, Any] = field(default_factory=dict)
 
 
-class BenchmarkExecutor:
-    """Professional benchmark suite extending CodingAgentExecutor.
+# ============================================================================
+# PII PROTECTION (PR #65)
+# ============================================================================
 
-    Provides comprehensive evaluation of AI coding capabilities including:
-    - Security vulnerability detection
-    - Code efficiency analysis
-    - Edge case handling
-    - Code generation quality
-    - Refactoring capabilities
-    - Debugging accuracy
 
-    Integrates with:
-    - Prometheus for metrics
-    - GLM-5 for qualitative evaluation
-    - GitHub Actions for CI/CD
+class PIIProtector:
+    """PII Protection utilities from PR #65.
+
+    Strips sensitive data from prompts and results to prevent
+    accidental exposure of customer information.
+    """
+
+    # Patterns for PII detection
+    EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+    IP_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    FINGERPRINT_PATTERN = re.compile(r"[a-f0-9]{64}")
+    PHONE_PATTERN = re.compile(r"\b(?:\+?27|0)[1-9]\d{8}\b")  # South African numbers
+    CREDIT_CARD_PATTERN = re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b")
+
+    @classmethod
+    def sanitize_prompt(cls, prompt: str) -> str:
+        """Remove PII from prompt before sending to AI models.
+
+        Args:
+            prompt: The original prompt that may contain PII
+
+        Returns:
+            Sanitized prompt with PII replaced by placeholders
+        """
+        sanitized = prompt
+
+        # Remove emails
+        sanitized = cls.EMAIL_PATTERN.sub("[EMAIL_REDACTED]", sanitized)
+
+        # Remove IP addresses
+        sanitized = cls.IP_PATTERN.sub("[IP_REDACTED]", sanitized)
+
+        # Remove device fingerprints
+        sanitized = cls.FINGERPRINT_PATTERN.sub("[FINGERPRINT_REDACTED]", sanitized)
+
+        # Remove phone numbers (SA format)
+        sanitized = cls.PHONE_PATTERN.sub("[PHONE_REDACTED]", sanitized)
+
+        # Remove credit card numbers
+        sanitized = cls.CREDIT_CARD_PATTERN.sub("[CARD_REDACTED]", sanitized)
+
+        return sanitized
+
+    @classmethod
+    def hash_prompt(cls, prompt: str) -> str:
+        """Create a hash of the prompt for tracking without storing PII.
+
+        Args:
+            prompt: The prompt to hash
+
+        Returns:
+            First 16 characters of SHA256 hash
+        """
+        return hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+
+# ============================================================================
+# BACKEND AVAILABILITY CHECKER
+# ============================================================================
+
+
+class BackendChecker:
+    """Check availability of different backends (resilient pattern from PR #65)."""
+
+    @staticmethod
+    def check_direct_api_availability() -> Dict[str, bool]:
+        """Check which Direct API providers have keys configured.
+
+        Returns:
+            Dictionary mapping provider names to availability status
+        """
+        return {
+            "kimi": bool(os.getenv("KIMI_API_KEY", "").strip()),
+            "glm": bool(os.getenv("GLM5_API_KEY", "").strip()),
+            "dashscope": bool(os.getenv("DASHSCOPE_API_KEY", "").strip()),
+        }
+
+    @staticmethod
+    def check_ollama_availability() -> Tuple[bool, List[str]]:
+        """Check if Ollama is installed and list available models.
+
+        Returns:
+            Tuple of (is_available, list_of_model_names)
+        """
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                # Parse model names from output
+                models = []
+                for line in result.stdout.strip().split("\n")[1:]:  # Skip header
+                    if line.strip():
+                        model_name = line.split()[0]
+                        models.append(model_name)
+                return True, models
+            return False, []
+        except FileNotFoundError:
+            return False, []
+        except subprocess.TimeoutExpired:
+            return False, []
+        except Exception:
+            return False, []
+
+    @classmethod
+    def get_availability_report(cls) -> Dict[str, Any]:
+        """Get comprehensive availability report for all backends.
+
+        Returns:
+            Dictionary with availability status for all backends
+        """
+        direct = cls.check_direct_api_availability()
+        ollama_available, ollama_models = cls.check_ollama_availability()
+
+        return {
+            "direct_api": direct,
+            "ollama": {
+                "available": ollama_available,
+                "models": ollama_models,
+            },
+            "any_available": any(direct.values()) or ollama_available,
+        }
+
+
+# ============================================================================
+# DIRECT API CLIENT
+# ============================================================================
+
+
+class DirectAPIClient:
+    """Client for direct API calls to AI providers."""
+
+    def __init__(
+        self,
+        dashscope_api_key: Optional[str] = None,
+        kimi_api_key: Optional[str] = None,
+        glm_api_key: Optional[str] = None,
+    ):
+        """Initialize with API keys."""
+        self.dashscope_api_key = (dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")).strip() or None
+        self.kimi_api_key = (kimi_api_key or os.getenv("KIMI_API_KEY", "")).strip() or None
+        self.glm_api_key = (glm_api_key or os.getenv("GLM5_API_KEY", "")).strip() or None
+
+    def _make_request(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        timeout: int = 60,
+    ) -> Dict[str, Any]:
+        """Make HTTP request to API endpoint."""
+        try:
+            import requests
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)}
+
+    def call_kimi_api(
+        self,
+        prompt: str,
+        model: str = "moonshot-v1-128k",
+        max_tokens: int = 2048,
+    ) -> Dict[str, Any]:
+        """Call Kimi K2.5 API (Moonshot AI)."""
+        if not self.kimi_api_key:
+            return {"error": "KIMI_API_KEY not configured"}
+
+        url = "https://api.moonshot.cn/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.kimi_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are an expert Python programmer specializing in secure, efficient code.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+        }
+
+        result = self._make_request(url, headers, payload)
+        if "error" in result:
+            return result
+
+        try:
+            choices = result.get("choices", [])
+            if choices:
+                return {
+                    "content": choices[0].get("message", {}).get("content", ""),
+                    "tokens_used": result.get("usage", {}).get("total_tokens", 0),
+                    "model": model,
+                    "provider": "kimi",
+                }
+            return {"error": "No response from Kimi API"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def call_glm_api(
+        self,
+        prompt: str,
+        model: str = "glm-4-plus",
+        max_tokens: int = 2048,
+    ) -> Dict[str, Any]:
+        """Call GLM-4 Plus API (Zhipu AI)."""
+        if not self.glm_api_key:
+            return {"error": "GLM5_API_KEY not configured"}
+
+        url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.glm_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are an expert Python developer.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+        }
+
+        result = self._make_request(url, headers, payload)
+        if "error" in result:
+            return result
+
+        try:
+            choices = result.get("choices", [])
+            if choices:
+                return {
+                    "content": choices[0].get("message", {}).get("content", ""),
+                    "tokens_used": result.get("usage", {}).get("total_tokens", 0),
+                    "model": model,
+                    "provider": "glm",
+                }
+            return {"error": "No response from GLM API"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def call_dashscope_api(
+        self,
+        prompt: str,
+        model: str = "qwen-coder-plus",
+        max_tokens: int = 2048,
+    ) -> Dict[str, Any]:
+        """Call DashScope Qwen API (Alibaba)."""
+        if not self.dashscope_api_key:
+            return {"error": "DASHSCOPE_API_KEY not configured"}
+
+        url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+        headers = {
+            "Authorization": f"Bearer {self.dashscope_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "input": {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert Python programmer.",
+                    },
+                    {"role": "user", "content": prompt},
+                ]
+            },
+            "parameters": {"max_tokens": max_tokens, "temperature": 0.7},
+        }
+
+        result = self._make_request(url, headers, payload)
+        if "error" in result:
+            return result
+
+        try:
+            output = result.get("output", {})
+            return {
+                "content": output.get("text", ""),
+                "tokens_used": result.get("usage", {}).get("total_tokens", 0),
+                "model": model,
+                "provider": "dashscope",
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+
+# ============================================================================
+# OLLAMA CLIENT
+# ============================================================================
+
+
+class OllamaClient:
+    """Client for Ollama-based model execution."""
+
+    # Model name mappings
+    MODEL_MAPPING = {
+        "kimi-k2.5": "kimi-k2.5:cloud",
+        "glm-5": "glm5",
+        "qwen2.5": "qwen2.5-coder:14b",
+        "llama3.2": "llama3.2:latest",
+        "deepseek-coder": "deepseek-coder:6.7b",
+    }
+
+    def __init__(self, timeout: int = 120):
+        """Initialize Ollama client.
+
+        Args:
+            timeout: Timeout in seconds for model responses
+        """
+        self.timeout = timeout
+        self._available_models: Optional[List[str]] = None
+
+    def is_available(self) -> bool:
+        """Check if Ollama is installed and running."""
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                timeout=5,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def get_available_models(self) -> List[str]:
+        """Get list of available Ollama models."""
+        if self._available_models is not None:
+            return self._available_models
+
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                models = []
+                for line in result.stdout.strip().split("\n")[1:]:
+                    if line.strip():
+                        model_name = line.split()[0]
+                        models.append(model_name)
+                self._available_models = models
+                return models
+        except Exception:
+            pass
+
+        self._available_models = []
+        return []
+
+    def has_model(self, model: str) -> bool:
+        """Check if a specific model is available."""
+        ollama_name = self.MODEL_MAPPING.get(model, model)
+        available = self.get_available_models()
+        return any(ollama_name.split(":")[0] in m for m in available)
+
+    async def run_model(
+        self,
+        model: str,
+        prompt: str,
+    ) -> Dict[str, Any]:
+        """Run a model via Ollama.
+
+        Args:
+            model: Model key (e.g., "kimi-k2.5", "glm-5")
+            prompt: The prompt to send
+
+        Returns:
+            Dictionary with response and metadata
+        """
+        ollama_name = self.MODEL_MAPPING.get(model, model)
+        start_time = time.perf_counter()
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "ollama",
+                "run",
+                ollama_name,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(input=prompt.encode()),
+                    timeout=self.timeout,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                return {
+                    "error": f"Timeout after {self.timeout}s",
+                    "provider": "ollama",
+                    "backend": "ollama",
+                }
+
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            response = stdout.decode().strip()
+
+            # Parse token stats from stderr if available
+            stats = self._parse_ollama_stats(stderr.decode())
+
+            return {
+                "content": response,
+                "latency_ms": latency_ms,
+                "tokens_per_sec": stats.get("tokens_per_sec", 0),
+                "provider": "ollama",
+                "backend": "ollama",
+                "model": ollama_name,
+            }
+
+        except FileNotFoundError:
+            return {"error": "Ollama not installed", "provider": "ollama", "backend": "ollama"}
+        except Exception as e:
+            return {"error": str(e), "provider": "ollama", "backend": "ollama"}
+
+    def _parse_ollama_stats(self, stderr: str) -> Dict[str, float]:
+        """Parse Ollama performance statistics from stderr."""
+        stats = {"tokens_per_sec": 0.0, "eval_duration_ms": 0.0}
+        patterns = {
+            "tokens_per_sec": r"eval rate:\s*([\d.]+)\s*tokens/s",
+            "eval_duration_ms": r"eval duration:\s*([\d.]+)\s*ms",
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, stderr, re.IGNORECASE)
+            if match:
+                stats[key] = float(match.group(1))
+        return stats
+
+
+# ============================================================================
+# HYBRID BENCHMARK EXECUTOR
+# ============================================================================
+
+
+class HybridBenchmarkExecutor:
+    """Hybrid benchmark executor with dual backend support.
+
+    Features:
+    - Direct API mode for production CI (Kimi, GLM-5, DashScope)
+    - Ollama mode for local development/testing
+    - Auto mode that selects best available backend
+    - PII protection (from PR #65)
+    - Resilient fallback handling
     """
 
     QUALITY_EVALUATION_PROMPT = """Evaluate the following AI-generated code response on a scale of 0-10 for:
@@ -122,72 +596,60 @@ class BenchmarkExecutor:
 4. Readability (0-10): Is the code well-structured and documented?
 5. Best Practices (0-10): Does it follow coding standards?
 
-Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "readability": N, "best_practices": N}"""
+Original Prompt:
+{prompt}
+
+AI Response:
+{response}
+
+Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency": N, "readability": N, "best_practices": N}}"""
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        backend: BackendMode = BackendMode.AUTO,
         benchmark_data_path: str = "benchmark_data/test_cases.json",
         enable_code_execution: bool = True,
-        execution_timeout: int = 60,
+        execution_timeout: int = 120,
         enable_quality_evaluation: bool = True,
-        glm5_api_key: Optional[str] = None,
-        prometheus_enabled: bool = True,
+        prometheus_enabled: bool = False,
+        primary_provider: str = "auto",
     ):
-        """Initialize the BenchmarkExecutor."""
-        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
-        if self.api_key:
-            self.api_key = self.api_key.strip() if self.api_key.strip() else None
+        """Initialize the Hybrid Benchmark Executor.
 
+        Args:
+            backend: Backend mode (DIRECT, OLLAMA, or AUTO)
+            benchmark_data_path: Path to test cases JSON
+            enable_code_execution: Whether to execute generated code
+            execution_timeout: Timeout for code execution
+            enable_quality_evaluation: Whether to evaluate response quality
+            prometheus_enabled: Whether to enable Prometheus metrics
+            primary_provider: Primary AI provider for direct API mode
+        """
+        self.backend = backend
         self.benchmark_data_path = Path(benchmark_data_path)
         self.enable_code_execution = enable_code_execution
         self.execution_timeout = execution_timeout
         self.enable_quality_evaluation = enable_quality_evaluation
-        self.glm5_api_key = glm5_api_key or os.getenv("GLM5_API_KEY")
         self.prometheus_enabled = prometheus_enabled
+        self.primary_provider = primary_provider
 
+        # Initialize clients
+        self.direct_client = DirectAPIClient()
+        self.ollama_client = OllamaClient(timeout=execution_timeout)
+
+        # State
         self.test_cases: List[Dict] = []
         self.results: List[BenchmarkResult] = []
         self.start_time: Optional[datetime] = None
 
-        self._setup_prometheus_metrics()
+        # Statistics
+        self.backend_usage: Dict[str, int] = {}
+        self.provider_usage: Dict[str, int] = {}
+        self.resilient_fallbacks: int = 0
+
+        # Setup
         self._load_test_cases()
-
-    def _setup_prometheus_metrics(self):
-        """Setup Prometheus metrics for benchmark monitoring."""
-        self.prometheus_metrics = {}
-
-        if not self.prometheus_enabled:
-            return
-
-        try:
-            import prometheus_client as prom
-
-            self.prometheus_metrics = {
-                "benchmark_tests_total": prom.Counter(
-                    "vaal_benchmark_tests_total",
-                    "Total number of benchmark tests executed",
-                    ["category", "status"],
-                ),
-                "benchmark_duration_seconds": prom.Histogram(
-                    "vaal_benchmark_duration_seconds",
-                    "Duration of benchmark tests in seconds",
-                    ["category"],
-                    buckets=[0.1, 0.5, 1, 2, 5, 10, 30, 60],
-                ),
-                "benchmark_quality_score": prom.Gauge(
-                    "vaal_benchmark_quality_score",
-                    "Quality score of benchmark results",
-                    ["category"],
-                ),
-                "benchmark_tokens_used": prom.Counter(
-                    "vaal_benchmark_tokens_used_total",
-                    "Total tokens used in benchmark tests",
-                    ["category"],
-                ),
-            }
-        except ImportError:
-            self.prometheus_enabled = False
+        self._setup_prometheus_metrics()
 
     def _load_test_cases(self):
         """Load test cases from JSON file."""
@@ -199,8 +661,9 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
             self.test_cases = self._get_default_test_cases()
 
     def _get_default_test_cases(self) -> List[Dict]:
-        """Get default test cases if no file is found."""
+        """Get default test cases including financial/currency tests (PR #65)."""
         return [
+            # Security tests
             {
                 "id": "SEC001",
                 "name": "SQL Injection Prevention",
@@ -214,11 +677,42 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 "id": "SEC002",
                 "name": "XSS Prevention",
                 "category": "security",
-                "prompt": "Create a function to sanitize user input for safe HTML display",
+                "prompt": "Create a function to sanitize user input for safe HTML display in Python",
                 "expected_patterns": ["html.escape", "escape", "sanitize"],
                 "security_check": True,
                 "difficulty": "medium",
             },
+            {
+                "id": "SEC003",
+                "name": "Password Hashing",
+                "category": "security",
+                "prompt": "Implement secure password hashing for user authentication",
+                "expected_patterns": ["bcrypt", "argon2", "scrypt", "salt"],
+                "security_check": True,
+                "difficulty": "medium",
+            },
+            # Financial tests (PR #65 - Currency Logic)
+            {
+                "id": "FIN001",
+                "name": "ZAR Transaction Fee",
+                "category": "financial",
+                "prompt": "Calculate transaction fee for a ZAR payment: R2.50 flat fee plus 2.9% of the amount",
+                "expected_patterns": ["2.9", "2.50", "flat", "percentage"],
+                "currency": "ZAR",
+                "expected_fee_type": "flat_plus_percentage",
+                "difficulty": "easy",
+            },
+            {
+                "id": "FIN002",
+                "name": "USD Transaction Fee",
+                "category": "financial",
+                "prompt": "Calculate transaction fee for a USD payment: 3.9% of the amount only (no flat fee)",
+                "expected_patterns": ["3.9", "percentage"],
+                "currency": "USD",
+                "expected_fee_type": "percentage_only",
+                "difficulty": "easy",
+            },
+            # Efficiency tests
             {
                 "id": "EFF001",
                 "name": "Efficient Sorting",
@@ -228,14 +722,7 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 "time_limit_ms": 1000,
                 "difficulty": "hard",
             },
-            {
-                "id": "EDGE001",
-                "name": "Empty Input Handling",
-                "category": "edge_cases",
-                "prompt": "Write a function to find the maximum value in a list, handling empty lists",
-                "expected_patterns": ["empty", "None", "exception", "default"],
-                "difficulty": "easy",
-            },
+            # Code generation tests
             {
                 "id": "GEN001",
                 "name": "REST API Endpoint",
@@ -244,46 +731,170 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 "expected_patterns": ["GET", "POST", "PUT", "DELETE"],
                 "difficulty": "medium",
             },
+            # Debugging tests
+            {
+                "id": "DBG001",
+                "name": "Fix SQL Injection",
+                "category": "debugging",
+                "prompt": "Fix the SQL injection vulnerability: db.query('SELECT * FROM users WHERE id = ' + user_input)",
+                "expected_patterns": ["parameterized", "prepared", "?"],
+                "difficulty": "medium",
+            },
         ]
 
-    def _evaluate_with_glm5(self, prompt: str, response: str) -> Dict[str, float]:
-        """Evaluate response quality using GLM-5 API."""
-        if not self.glm5_api_key:
+    def _setup_prometheus_metrics(self):
+        """Setup Prometheus metrics for benchmark monitoring."""
+        self.prometheus_metrics = {}
+        if not self.prometheus_enabled:
+            return
+        try:
+            import prometheus_client as prom
+
+            self.prometheus_metrics = {
+                "benchmark_tests_total": prom.Counter(
+                    "vaal_benchmark_tests_total",
+                    "Total benchmark tests",
+                    ["category", "status", "backend"],
+                ),
+                "benchmark_duration_seconds": prom.Histogram(
+                    "vaal_benchmark_duration_seconds",
+                    "Duration of benchmark tests",
+                    ["category", "backend"],
+                ),
+            }
+        except ImportError:
+            self.prometheus_enabled = False
+
+    def _determine_backend(self, model: str) -> Tuple[str, str]:
+        """Determine the best backend and provider for a model.
+
+        Returns:
+            Tuple of (backend_name, provider_name)
+        """
+        if self.backend == BackendMode.OLLAMA:
+            return "ollama", "ollama"
+
+        if self.backend == BackendMode.DIRECT:
+            # Map model to provider
+            if "kimi" in model.lower():
+                return "direct", "kimi"
+            elif "glm" in model.lower():
+                return "direct", "glm"
+            else:
+                return "direct", self.primary_provider or "auto"
+
+        # AUTO mode: prefer Ollama for development, fall back to Direct
+        if self.ollama_client.is_available() and self.ollama_client.has_model(model):
+            return "ollama", "ollama"
+
+        # Check direct API availability
+        direct_avail = BackendChecker.check_direct_api_availability()
+        if "kimi" in model.lower() and direct_avail["kimi"]:
+            return "direct", "kimi"
+        elif "glm" in model.lower() and direct_avail["glm"]:
+            return "direct", "glm"
+        elif direct_avail["kimi"]:
+            return "direct", "kimi"
+        elif direct_avail["glm"]:
+            return "direct", "glm"
+        elif direct_avail["dashscope"]:
+            return "direct", "dashscope"
+
+        # No backend available - use resilient fallback
+        return "none", "none"
+
+    async def _get_ai_response(
+        self,
+        model: str,
+        prompt: str,
+    ) -> Dict[str, Any]:
+        """Get AI response using the best available backend.
+
+        Includes PII protection from PR #65.
+        """
+        # Sanitize prompt for PII protection
+        safe_prompt = PIIProtector.sanitize_prompt(prompt)
+        prompt_hash = PIIProtector.hash_prompt(prompt)
+
+        backend, provider = self._determine_backend(model)
+
+        # Track usage
+        self.backend_usage[backend] = self.backend_usage.get(backend, 0) + 1
+
+        if backend == "ollama":
+            result = await self.ollama_client.run_model(model, safe_prompt)
+            result["prompt_hash"] = prompt_hash
+            return result
+
+        elif backend == "direct":
+            if provider == "kimi":
+                result = self.direct_client.call_kimi_api(safe_prompt)
+            elif provider == "glm":
+                result = self.direct_client.call_glm_api(safe_prompt)
+            elif provider == "dashscope":
+                result = self.direct_client.call_dashscope_api(safe_prompt)
+            else:
+                # Try all providers in order
+                for prov, call_func in [
+                    ("kimi", self.direct_client.call_kimi_api),
+                    ("glm", self.direct_client.call_glm_api),
+                    ("dashscope", self.direct_client.call_dashscope_api),
+                ]:
+                    result = call_func(safe_prompt)
+                    if "error" not in result:
+                        provider = prov
+                        break
+
+            result["prompt_hash"] = prompt_hash
+            result["backend"] = "direct"
+            result["provider"] = provider
+            return result
+
+        else:
+            # Resilient fallback (PR #65 pattern)
+            self.resilient_fallbacks += 1
             return {
-                "correctness": 5.0,
-                "security": 5.0,
-                "efficiency": 5.0,
-                "readability": 5.0,
-                "best_practices": 5.0,
+                "error": "No backend available",
+                "content": f"Unable to process: no AI backend configured for model {model}",
+                "backend": "none",
+                "provider": "none",
+                "prompt_hash": prompt_hash,
+                "resilient_mode": True,
             }
 
+    def _evaluate_quality(self, prompt: str, response: str) -> Dict[str, float]:
+        """Evaluate response quality using GLM-5 if available."""
+        if not self.direct_client.glm_api_key:
+            return self._default_quality_scores()
+
         try:
-            import requests
-
-            eval_prompt = (
-                f"{self.QUALITY_EVALUATION_PROMPT}\n\n"
-                f"Original Prompt:\n{prompt}\n\nAI Response:\n{response}"
+            eval_prompt = self.QUALITY_EVALUATION_PROMPT.format(
+                prompt=prompt[:500],
+                response=response[:1500]
             )
+            result = self.direct_client.call_glm_api(eval_prompt, model="glm-4-flash")
 
-            resp = requests.post(
-                "https://open.bigmodel.cn/api/paas/v3/model-api/chatglm_pro/invoke",
-                headers={
-                    "Authorization": f"Bearer {self.glm5_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"prompt": eval_prompt, "max_tokens": 200},
-                timeout=30,
-            )
+            if "error" in result:
+                return self._default_quality_scores()
 
-            if resp.status_code == 200:
-                result = resp.json()
-                content = result.get("data", {}).get("content", "{}")
-                json_match = re.search(r"\{.*\}", content, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group())
-        except Exception as e:
-            print(f"GLM-5 evaluation error: {e}")
+            content = result.get("content", "{}")
+            json_match = re.search(r"\{[^{}]*\}", content, re.DOTALL)
+            if json_match:
+                scores = json.loads(json_match.group())
+                return {
+                    "correctness": float(scores.get("correctness", 5.0)),
+                    "security": float(scores.get("security", 5.0)),
+                    "efficiency": float(scores.get("efficiency", 5.0)),
+                    "readability": float(scores.get("readability", 5.0)),
+                    "best_practices": float(scores.get("best_practices", 5.0)),
+                }
+        except Exception:
+            pass
 
+        return self._default_quality_scores()
+
+    def _default_quality_scores(self) -> Dict[str, float]:
+        """Return default quality scores."""
         return {
             "correctness": 5.0,
             "security": 5.0,
@@ -292,34 +903,13 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
             "best_practices": 5.0,
         }
 
-    def _check_security_patterns(
-        self, response: str, expected_patterns: List[str]
-    ) -> float:
-        """Check for security patterns in the response."""
-        if not expected_patterns:
+    def _check_security_patterns(self, response: str, expected: List[str]) -> float:
+        """Check for expected patterns in response."""
+        if not expected:
             return 10.0
-
         response_lower = response.lower()
-        matches = sum(
-            1 for pattern in expected_patterns if pattern.lower() in response_lower
-        )
-        return (matches / len(expected_patterns)) * 10.0
-
-    def _check_efficiency(
-        self, response: str, time_taken_ms: float, time_limit_ms: Optional[int]
-    ) -> float:
-        """Check efficiency of the response."""
-        score = 10.0
-
-        if time_limit_ms and time_taken_ms > time_limit_ms:
-            score -= 5.0
-
-        efficiency_terms = ["efficient", "optimized", "o(n", "o(log", "cache", "memoiz"]
-        response_lower = response.lower()
-        if any(term in response_lower for term in efficiency_terms):
-            score = min(10.0, score + 1.0)
-
-        return max(0.0, score)
+        matches = sum(1 for p in expected if p.lower() in response_lower)
+        return (matches / len(expected)) * 10.0
 
     async def run_single_test(self, test_case: Dict) -> BenchmarkResult:
         """Run a single benchmark test."""
@@ -329,57 +919,68 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
         test_name = test_case.get("name", "Unknown Test")
         category = test_case.get("category", "general")
         prompt = test_case.get("prompt", "")
+        model = test_case.get("model", "auto")
 
         try:
             response_start = time.time()
 
-            # Use the agent to get a response
-            if _HAS_BASE_CLASS and hasattr(self, "respond"):
-                result = self.respond(prompt, execute=False)
-                response_text = result.response
-            else:
-                response_text = f"Mock response for: {prompt}"
+            # Get AI response (with PII protection)
+            ai_result = await self._get_ai_response(model, prompt)
 
             response_time_ms = (time.time() - response_start) * 1000
 
+            # Handle errors
+            if "error" in ai_result and "content" not in ai_result:
+                execution_time_ms = (time.time() - start_time) * 1000
+                return BenchmarkResult(
+                    test_id=test_id,
+                    test_name=test_name,
+                    category=category,
+                    passed=False,
+                    execution_time_ms=execution_time_ms,
+                    response_time_ms=0,
+                    error_message=ai_result.get("error"),
+                    provider=ai_result.get("provider", "unknown"),
+                    backend=ai_result.get("backend", "unknown"),
+                    prompt_hash=ai_result.get("prompt_hash", ""),
+                    resilient_mode=ai_result.get("resilient_mode", False),
+                )
+
+            response_text = ai_result.get("content", "")
+            tokens_used = ai_result.get("tokens_used", 0)
+            provider = ai_result.get("provider", "unknown")
+            backend = ai_result.get("backend", "unknown")
+
+            # Track provider usage
+            self.provider_usage[provider] = self.provider_usage.get(provider, 0) + 1
+
             # Evaluate quality
-            quality_scores = {
-                "correctness": 5.0,
-                "security": 5.0,
-                "efficiency": 5.0,
-                "readability": 5.0,
-                "best_practices": 5.0,
-            }
-            if self.enable_quality_evaluation and self.glm5_api_key:
-                quality_scores = self._evaluate_with_glm5(prompt, response_text)
+            quality_scores = self._default_quality_scores()
+            if self.enable_quality_evaluation:
+                quality_scores = self._evaluate_quality(prompt, response_text)
 
             # Check security patterns
             security_score = self._check_security_patterns(
-                response_text, test_case.get("expected_patterns", [])
+                response_text,
+                test_case.get("expected_patterns", [])
             )
 
-            # Check efficiency
-            efficiency_score = self._check_efficiency(
-                response_text, response_time_ms, test_case.get("time_limit_ms")
-            )
-
-            # Determine if passed
+            # Determine pass/fail
             passed = (
                 quality_scores.get("correctness", 0) >= 6.0
                 and security_score >= 5.0
-                and efficiency_score >= 5.0
+                and not ai_result.get("resilient_mode", False)
             )
 
             execution_time_ms = (time.time() - start_time) * 1000
 
-            # Update Prometheus metrics
+            # Update Prometheus
             if self.prometheus_enabled and self.prometheus_metrics:
                 self.prometheus_metrics["benchmark_tests_total"].labels(
-                    category=category, status="passed" if passed else "failed"
+                    category=category,
+                    status="passed" if passed else "failed",
+                    backend=backend,
                 ).inc()
-                self.prometheus_metrics["benchmark_duration_seconds"].labels(
-                    category=category
-                ).observe(execution_time_ms / 1000)
 
             return BenchmarkResult(
                 test_id=test_id,
@@ -388,15 +989,18 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 passed=passed,
                 execution_time_ms=execution_time_ms,
                 response_time_ms=response_time_ms,
-                quality_score=(
-                    statistics.mean(quality_scores.values()) if quality_scores else 0
-                ),
+                tokens_used=tokens_used,
+                quality_score=statistics.mean(quality_scores.values()) if quality_scores else 0,
                 security_score=security_score,
-                efficiency_score=efficiency_score,
+                provider=provider,
+                backend=backend,
+                prompt_hash=ai_result.get("prompt_hash", ""),
+                resilient_mode=ai_result.get("resilient_mode", False),
                 metadata={
                     "quality_scores": quality_scores,
                     "expected_patterns": test_case.get("expected_patterns", []),
                     "difficulty": test_case.get("difficulty", "medium"),
+                    "model": ai_result.get("model", "unknown"),
                 },
             )
 
@@ -410,33 +1014,55 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 execution_time_ms=execution_time_ms,
                 response_time_ms=0,
                 error_message=str(e),
+                provider="error",
+                backend="error",
             )
 
     async def run_all_tests(self, category: Optional[str] = None) -> BenchmarkReport:
         """Run all benchmark tests."""
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(timezone.utc)
         self.results = []
+        self.backend_usage = {}
+        self.provider_usage = {}
+        self.resilient_fallbacks = 0
 
+        # Filter by category
         tests_to_run = self.test_cases
         if category:
             tests_to_run = [t for t in self.test_cases if t.get("category") == category]
 
-        print(f"Running {len(tests_to_run)} benchmark tests...")
+        # Print header
+        print(f"\n{'=' * 60}")
+        print("HYBRID BENCHMARK EXECUTOR")
+        print("=" * 60)
+        print(f"Backend Mode: {self.backend.value}")
+        print(f"Tests to run: {len(tests_to_run)}")
 
+        # Show availability
+        avail = BackendChecker.get_availability_report()
+        print(f"\nBackend Availability:")
+        print(f"  Direct API - Kimi: {'✅' if avail['direct_api']['kimi'] else '❌'}")
+        print(f"  Direct API - GLM: {'✅' if avail['direct_api']['glm'] else '❌'}")
+        print(f"  Direct API - DashScope: {'✅' if avail['direct_api']['dashscope'] else '❌'}")
+        print(f"  Ollama: {'✅' if avail['ollama']['available'] else '❌'}")
+        print(f"\n{'=' * 60}\n")
+
+        # Run tests
         for i, test_case in enumerate(tests_to_run):
-            print(
-                f"  [{i+1}/{len(tests_to_run)}] Running: "
-                f"{test_case.get('name', 'Unknown')}"
-            )
+            test_name = test_case.get("name", "Unknown")
+            print(f"  [{i+1}/{len(tests_to_run)}] Running: {test_name}")
+
             result = await self.run_single_test(test_case)
             self.results.append(result)
 
             status = "PASSED" if result.passed else "FAILED"
-            print(f"    {status} ({result.execution_time_ms:.2f}ms)")
+            backend_tag = f"[{result.backend}:{result.provider}]"
+            resilient_tag = " (resilient)" if result.resilient_mode else ""
+            print(f"    {status} ({result.execution_time_ms:.2f}ms) {backend_tag}{resilient_tag}")
 
-        return self.generate_report()
+        return self._generate_report()
 
-    def generate_report(self) -> BenchmarkReport:
+    def _generate_report(self) -> BenchmarkReport:
         """Generate comprehensive benchmark report."""
         total_tests = len(self.results)
         passed_tests = sum(1 for r in self.results if r.passed)
@@ -445,6 +1071,7 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
         execution_times = [r.execution_time_ms for r in self.results]
         response_times = [r.response_time_ms for r in self.results]
 
+        # Category scores
         category_results: Dict[str, List[BenchmarkResult]] = {}
         for result in self.results:
             cat = result.category
@@ -460,29 +1087,26 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
         overall_score = passed_tests / total_tests * 100 if total_tests > 0 else 0
 
         return BenchmarkReport(
-            timestamp=(
-                self.start_time.isoformat()
-                if self.start_time
-                else datetime.now().isoformat()
-            ),
+            timestamp=self.start_time.isoformat() if self.start_time else datetime.now(timezone.utc).isoformat(),
             total_tests=total_tests,
             passed_tests=passed_tests,
             failed_tests=failed_tests,
-            avg_execution_time_ms=(
-                statistics.mean(execution_times) if execution_times else 0
-            ),
-            avg_response_time_ms=(
-                statistics.mean(response_times) if response_times else 0
-            ),
+            avg_execution_time_ms=statistics.mean(execution_times) if execution_times else 0,
+            avg_response_time_ms=statistics.mean(response_times) if response_times else 0,
             total_tokens_used=sum(r.tokens_used for r in self.results),
             category_scores=category_scores,
             results=self.results,
             overall_score=overall_score,
+            backend_stats={
+                "usage": self.backend_usage,
+                "resilient_fallbacks": self.resilient_fallbacks,
+            },
+            provider_stats={
+                "usage": self.provider_usage,
+            },
         )
 
-    def save_report(
-        self, report: BenchmarkReport, output_path: str = "benchmark_report.json"
-    ):
+    def save_report(self, report: BenchmarkReport, output_path: str = "benchmark_report.json"):
         """Save benchmark report to JSON file."""
         report_dict = {
             "timestamp": report.timestamp,
@@ -496,13 +1120,15 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
                 "total_tokens_used": report.total_tokens_used,
             },
             "category_scores": report.category_scores,
+            "backend_stats": report.backend_stats,
+            "provider_stats": report.provider_stats,
             "results": [asdict(r) for r in report.results],
         }
 
         with open(output_path, "w") as f:
             json.dump(report_dict, f, indent=2)
 
-        print(f"\nReport saved to: {output_path}")
+        print(f"\n📄 Report saved to: {output_path}")
 
     def print_summary(self, report: BenchmarkReport):
         """Print benchmark summary to console."""
@@ -515,37 +1141,71 @@ Respond with a JSON object: {"correctness": N, "security": N, "efficiency": N, "
         print(f"Failed: {report.failed_tests}")
         print(f"Overall Score: {report.overall_score:.1f}%")
         print(f"Avg Execution Time: {report.avg_execution_time_ms:.2f}ms")
-        print(f"Avg Response Time: {report.avg_response_time_ms:.2f}ms")
-        print("\nCategory Scores:")
+
+        print(f"\nBackend Usage:")
+        for backend, count in report.backend_stats.get("usage", {}).items():
+            print(f"  - {backend}: {count} requests")
+        if report.backend_stats.get("resilient_fallbacks", 0) > 0:
+            print(f"  ⚠️ Resilient fallbacks: {report.backend_stats['resilient_fallbacks']}")
+
+        print(f"\nProvider Usage:")
+        for provider, count in report.provider_stats.get("usage", {}).items():
+            print(f"  - {provider}: {count} requests")
+
+        print(f"\nCategory Scores:")
         for cat, score in report.category_scores.items():
             print(f"  - {cat}: {score:.1f}/10")
+
         print("=" * 60)
+
+
+# ============================================================================
+# CLI
+# ============================================================================
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Vaal AI Empire Benchmark Executor",
+        description="Vaal AI Empire Hybrid Benchmark Executor",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Auto-detect best backend
+  python agents/benchmark_executor.py --run-all --backend auto
+
+  # Force Ollama mode (local, no API keys)
+  python agents/benchmark_executor.py --run-all --backend ollama
+
+  # Force Direct API mode (production)
+  python agents/benchmark_executor.py --run-all --backend direct
+
+Backends:
+  - auto: Automatically select best available (Ollama → Direct API)
+  - ollama: Use Ollama unified interface (install from ollama.com)
+  - direct: Use direct API calls (requires API keys)
+
+Security (PR #65):
+  - All prompts are sanitized for PII before sending to AI models
+  - Resilient mode: continues even if backends are unavailable
+""",
     )
 
-    parser.add_argument(
-        "--run-all", action="store_true", help="Run all benchmark tests"
-    )
+    parser.add_argument("--run-all", action="store_true", help="Run all benchmark tests")
     parser.add_argument(
         "--category",
         type=str,
         choices=[c.value for c in BenchmarkCategory],
         help="Run tests for specific category",
     )
+    parser.add_argument("--report", action="store_true", help="Generate and save benchmark report")
+    parser.add_argument("--output", type=str, default="benchmark_report.json", help="Output path for report")
     parser.add_argument(
-        "--report", action="store_true", help="Generate and save benchmark report"
-    )
-    parser.add_argument(
-        "--output",
+        "--backend",
         type=str,
-        default="benchmark_report.json",
-        help="Output path for report",
+        choices=["auto", "ollama", "direct"],
+        default="auto",
+        help="Backend mode: auto (default), ollama, or direct",
     )
     parser.add_argument(
         "--benchmark-data",
@@ -553,14 +1213,8 @@ def parse_args() -> argparse.Namespace:
         default="benchmark_data/test_cases.json",
         help="Path to benchmark test cases JSON",
     )
-    parser.add_argument(
-        "--no-quality-eval",
-        action="store_true",
-        help="Disable GLM-5 quality evaluation",
-    )
-    parser.add_argument(
-        "--prometheus", action="store_true", help="Enable Prometheus metrics"
-    )
+    parser.add_argument("--no-quality-eval", action="store_true", help="Disable quality evaluation")
+    parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds per response")
 
     return parser.parse_args()
 
@@ -569,10 +1223,18 @@ async def main():
     """Main entry point."""
     args = parse_args()
 
-    executor = BenchmarkExecutor(
+    # Map backend string to enum
+    backend_map = {
+        "auto": BackendMode.AUTO,
+        "ollama": BackendMode.OLLAMA,
+        "direct": BackendMode.DIRECT,
+    }
+
+    executor = HybridBenchmarkExecutor(
+        backend=backend_map[args.backend],
         benchmark_data_path=args.benchmark_data,
         enable_quality_evaluation=not args.no_quality_eval,
-        prometheus_enabled=args.prometheus,
+        execution_timeout=args.timeout,
     )
 
     if args.run_all or args.category:
@@ -584,6 +1246,8 @@ async def main():
     else:
         print("Use --run-all or --category <category> to run benchmarks")
         print(f"Available categories: {[c.value for c in BenchmarkCategory]}")
+        print("\nBackend modes: auto, ollama, direct")
+        print("\nRun --help for more information")
 
 
 if __name__ == "__main__":

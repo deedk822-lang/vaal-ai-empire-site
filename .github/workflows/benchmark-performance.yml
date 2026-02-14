@@ -20,6 +20,16 @@ on:
           - code_generation
           - refactoring
           - debugging
+      provider:
+        description: 'AI provider to use'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - kimi
+          - dashscope
+          - glm
 
 concurrency:
   group: benchmark-${{ github.ref }}
@@ -56,11 +66,17 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
         run: |
+          PROVIDER_ARG=""
+          if [ "${{ github.event.inputs.provider }}" != "" ]; then
+            PROVIDER_ARG="--provider ${{ github.event.inputs.provider }}"
+          fi
+          
           if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
-            python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json --category ${{ github.event.inputs.category }}
+            python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json --category ${{ github.event.inputs.category }} $PROVIDER_ARG
           else
-            python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json
+            python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json $PROVIDER_ARG
           fi
 
       - name: Generate benchmark summary
