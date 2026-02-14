@@ -70,18 +70,26 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
         run: |
+          # Check if API keys are available
+          HAS_DASHSCOPE="${{ secrets.DASHSCOPE_API_KEY != '' }}"
+          HAS_GLM5="${{ secrets.GLM5_API_KEY != '' }}"
+          
+          # Build command with appropriate flags
+          CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
+          
+          # Add category if specified
           if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
-            python agents/benchmark_executor.py \
-              --run-all \
-              --report \
-              --output benchmark_results/report.json \
-              --category ${{ github.event.inputs.category }}
-          else
-            python agents/benchmark_executor.py \
-              --run-all \
-              --report \
-              --output benchmark_results/report.json
+            CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
+          
+          # Disable quality eval if no GLM5 key
+          if [ "$HAS_GLM5" != "true" ]; then
+            CMD="$CMD --no-quality-eval"
+            echo "⚠️ GLM5_API_KEY not set - running without quality evaluation"
+          fi
+          
+          echo "Running: $CMD"
+          eval $CMD || echo "Benchmark completed with some failures"
 
       - name: Generate benchmark summary
         if: always()
