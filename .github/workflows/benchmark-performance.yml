@@ -69,6 +69,7 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           # Check if API keys are available
           HAS_DASHSCOPE="${{ secrets.DASHSCOPE_API_KEY != '' }}"
@@ -90,6 +91,11 @@ jobs:
           
           echo "Running: $CMD"
           eval $CMD || echo "Benchmark completed with some failures"
+          
+          # Ensure report exists even if benchmark had issues
+          if [ ! -f benchmark_results/report.json ]; then
+            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "results": []}' > benchmark_results/report.json
+          fi
 
       - name: Generate benchmark summary
         if: always()
@@ -107,15 +113,6 @@ jobs:
               summary = data.get('summary', {})
               print('## 📊 Benchmark Results')
               print('')
- fix/coderabbit-issues-resolved
-              print(f'| Metric | Value |')
-              print(f'|--------|-------|')
-              print(f\"| Total Tests | {summary.get('total_tests', 0)} |\")
-              print(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\")
-              print(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\")
-              print(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\")
-              print(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\")
-
               print('| Metric | Value |')
               print('|--------|-------|')
               print(f"| Total Tests | {summary.get('total_tests', 0)} |")
@@ -123,27 +120,18 @@ jobs:
               print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
               print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
               print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
- merge/develop-to-main
 
-              # Write to GITHUB_STEP_SUMMARY
+              # Write to GITHUB_STEP_SUMMARY (append mode to preserve prior summaries)
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-              with open(summary_file, 'w') as f:
+              with open(summary_file, 'a') as f:
                   f.write('## 📊 Benchmark Results\n\n')
                   f.write('| Metric | Value |\n')
                   f.write('|--------|-------|\n')
- fix/coderabbit-issues-resolved
-                  f.write(f\"| Total Tests | {summary.get('total_tests', 0)} |\n\")
-                  f.write(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\n\")
-                  f.write(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\n\")
-                  f.write(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n\")
-                  f.write(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n\")
-
                   f.write(f"| Total Tests | {summary.get('total_tests', 0)} |\n")
                   f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
                   f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
                   f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
                   f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
- merge/develop-to-main
 
               # Category scores
               categories = data.get('category_scores', {})
@@ -152,13 +140,16 @@ jobs:
                   print('### Category Scores')
                   print('')
                   for cat, score in categories.items():
- fix/coderabbit-issues-resolved
-                      print(f'- **{cat}**: {score:.1f}/10')
-          "
-
                       print(f"- **{cat}**: {score:.1f}/10")
           PYEOF
- merge/develop-to-main
+
+      - name: Generate coverage placeholder
+        if: always()
+        run: |
+          mkdir -p htmlcov
+          if [ ! -f coverage.xml ]; then
+            echo '<?xml version="1.0" ?><coverage version="5.5"><packages/></coverage>' > coverage.xml
+          fi
 
       - name: Upload benchmark results
         if: always()
@@ -177,6 +168,7 @@ jobs:
             htmlcov/
             coverage.xml
           retention-days: 7
+          if-no-files-found: warn
 
   # Optional: Run benchmarks in Docker
   benchmark-docker:
@@ -252,14 +244,19 @@ jobs:
           overall_score = summary.get('overall_score', 0)
 
           # Set output
-          print(f'overall_score={overall_score}')
+          with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+              f.write(f'overall_score={overall_score}\n')
+
+          print(f'Current score: {overall_score:.1f}%')
 
           # Fail if score drops below threshold
-          if overall_score < 70:
-              print('::warning::Benchmark score below 70% threshold')
-          elif overall_score < 50:
-              print('::error::Benchmark score critically low')
+          if overall_score < 50:
+              print('::error::Benchmark score critically low (< 50%)')
               exit(1)
+          elif overall_score < 70:
+              print('::warning::Benchmark score below 70% threshold')
+          else:
+              print('::notice::Benchmark score acceptable (>= 70%)')
           "
 
       - name: Comment on PR
@@ -267,30 +264,40 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let report = {};
-            try {
-              report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
-            } catch (e) {
-              console.log('Could not read report');
+            async function main() {
+              const fs = require('fs');
+              let report = {};
+              try {
+                report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
+              } catch (e) {
+                console.log('Could not read report:', e.message);
+                return;
+              }
+
+              const summary = report.summary || {};
+              const body = `## Benchmark Results
+
+              | Metric | Value |
+              |--------|-------|
+              | Total Tests | ${summary.total_tests || 0} |
+              | Passed | ${summary.passed_tests || 0} |
+              | Failed | ${summary.failed_tests || 0} |
+              | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
+              | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
+
+              ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
+
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: body
+                });
+                console.log('Comment posted successfully');
+              } catch (error) {
+                console.error('Failed to post comment:', error.message);
+              }
             }
-
-            const summary = report.summary || {};
-            const body = `## Benchmark Results
-
-            | Metric | Value |
-            |--------|-------|
-            | Total Tests | ${summary.total_tests || 0} |
-            | Passed | ${summary.passed_tests || 0} |
-            | Failed | ${summary.failed_tests || 0} |
-            | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
-            | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
-
-            ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
-
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+            
+            await main();
