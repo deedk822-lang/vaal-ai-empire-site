@@ -271,30 +271,40 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let report = {};
-            try {
-              report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
-            } catch (e) {
-              console.log('Could not read report');
+            async function main() {
+              const fs = require('fs');
+              let report = {};
+              try {
+                report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
+              } catch (e) {
+                console.log('Could not read report:', e.message);
+                return;
+              }
+
+              const summary = report.summary || {};
+              const body = `## Benchmark Results
+
+              | Metric | Value |
+              |--------|-------|
+              | Total Tests | ${summary.total_tests || 0} |
+              | Passed | ${summary.passed_tests || 0} |
+              | Failed | ${summary.failed_tests || 0} |
+              | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
+              | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
+
+              ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
+
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: body
+                });
+                console.log('Comment posted successfully');
+              } catch (error) {
+                console.error('Failed to post comment:', error.message);
+              }
             }
-
-            const summary = report.summary || {};
-            const body = `## Benchmark Results
-
-            | Metric | Value |
-            |--------|-------|
-            | Total Tests | ${summary.total_tests || 0} |
-            | Passed | ${summary.passed_tests || 0} |
-            | Failed | ${summary.failed_tests || 0} |
-            | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
-            | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
-
-            ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
-
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+            
+            await main();
