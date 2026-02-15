@@ -7,7 +7,6 @@ import argparse
 
 from coding_agent_executor import CodingAgentExecutor
 
-
 EXAMPLES = {
     1: ("Generate scraper snippet", "Write a Python web scraper", False),
     2: ("Simple message", "Create a function to add two numbers", False),
@@ -17,7 +16,9 @@ EXAMPLES = {
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run coding agent executor examples")
-    parser.add_argument("example", type=int, choices=EXAMPLES.keys(), help="Example number to run")
+    parser.add_argument(
+        "example", type=int, choices=EXAMPLES.keys(), help="Example number to run"
+    )
     args = parser.parse_args()
 
     title, message, execute = EXAMPLES[args.example]

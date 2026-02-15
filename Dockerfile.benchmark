@@ -23,30 +23,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
+    dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt || true
-
-# Install additional benchmark dependencies
-RUN pip install --no-cache-dir \
-    prometheus-client \
-    aiohttp \
-    pytest-asyncio
+RUN pip install --no-cache-dir -r /tmp/requirements.txt || \
+    pip install --no-cache-dir pytest pytest-asyncio requests prometheus-client aiohttp
 
 # ============================================
-# Stage 2: Node.js Dependencies
+# Stage 2: Node.js Dependencies (Optional)
 # ============================================
 FROM node:${NODE_VERSION}-slim AS node-base
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package*.json ./ 2>/dev/null || true
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (continue on error)
+RUN npm ci --only=production 2>/dev/null || npm install --production 2>/dev/null || true
 
 # ============================================
 # Stage 3: Final Runtime Image
@@ -70,6 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     ca-certificates \
+    dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -82,17 +79,15 @@ RUN groupadd --gid $USER_GID $USERNAME \
 COPY --from=python-base /usr/local/lib/python${PYTHON_VERSION}/site-packages /usr/local/lib/python${PYTHON_VERSION}/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
-# Copy Node.js from node-base
-COPY --from=node-base /usr/local/bin/node /usr/local/bin/
-COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
-
 # Copy application code
 WORKDIR /app
 
 # Copy benchmark files with proper ownership
 COPY --chown=$USERNAME:$USERNAME agents/ ./agents/
 COPY --chown=$USERNAME:$USERNAME benchmark_data/ ./benchmark_data/
-COPY --chown=$USERNAME:$USERNAME server/ ./server/
+
+# Copy server if it exists
+COPY --chown=$USERNAME:$USERNAME server/ ./server/ 2>/dev/null || true
 
 # Create benchmark results directory
 RUN mkdir -p /app/benchmark_results && chown -R $USERNAME:$USERNAME /app/benchmark_results
@@ -106,10 +101,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 # Labels for metadata
 LABEL maintainer="Vaal AI Empire" \
-      description="Benchmark suite for AI model evaluation" \
-      version="1.0.0" \
-      org.opencontainers.image.source="https://github.com/vaal-ai-empire/vaal-ai-empire-site"
+      description="Benchmark suite for AI model evaluation with Kimi K2.5 + GLM-5" \
+      version="2.0.0" \
+      org.opencontainers.image.source="https://github.com/deedk822-lang/vaal-ai-empire-site"
 
-# Default command
-ENTRYPOINT ["python", "agents/benchmark_executor.py"]
-CMD ["--run-all", "--report"]
+EXPOSE 8000
+
+# Default command - runs hybrid benchmark executor
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["python", "agents/benchmark_executor.py", "--run-all", "--report", "--backend", "auto"]

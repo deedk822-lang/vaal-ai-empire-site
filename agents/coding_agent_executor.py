@@ -7,9 +7,9 @@ import argparse
 import math
 import os
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass
 
 
 @dataclass
@@ -38,8 +38,7 @@ class CodingAgentExecutor:
         return bool(self.api_key)
 
     def _build_scraper_snippet(self) -> str:
-        return textwrap.dedent(
-            """\
+        return textwrap.dedent("""\
             Here's a Python web scraper starter using `requests` + `BeautifulSoup`:
 
             ```python
@@ -58,8 +57,7 @@ class CodingAgentExecutor:
             ```
 
             Tip: Respect robots.txt and website terms before scraping.
-            """
-        ).strip()
+            """).strip()
 
     def _execute_known_task(self, message: str) -> str:
         normalized = message.lower().strip()
@@ -119,10 +117,19 @@ def load_api_key_from_file(api_key_file: Optional[str]) -> Optional[str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the coding agent executor.")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("-i", "--interactive", action="store_true", help="Start interactive mode")
+    group.add_argument(
+        "-i", "--interactive", action="store_true", help="Start interactive mode"
+    )
     group.add_argument("-m", "--message", type=str, help="Send a single message")
-    parser.add_argument("-e", "--execute", action="store_true", help="Enable local task execution")
-    parser.add_argument("--api-key-file", type=str, default=None, help="Path to file containing API key (safer than passing secrets on CLI)")
+    parser.add_argument(
+        "-e", "--execute", action="store_true", help="Enable local task execution"
+    )
+    parser.add_argument(
+        "--api-key-file",
+        type=str,
+        default=None,
+        help="Path to file containing API key (safer than passing secrets on CLI)",
+    )
     return parser.parse_args()
 
 
