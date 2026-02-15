@@ -102,7 +102,13 @@ jobs:
           fi
           
           echo "Running: $CMD"
-          eval $CMD || echo "Benchmark completed with some failures"
+          eval $CMD
+          BENCHMARK_EXIT=$?
+          echo "benchmark_exit=$BENCHMARK_EXIT" >> $GITHUB_OUTPUT
+          if [ $BENCHMARK_EXIT -ne 0 ]; then
+            echo "::warning::Benchmark completed with some failures (exit code: $BENCHMARK_EXIT)"
+          fi
+          exit 0  # Always succeed to allow downstream steps to run
 
       - name: Generate benchmark summary
         if: always()
@@ -128,9 +134,9 @@ jobs:
               print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
               print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
 
-              # Write to GITHUB_STEP_SUMMARY
+              # Write to GITHUB_STEP_SUMMARY (append mode to preserve prior summaries)
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-              with open(summary_file, 'w') as f:
+              with open(summary_file, 'a') as f:
                   f.write('## 📊 Benchmark Results\n\n')
                   f.write('| Metric | Value |\n')
                   f.write('|--------|-------|\n')
@@ -253,12 +259,12 @@ jobs:
           # Set output
           print(f'overall_score={overall_score}')
 
-          # Fail if score drops below threshold
-          if overall_score < 70:
-              print('::warning::Benchmark score below 70% threshold')
-          elif overall_score < 50:
-              print('::error::Benchmark score critically low')
+          # Fail if score drops below threshold (check critical first)
+          if overall_score < 50:
+              print('::error::Benchmark score critically low (< 50%)')
               exit(1)
+          elif overall_score < 70:
+              print('::warning::Benchmark score below 70% threshold')
           PYEOF
 
       - name: Comment on PR
@@ -266,30 +272,40 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let report = {};
-            try {
-              report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
-            } catch (e) {
-              console.log('Could not read report');
+            async function main() {
+              const fs = require('fs');
+              let report = {};
+              try {
+                report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
+              } catch (e) {
+                console.log('Could not read report:', e.message);
+                return;
+              }
+
+              const summary = report.summary || {};
+              const body = `## Benchmark Results
+
+              | Metric | Value |
+              |--------|-------|
+              | Total Tests | ${summary.total_tests || 0} |
+              | Passed | ${summary.passed_tests || 0} |
+              | Failed | ${summary.failed_tests || 0} |
+              | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
+              | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
+
+              ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
+
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: body
+                });
+                console.log('Comment posted successfully');
+              } catch (error) {
+                console.error('Failed to post comment:', error.message);
+              }
             }
-
-            const summary = report.summary || {};
-            const body = `## Benchmark Results
-
-            | Metric | Value |
-            |--------|-------|
-            | Total Tests | ${summary.total_tests || 0} |
-            | Passed | ${summary.passed_tests || 0} |
-            | Failed | ${summary.failed_tests || 0} |
-            | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
-            | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
-
-            ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
-
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+            
+            await main();

@@ -8,3 +8,42 @@ __pycache__/
 
 # Kimi workspace
 .kimi/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+benchmark_results/
+*.db

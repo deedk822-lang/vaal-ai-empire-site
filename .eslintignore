@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+
+# Build outputs
+dist/
+build/
+coverage/
+htmlcov/
+
+# Cache
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+benchmark_results/
+coverage.xml
+.coverage
