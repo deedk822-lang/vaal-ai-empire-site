@@ -49,12 +49,21 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Track whether we have the base class available
+_HAS_BASE_CLASS = False
+CodingAgentExecutor = None
+AgentResult = None
+
+# Try multiple import paths for the base executor
 try:
+    # Try direct import first (when running from agents directory)
     from coding_agent_executor import CodingAgentExecutor, AgentResult
+    _HAS_BASE_CLASS = True
 except ImportError:
     try:
         # Try relative import
         from .coding_agent_executor import CodingAgentExecutor, AgentResult
+        _HAS_BASE_CLASS = True
     except ImportError:
         # Define minimal base classes if import fails
         @dataclass
