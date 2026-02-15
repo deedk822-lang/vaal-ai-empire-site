@@ -46,13 +46,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Import base executor - handle both direct execution and import
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 try:
     from coding_agent_executor import CodingAgentExecutor, AgentResult
 except ImportError:
-    # Fallback for standalone execution
-    sys.path.insert(0, str(Path(__file__).parent))
     try:
-        from coding_agent_executor import CodingAgentExecutor, AgentResult
+        # Try relative import
+        from .coding_agent_executor import CodingAgentExecutor, AgentResult
     except ImportError:
         # Define minimal base classes if import fails
         @dataclass
@@ -61,7 +63,8 @@ except ImportError:
             executed: bool = False
         
         class CodingAgentExecutor:
-            """Minimal fallback implementation."""
+            """Minimal fallback implementation for standalone benchmark execution."""
+            
             def __init__(self, api_key: Optional[str] = None) -> None:
                 self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
             
@@ -70,7 +73,11 @@ except ImportError:
                 return bool(self.api_key)
             
             def respond(self, message: str, execute: bool = False) -> AgentResult:
-                return AgentResult(response=f"Mock response: {message}", executed=False)
+                """Generate a mock response for benchmarking purposes."""
+                return AgentResult(
+                    response=f"[Benchmark Mode] Received request: {message[:50]}...",
+                    executed=False
+                )
 
 
 class BenchmarkCategory(Enum):

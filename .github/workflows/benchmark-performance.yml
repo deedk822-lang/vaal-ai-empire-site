@@ -2,9 +2,9 @@ name: Benchmark Performance
 
 on:
   push:
-    branches: [merge/develop-to-main]
+    branches: [main, master, merge/develop-to-main]
   pull_request:
-    branches: [merge/develop-to-main]
+    branches: [main, master, merge/develop-to-main]
   workflow_dispatch:
     inputs:
       category:
@@ -74,6 +74,9 @@ jobs:
           # Check if API keys are available
           HAS_DASHSCOPE="${{ secrets.DASHSCOPE_API_KEY != '' }}"
           HAS_GLM5="${{ secrets.GLM5_API_KEY != '' }}"
+          
+          # Export for shell evaluation
+          export HAS_DASHSCOPE HAS_GLM5
           
           # Build command with appropriate flags
           CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
@@ -219,11 +222,19 @@ jobs:
           name: benchmark-results
           path: current_results
 
+      - name: Download baseline benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results
+          path: baseline_results
+        continue-on-error: true
+
       - name: Compare with baseline
         id: compare
         run: |
           python -c "
           import json
+          import os
           from pathlib import Path
 
           # Load current results
@@ -235,20 +246,47 @@ jobs:
           with open(current_path) as f:
               current = json.load(f)
 
+          # Load baseline results if available
+          baseline_path = Path('baseline_results/report.json')
+          baseline_score = None
+          if baseline_path.exists():
+              try:
+                  with open(baseline_path) as f:
+                      baseline = json.load(f)
+                  baseline_score = baseline.get('summary', {}).get('overall_score', 0)
+                  print(f'Baseline score: {baseline_score:.1f}%')
+              except Exception as e:
+                  print(f'Could not load baseline: {e}')
+
           # Check for regressions
           summary = current.get('summary', {})
           overall_score = summary.get('overall_score', 0)
 
-          # Set output
-          print(f'overall_score={overall_score}')
+          # Set output for GitHub Actions
+          with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+              f.write(f'overall_score={overall_score}\n')
+
+          print(f'Current score: {overall_score:.1f}%')
+
+          # Compare with baseline if available
+          if baseline_score is not None:
+              diff = overall_score - baseline_score
+              if diff < -10:
+                  print(f'::error::Performance regression detected: {diff:.1f}% drop from baseline')
+              elif diff < -5:
+                  print(f'::warning::Performance decrease: {diff:.1f}% from baseline')
+              elif diff > 5:
+                  print(f'::notice::Performance improvement: +{diff:.1f}% from baseline')
 
           # Fail if score drops below threshold
           # Check < 50 FIRST (more critical), then < 70
           if overall_score < 50:
-              print('::error::Benchmark score critically low')
+              print('::error::Benchmark score critically low (< 50%)')
               exit(1)
           elif overall_score < 70:
               print('::warning::Benchmark score below 70% threshold')
+          else:
+              print('::notice::Benchmark score acceptable (>= 70%)')
           "
 
       - name: Comment on PR
