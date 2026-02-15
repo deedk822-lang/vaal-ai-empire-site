@@ -194,7 +194,10 @@ jobs:
     name: Run Benchmark in Docker
     runs-on: ubuntu-latest
     needs: benchmark
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run on push to main or on PRs targeting main/merge branches
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request')
 
     steps:
       - name: Checkout repository
@@ -211,13 +214,28 @@ jobs:
       - name: Run benchmark container
         run: |
           docker compose -f docker-compose.benchmark.yml up --abort-on-container-exit
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
         continue-on-error: true
 
       - name: Copy results from container
         if: always()
         run: |
-          docker cp benchmark-runner:/app/benchmark_results ./benchmark_results_docker || echo "Could not copy results"
+          # Try both possible container names
+          docker cp vaal-benchmark-runner:/app/benchmark_results ./benchmark_results_docker 2>/dev/null || \
+          docker cp benchmark-runner:/app/benchmark_results ./benchmark_results_docker 2>/dev/null || \
+          echo "Could not copy results - container may not have started"
         continue-on-error: true
+
+      - name: Create placeholder results if missing
+        if: always()
+        run: |
+          mkdir -p benchmark_results_docker
+          if [ ! -f benchmark_results_docker/report.json ]; then
+            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results_docker/report.json
+          fi
 
       - name: Upload Docker benchmark results
         if: always()
@@ -226,6 +244,7 @@ jobs:
           name: benchmark-results-docker
           path: benchmark_results_docker/
           retention-days: 30
+          if-no-files-found: warn
         continue-on-error: true
 
   # Performance regression check
