@@ -6,5 +6,26 @@ __pycache__/
 .pytest_cache/
 .eslintcache
 
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # Kimi workspace
 .kimi/
+
+# OS
+.DS_Store
+Thumbs.db
