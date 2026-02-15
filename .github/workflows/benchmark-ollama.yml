@@ -55,12 +55,12 @@ jobs:
       - name: Install Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          
+        
       - name: Start Ollama daemon
         run: |
           ollama serve &
           sleep 5
-          
+        
       - name: Authenticate Ollama Cloud (if configured)
         if: ${{ secrets.OLLAMA_TOKEN != '' }}
         env:
@@ -72,7 +72,7 @@ jobs:
         run: |
           IFS=',' read -ra MODELS <<< "${{ github.event.inputs.models }}"
           for model in "${MODELS[@]}"; do
-            model=$(echo "$model" | xargs)  # trim whitespace
+            model=$(echo "$model" | xargs)
             echo "Pulling model: $model"
             case "$model" in
               "kimi-k2.5")
@@ -109,12 +109,12 @@ jobs:
           if [ -n "${{ github.event.inputs.models }}" ]; then
             MODELS_ARG="--models $(echo '${{ github.event.inputs.models }}' | tr ',' ' ')"
           fi
-          
+        
           CATEGORY_ARG=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
             CATEGORY_ARG="--category ${{ github.event.inputs.category }}"
           fi
-          
+        
           python agents/ollama_benchmark_enhanced.py \
             $MODELS_ARG \
             $CATEGORY_ARG \
@@ -124,7 +124,7 @@ jobs:
       - name: Generate benchmark summary
         if: always()
         run: |
-          python -c "
+          python3 << 'PYEOF'
           import json
           import os
           from pathlib import Path
@@ -141,40 +141,40 @@ jobs:
               for model, available in summary.get('available_models', {}).items():
                   status = '✅' if available else '❌'
                   print(f'- {status} {model}')
-              
+            
               print('')
               print('### Model Wins')
               for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
                   print(f'- {model}: {wins} wins')
-              
+            
               print('')
               print('### Latency Comparison')
               print('| Model | Avg Latency | Consistency |')
               print('|-------|-------------|-------------|')
               for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
-                  print(f'| {model} | {stats[\"avg_ms\"]}ms | ±{stats[\"consistency_ms\"]}ms |')
+                  print(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |')
 
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
               with open(summary_file, 'w') as f:
                   f.write('## Ollama Benchmark Results\n\n')
-                  
+                
                   f.write('### Available Models\n')
                   for model, available in summary.get('available_models', {}).items():
                       status = '✅' if available else '❌'
                       f.write(f'- {status} {model}\n')
-                  
+                
                   f.write('\n### Model Wins\n')
                   for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
                       f.write(f'- {model}: {wins} wins\n')
-                  
+                
                   f.write('\n### Latency Comparison\n')
                   f.write('| Model | Avg Latency | Consistency |\n')
                   f.write('|-------|-------------|-------------|\n')
                   for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
-                      f.write(f'| {model} | {stats[\"avg_ms\"]}ms | ±{stats[\"consistency_ms\"]}ms |\n')
+                      f.write(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |\n')
           else:
               print('No benchmark report found')
-          "
+          PYEOF
 
       - name: Upload benchmark results
         if: always()

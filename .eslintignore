@@ -1,41 +1,36 @@
 # Dependencies
 node_modules/
+server/node_modules/
 .venv/
 venv/
-env/
 
 # Build outputs
 dist/
 build/
 coverage/
-htmlcov/
-
-# Cache
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-*.egg-info/
 
 # Logs
-logs/
 *.log
 
 # Environment
 .env
 .env.local
-.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Cache
+.eslintcache
 
-# Test outputs
-benchmark_results/
-coverage.xml
-.coverage
+# Agent workspace
+.kimi/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/

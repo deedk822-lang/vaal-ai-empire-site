@@ -6,44 +6,26 @@ __pycache__/
 .pytest_cache/
 .eslintcache
 
-# Kimi workspace
-.kimi/
-
-# Virtual Environments
+# Virtual environments
 .venv/
 venv/
 ENV/
 env/
 
-# Python
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg
-*.egg-info/
-dist/
+# Build artifacts
 build/
-wheels/
-
-# Coverage
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
+dist/
+*.egg-info/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+
+# Kimi workspace
+.kimi/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Project specific
-benchmark_results/
-*.db
