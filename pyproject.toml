@@ -26,3 +26,4 @@ asyncio_mode = "auto"
 [tool.flake8]
 max-line-length = 88
 extend-ignore = "E203"
+exclude = [".venv", "venv", "env", "__pycache__", "node_modules", ".git", ".tox", ".eggs", "*.egg", "build", "dist", ".pytest_cache", "htmlcov"]
