@@ -7,10 +7,11 @@
  * Based on: https://docs.cohere.com/page/cookbooks/embed-jobs
  */
 
+/* eslint-disable no-console */
+
 const cohere = require('cohere-ai');
 const hnswlib = require('hnswlib-node');
 const fs = require('fs');
-const path = require('path');
 
 class CohereSemanticSearch {
   constructor(apiKey) {

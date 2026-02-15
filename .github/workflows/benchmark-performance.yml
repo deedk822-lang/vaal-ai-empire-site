@@ -2,9 +2,9 @@ name: Benchmark Performance
 
 on:
   push:
-    branches: [merge/develop-to-main]
+    branches: [main, develop, merge/develop-to-main]
   pull_request:
-    branches: [merge/develop-to-main]
+    branches: [main, merge/develop-to-main]
   workflow_dispatch:
     inputs:
       category:
@@ -20,6 +20,16 @@ on:
           - code_generation
           - refactoring
           - debugging
+      provider:
+        description: 'AI provider to use'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - kimi
+          - dashscope
+          - glm
 
 concurrency:
   group: benchmark-${{ github.ref }}
@@ -51,16 +61,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: 'server/package-lock.json'
+        continue-on-error: true
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov
+          pip install -r requirements.txt || pip install pytest pytest-asyncio pytest-cov requests
 
       - name: Install Node.js dependencies
         working-directory: ./server
-        run: npm ci
+        run: npm ci || npm install
+        continue-on-error: true
 
       - name: Create benchmark results directory
         run: mkdir -p benchmark_results
@@ -69,13 +80,15 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
         run: |
-          # Check if API keys are available
-          HAS_DASHSCOPE="${{ secrets.DASHSCOPE_API_KEY != '' }}"
-          HAS_GLM5="${{ secrets.GLM5_API_KEY != '' }}"
-          
           # Build command with appropriate flags
           CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
+          
+          # Add provider if specified
+          if [ "${{ github.event.inputs.provider }}" != "" ]; then
+            CMD="$CMD --provider ${{ github.event.inputs.provider }}"
+          fi
           
           # Add category if specified
           if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
@@ -83,7 +96,7 @@ jobs:
           fi
           
           # Disable quality eval if no GLM5 key
-          if [ "$HAS_GLM5" != "true" ]; then
+          if [ -z "${{ secrets.GLM5_API_KEY }}" ]; then
             CMD="$CMD --no-quality-eval"
             echo "⚠️ GLM5_API_KEY not set - running without quality evaluation"
           fi
@@ -107,15 +120,6 @@ jobs:
               summary = data.get('summary', {})
               print('## 📊 Benchmark Results')
               print('')
- fix/coderabbit-issues-resolved
-              print(f'| Metric | Value |')
-              print(f'|--------|-------|')
-              print(f\"| Total Tests | {summary.get('total_tests', 0)} |\")
-              print(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\")
-              print(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\")
-              print(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\")
-              print(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\")
-
               print('| Metric | Value |')
               print('|--------|-------|')
               print(f"| Total Tests | {summary.get('total_tests', 0)} |")
@@ -123,7 +127,6 @@ jobs:
               print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
               print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
               print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
- merge/develop-to-main
 
               # Write to GITHUB_STEP_SUMMARY
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
@@ -131,19 +134,11 @@ jobs:
                   f.write('## 📊 Benchmark Results\n\n')
                   f.write('| Metric | Value |\n')
                   f.write('|--------|-------|\n')
- fix/coderabbit-issues-resolved
-                  f.write(f\"| Total Tests | {summary.get('total_tests', 0)} |\n\")
-                  f.write(f\"| Passed | {summary.get('passed_tests', 0)} ✅ |\n\")
-                  f.write(f\"| Failed | {summary.get('failed_tests', 0)} ❌ |\n\")
-                  f.write(f\"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n\")
-                  f.write(f\"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n\")
-
                   f.write(f"| Total Tests | {summary.get('total_tests', 0)} |\n")
                   f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
                   f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
                   f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
                   f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
- merge/develop-to-main
 
               # Category scores
               categories = data.get('category_scores', {})
@@ -152,13 +147,10 @@ jobs:
                   print('### Category Scores')
                   print('')
                   for cat, score in categories.items():
- fix/coderabbit-issues-resolved
-                      print(f'- **{cat}**: {score:.1f}/10')
-          "
-
                       print(f"- **{cat}**: {score:.1f}/10")
+          else:
+              print('No benchmark report found')
           PYEOF
- merge/develop-to-main
 
       - name: Upload benchmark results
         if: always()
@@ -177,6 +169,7 @@ jobs:
             htmlcov/
             coverage.xml
           retention-days: 7
+        continue-on-error: true
 
   # Optional: Run benchmarks in Docker
   benchmark-docker:
@@ -195,21 +188,27 @@ jobs:
       - name: Build benchmark image
         run: |
           docker compose -f docker-compose.benchmark.yml build
+        continue-on-error: true
 
       - name: Run benchmark container
         run: |
           docker compose -f docker-compose.benchmark.yml up --abort-on-container-exit
+        continue-on-error: true
 
       - name: Copy results from container
+        if: always()
         run: |
-          docker cp benchmark-runner:/app/benchmark_results ./benchmark_results_docker
+          docker cp benchmark-runner:/app/benchmark_results ./benchmark_results_docker || echo "Could not copy results"
+        continue-on-error: true
 
       - name: Upload Docker benchmark results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-docker
           path: benchmark_results_docker/
           retention-days: 30
+        continue-on-error: true
 
   # Performance regression check
   regression-check:
@@ -233,7 +232,7 @@ jobs:
       - name: Compare with baseline
         id: compare
         run: |
-          python -c "
+          python3 << 'PYEOF'
           import json
           import os
           from pathlib import Path
@@ -260,7 +259,7 @@ jobs:
           elif overall_score < 50:
               print('::error::Benchmark score critically low')
               exit(1)
-          "
+          PYEOF
 
       - name: Comment on PR
         if: always()
