@@ -1,15 +1,19 @@
-import pytest
 import asyncio
+
+import pytest
+
 
 @pytest.mark.asyncio
 async def test_agent_initialization():
     """Test if the agent can be initialized properly."""
     assert True
 
+
 @pytest.mark.asyncio
 async def test_agent_response():
     """Test if the agent provides a valid response."""
     assert True
+
 
 # Adding placeholders for the 15 test cases mentioned in the screenshot
 @pytest.mark.parametrize("test_id", range(1, 16))

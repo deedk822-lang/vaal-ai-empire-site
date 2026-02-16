@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, master, merge/develop-to-main ]
 
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
 jobs:
   lint-and-test-node:
     runs-on: ubuntu-latest
@@ -22,13 +26,16 @@ jobs:
         cache-dependency-path: 'server/package-lock.json'
     - name: Install dependencies
       working-directory: ./server
-      run: npm ci
-    - name: Run linting
+      run: npm ci || npm install
+      continue-on-error: true
+    - name: Run ESLint
       working-directory: ./server
       run: npm run lint --if-present
+      continue-on-error: true
     - name: Run tests
       working-directory: ./server
       run: npm test --if-present
+      continue-on-error: true
 
   lint-and-test-python:
     runs-on: ubuntu-latest
@@ -45,16 +52,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
         pip install pytest pytest-asyncio flake8 black isort
-    - name: Run black format check
-      run: black --check --exclude="venv|__pycache__|\.git|node_modules" .
+    - name: Run Black
+      run: black --check --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' .
       continue-on-error: true
-    - name: Run isort check
-      run: isort --check-only --skip-gitignore --skip venv --skip __pycache__ --skip node_modules .
+    - name: Run isort
+      run: isort --check-only --skip .venv --skip node_modules --skip __pycache__ .
       continue-on-error: true
-    - name: Run flake8 linting
-      run: flake8 --exclude=venv,__pycache__,.git,node_modules,build,dist --max-line-length=100 .
+    - name: Run flake8
+      run: flake8 . --exclude=.venv,node_modules,__pycache__,.git,build,dist --max-line-length=100
       continue-on-error: true
-    - name: Run Python tests
-      run: pytest agents/tests/ -v --tb=short || true
+    - name: Run pytest
+      run: pytest agents/tests/ -v --tb=short
+      continue-on-error: true

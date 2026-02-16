@@ -1,0 +1,185 @@
+name: Ollama Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Models to test (comma-separated: kimi-k2.5,glm-5,qwen2.5-coder,llama3.2)'
+        default: 'kimi-k2.5,glm-5'
+        required: true
+      category:
+        description: 'Test category (leave empty for all)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - security
+          - efficiency
+          - code_generation
+          - debugging
+          - reasoning
+      runs:
+        description: 'Runs per test'
+        required: false
+        default: '3'
+
+concurrency:
+  group: ollama-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  benchmark:
+    name: Run Ollama Benchmark Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+        
+      - name: Start Ollama daemon
+        run: |
+          ollama serve &
+          sleep 5
+        
+      - name: Authenticate Ollama Cloud (if configured)
+        if: ${{ secrets.OLLAMA_TOKEN != '' }}
+        env:
+          OLLAMA_TOKEN: ${{ secrets.OLLAMA_TOKEN }}
+        run: |
+          echo "$OLLAMA_TOKEN" | ollama signin || echo "Ollama Cloud auth skipped"
+
+      - name: Pull models
+        run: |
+          IFS=',' read -ra MODELS <<< "${{ github.event.inputs.models }}"
+          for model in "${MODELS[@]}"; do
+            model=$(echo "$model" | xargs)
+            echo "Pulling model: $model"
+            case "$model" in
+              "kimi-k2.5")
+                ollama pull kimi-k2.5:cloud || echo "Warning: Could not pull $model (may need Ollama Cloud)"
+                ;;
+              "glm-5")
+                ollama pull glm5 || echo "Warning: Could not pull $model"
+                ;;
+              "qwen2.5-coder")
+                ollama pull qwen2.5-coder:14b || echo "Warning: Could not pull $model"
+                ;;
+              "llama3.2")
+                ollama pull llama3.2:latest || echo "Warning: Could not pull $model"
+                ;;
+              "deepseek-coder")
+                ollama pull deepseek-coder:6.7b || echo "Warning: Could not pull $model"
+                ;;
+              *)
+                echo "Unknown model: $model, attempting to pull anyway..."
+                ollama pull "$model" || echo "Warning: Could not pull $model"
+                ;;
+            esac
+          done
+
+      - name: List available models
+        run: ollama list
+
+      - name: Create benchmark results directory
+        run: mkdir -p benchmark_results
+
+      - name: Run Ollama benchmark suite
+        run: |
+          MODELS_ARG=""
+          if [ -n "${{ github.event.inputs.models }}" ]; then
+            MODELS_ARG="--models $(echo '${{ github.event.inputs.models }}' | tr ',' ' ')"
+          fi
+        
+          CATEGORY_ARG=""
+          if [ -n "${{ github.event.inputs.category }}" ]; then
+            CATEGORY_ARG="--category ${{ github.event.inputs.category }}"
+          fi
+        
+          python agents/ollama_benchmark_enhanced.py \
+            $MODELS_ARG \
+            $CATEGORY_ARG \
+            --runs ${{ github.event.inputs.runs }} \
+            --output benchmark_results/ollama_report.json
+
+      - name: Generate benchmark summary
+        if: always()
+        run: |
+          python3 << 'PYEOF'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path('benchmark_results/ollama_report.json')
+          if report_path.exists():
+              with open(report_path) as f:
+                  data = json.load(f)
+
+              summary = data.get('summary', {})
+              print('## Ollama Benchmark Results')
+              print('')
+              print('### Available Models')
+              for model, available in summary.get('available_models', {}).items():
+                  status = '✅' if available else '❌'
+                  print(f'- {status} {model}')
+            
+              print('')
+              print('### Model Wins')
+              for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
+                  print(f'- {model}: {wins} wins')
+            
+              print('')
+              print('### Latency Comparison')
+              print('| Model | Avg Latency | Consistency |')
+              print('|-------|-------------|-------------|')
+              for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
+                  print(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |')
+
+              summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
+              with open(summary_file, 'w') as f:
+                  f.write('## Ollama Benchmark Results\n\n')
+                
+                  f.write('### Available Models\n')
+                  for model, available in summary.get('available_models', {}).items():
+                      status = '✅' if available else '❌'
+                      f.write(f'- {status} {model}\n')
+                
+                  f.write('\n### Model Wins\n')
+                  for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
+                      f.write(f'- {model}: {wins} wins\n')
+                
+                  f.write('\n### Latency Comparison\n')
+                  f.write('| Model | Avg Latency | Consistency |\n')
+                  f.write('|-------|-------------|-------------|\n')
+                  for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
+                      f.write(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |\n')
+          else:
+              print('No benchmark report found')
+          PYEOF
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-benchmark-results
+          path: benchmark_results/
+          retention-days: 30

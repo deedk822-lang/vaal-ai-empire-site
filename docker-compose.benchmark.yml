@@ -28,6 +28,7 @@ services:
     environment:
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - GLM5_API_KEY=${GLM5_API_KEY:-}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - BENCHMARK_OUTPUT_DIR=/app/benchmark_results
