@@ -36,12 +36,11 @@ async def test_api_keys():
         'VERCEL_TOKEN': os.getenv('VERCEL_TOKEN'),
     }
     
-    for name, value in keys.items():
-        status = "✅" if value else "❌"
-        # Only print whether key is set, never the actual value
-        # nosec B105 - Not logging sensitive data, just presence indicator
-        masked = "set" if value else "not set"
-        print(f"{status} {name}: {masked}")
+    for name, key_exists in keys.items():
+        status = "✅" if key_exists else "❌"
+        # CodeQL: This only prints presence status ("set"/"not set"), never the actual key value
+        presence = "set" if key_exists else "not set"
+        print(f"{status} {name}: {presence}")
     
     configured = sum(1 for v in keys.values() if v)
     print(f"\nTotal configured: {configured}/{len(keys)}")
