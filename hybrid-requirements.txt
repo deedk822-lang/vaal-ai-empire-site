@@ -1,0 +1,30 @@
+# Hybrid Swarm Auto-Fixer - Production Requirements
+# Supports YOUR infrastructure: OLLAMA, Kimi K2.5, GLM-5, DashScope
+
+# Core async HTTP (for API calls)
+aiohttp>=3.9.0,<4.0.0
+
+# Testing
+pytest>=7.4.0,<8.0.0
+pytest-asyncio>=0.21.0,<0.24.0
+pytest-mock>=3.12.0,<4.0.0
+
+# Monitoring - Prometheus metrics
+prometheus-client>=0.19.0,<0.21.0
+
+# Monitoring - OpenTelemetry (optional, for distributed tracing)
+opentelemetry-api>=1.22.0,<2.0.0
+opentelemetry-sdk>=1.22.0,<2.0.0
+opentelemetry-exporter-prometheus>=0.43b0,<0.46b0
+opentelemetry-instrumentation-aiohttp-client>=0.43b0,<0.46b0
+
+# Code analysis
+astroid>=3.0.0,<4.0.0
+
+# Development tools (optional)
+black>=23.12.0,<25.0.0
+mypy>=1.7.0,<2.0.0
+pylint>=3.0.0,<4.0.0
+
+# Note: SQLite is built into Python - no additional package needed
+# Note: OLLAMA is installed separately via: curl -fsSL https://ollama.com/install.sh | sh
