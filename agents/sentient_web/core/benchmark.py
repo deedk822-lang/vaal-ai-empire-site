@@ -308,10 +308,11 @@ class AXEAccessibilityRunner(BenchmarkRunner):
         
         # For HTML files, we need to serve them
         is_file = Path(url_or_path).is_file()
+        server = None
         
         if is_file:
             # Serve file temporarily
-            server_url = await self._serve_file(url_or_path)
+            server_url, server = await self._serve_file(url_or_path)
             if not server_url:
                 return self._fallback_result(url_or_path, timestamp, "Could not serve file")
         else:
@@ -364,6 +365,10 @@ class AXEAccessibilityRunner(BenchmarkRunner):
             return self._fallback_result(url_or_path, timestamp, "axe timeout")
         except Exception as e:
             return self._fallback_result(url_or_path, timestamp, str(e))
+        finally:
+            if server:
+                server.shutdown()
+                server.server_close()
     
     async def _check_axe(self) -> bool:
         """Check if axe CLI is available."""
@@ -378,7 +383,7 @@ class AXEAccessibilityRunner(BenchmarkRunner):
         except:
             return False
     
-    async def _serve_file(self, file_path: str) -> Optional[str]:
+    async def _serve_file(self, file_path: str) -> tuple[Optional[str], Optional[HTTPServer]]:
         """Start temporary HTTP server for file."""
         # Simplified - in production use a proper server
         from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -402,10 +407,10 @@ class AXEAccessibilityRunner(BenchmarkRunner):
             # Give server time to start
             await asyncio.sleep(0.5)
             
-            return f"http://localhost:{port}/{file_path.name}"
+            return f"http://localhost:{port}/{file_path.name}", server
         except Exception as e:
             print(f"Server error: {e}")
-            return None
+            return None, None
     
     def _extract_metrics(self, data: Dict[str, Any]) -> List[BenchmarkMetric]:
         """Extract accessibility metrics from axe results."""

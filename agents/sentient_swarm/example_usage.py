@@ -51,8 +51,8 @@ async def main():
     config = SwarmConfig(
         project_name="my-awesome-project",
         output_dir="swarm-output",
-        enable_code_review=True,
-        enable_deployment=False,
+        run_code_review=True,
+        enable_vercel_deploy=False,
         max_parallel_agents=6
     )
     
@@ -67,7 +67,7 @@ async def main():
     orchestrator = SwarmOrchestrator(config)
     
     try:
-        result = await orchestrator.execute({
+        result = await orchestrator.run({
             'company_name': 'My Company',
             'description': 'AI-powered solutions',
             'url': 'https://example.com'
@@ -78,23 +78,30 @@ async def main():
         print("=" * 70)
         print("RESULTS")
         print("=" * 70)
-        print(f"Status: {result.status}")
-        print(f"Duration: {result.total_duration_ms:.0f}ms")
-        print(f"Files Generated: {len(result.files_generated)}")
+        print(f"Success: {result.success}")
+        print(f"Duration: {result.duration_seconds:.2f}s")
+        
+        # Collect files
+        all_files = []
+        for agent_result in result.agent_results:
+            all_files.extend(agent_result.get('files', []))
+        
+        print(f"Files Generated: {len(all_files)}")
         print()
         
         # List files
         print("Generated Files:")
-        for filepath in result.files_generated:
+        for filepath in all_files[:10]:
             print(f"  - {filepath}")
+        if len(all_files) > 10:
+            print(f"  ... and {len(all_files) - 10} more")
         
         # Show metrics
         print()
         print("Metrics:")
-        metrics = orchestrator.get_metrics()
-        print(f"  LLM Requests: {metrics['llm']}")
+        metrics = orchestrator.get_metrics_report()
+        print(f"  LLM Usage: {metrics['llm']}")
         print(f"  Swarm Metrics: {metrics['swarm']}")
-        print(f"  Traces: {metrics['traces']}")
         
     except Exception as e:
         print(f"❌ Error: {e}")

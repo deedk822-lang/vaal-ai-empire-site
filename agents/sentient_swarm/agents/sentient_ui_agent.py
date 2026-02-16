@@ -18,6 +18,15 @@ class SentientUIAgent(BaseAgent):
         """Generate liquid glass components."""
         self.log("🎨 Generating Liquid Glass components...")
         
+        # Check LLM client
+        if not self.llm:
+            return {
+                'agent': self.name,
+                'status': 'failed',
+                'files': [],
+                'error': 'LLM client not configured'
+            }
+        
         # Generate CSS
         css_prompt = """Generate production CSS for glassmorphism design system:
 
@@ -36,6 +45,14 @@ Output valid CSS only."""
             system_message="You are an expert CSS developer specializing in modern glassmorphism UI.",
             temperature=0.7
         )
+        
+        if not css_response.success:
+            return {
+                'agent': self.name,
+                'status': 'failed',
+                'files': [],
+                'error': css_response.error
+            }
         
         css_file = self.write_file("liquid-glass.css", css_response.content)
         
@@ -56,6 +73,14 @@ Output valid JavaScript only."""
             system_message="You are a frontend JavaScript expert.",
             temperature=0.7
         )
+        
+        if not js_response.success:
+            return {
+                'agent': self.name,
+                'status': 'failed',
+                'files': [css_file],
+                'error': js_response.error
+            }
         
         js_file = self.write_file("glass-interactions.js", js_response.content)
         

@@ -34,6 +34,14 @@ Output as Markdown."""
             temperature=0.8
         )
         
+        if not guidelines_response.success:
+            return {
+                'agent': self.name,
+                'status': 'failed',
+                'error': guidelines_response.error,
+                'files': []
+            }
+        
         guidelines_file = self.write_file("content-guidelines.md", guidelines_response.content)
         
         # Generate page copy
@@ -55,6 +63,14 @@ Requirements:
                 system_message="You are a conversion copywriter.",
                 temperature=0.7
             )
+            
+            if not page_response.success:
+                return {
+                    'agent': self.name,
+                    'status': 'failed',
+                    'error': page_response.error,
+                    'files': [guidelines_file] + page_files
+                }
             
             page_file = self.write_file(f"{page}-copy.md", page_response.content)
             page_files.append(page_file)

@@ -47,6 +47,8 @@ jobs:
 
       - name: Execute Enterprise Swarm
         id: swarm
+        env:
+          PR_HEAD_REF: ${{ github.head_ref }}
         run: |
           python -c "
           import asyncio
@@ -88,7 +90,7 @@ jobs:
               try:
                   result = await orchestrator.execute({
                       'pr_number': '${{ github.event.pull_request.number }}',
-                      'branch': '${{ github.head_ref }}',
+                      'branch': os.getenv('PR_HEAD_REF', ''),
                       'repo': '${{ github.repository }}'
                   })
                   

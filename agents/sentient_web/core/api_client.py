@@ -334,7 +334,13 @@ class GLM5Client:
         
         # Check cache first
         if use_cache:
-            cache_key = self._get_cache_key(prompt, **kwargs)
+            cache_key = self._get_cache_key(
+                prompt,
+                system_message=system_message,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
             cached = self._get_from_cache(cache_key)
             if cached:
                 return cached

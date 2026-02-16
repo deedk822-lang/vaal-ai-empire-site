@@ -25,26 +25,32 @@ class Bulkhead:
         
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.queue_size = 0
+        self._queue_lock = asyncio.Lock()
     
     async def execute(self, func: Callable, *args, **kwargs) -> Any:
         """Execute with bulkhead protection."""
-        if self.queue_size >= self.max_queue:
-            raise BulkheadFull(f"Bulkhead '{self.name}' queue full")
-        
-        self.queue_size += 1
+        async with self._queue_lock:
+            if self.queue_size >= self.max_queue:
+                raise BulkheadFull(f"Bulkhead '{self.name}' queue full")
+            self.queue_size += 1
+            queued = True
         
         try:
             async with self.semaphore:
-                self.queue_size -= 1
+                async with self._queue_lock:
+                    if queued:
+                        self.queue_size -= 1
+                        queued = False
                 return await asyncio.wait_for(
                     func(*args, **kwargs),
                     timeout=self.timeout
                 )
-        except asyncio.TimeoutError:
-            raise BulkheadTimeout(f"Bulkhead '{self.name}' timeout")
+        except asyncio.TimeoutError as err:
+            raise BulkheadTimeout(f"Bulkhead '{self.name}' timeout") from err
         finally:
-            if self.queue_size > 0:
-                self.queue_size -= 1
+            async with self._queue_lock:
+                if queued:
+                    self.queue_size -= 1
 
 
 class BulkheadFull(Exception):

@@ -35,6 +35,7 @@ class VercelClient:
         
         try:
             import aiohttp
+            timeout = aiohttp.ClientTimeout(total=30)
             
             # Create deployment
             payload = {
@@ -46,7 +47,7 @@ class VercelClient:
                 "target": environment if environment == "production" else None
             }
             
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     f"{self.api_url}/v13/deployments",
                     headers={
@@ -80,8 +81,9 @@ class VercelClient:
         
         try:
             import aiohttp
+            timeout = aiohttp.ClientTimeout(total=30)
             
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(
                     f"{self.api_url}/v9/projects/{project_name}",
                     headers={"Authorization": f"Bearer {self.token}"}
@@ -90,7 +92,7 @@ class VercelClient:
                         return {"success": True, "data": await resp.json()}
                     else:
                         return {"success": False, "status": resp.status}
-        except Exception as e:
+        except aiohttp.ClientError as e:
             return {"success": False, "error": str(e)}
     
     async def list_deployments(self, project_name: str, limit: int = 10) -> List[Dict]:
@@ -100,8 +102,9 @@ class VercelClient:
         
         try:
             import aiohttp
+            timeout = aiohttp.ClientTimeout(total=30)
             
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(
                     f"{self.api_url}/v6/deployments",
                     headers={"Authorization": f"Bearer {self.token}"},
@@ -111,5 +114,5 @@ class VercelClient:
                         data = await resp.json()
                         return data.get("deployments", [])
                     return []
-        except Exception:
+        except aiohttp.ClientError:
             return []

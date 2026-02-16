@@ -246,22 +246,27 @@ class Bulkhead:
             'rejected': 0,
             'timeouts': 0,
         }
+        self._lock = asyncio.Lock()
     
     async def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute function with bulkhead protection."""
         # Check queue capacity
-        if self.queue_size >= self.max_queue:
-            self.metrics['rejected'] += 1
-            raise BulkheadFullError(
-                f"Bulkhead '{self.name}' queue full ({self.max_queue})"
-            )
-        
-        self.queue_size += 1
-        self.metrics['queued'] += 1
+        async with self._lock:
+            if self.queue_size >= self.max_queue:
+                self.metrics['rejected'] += 1
+                raise BulkheadFullError(
+                    f"Bulkhead '{self.name}' queue full ({self.max_queue})"
+                )
+            self.queue_size += 1
+            self.metrics['queued'] += 1
+            queued = True
         
         try:
             async with self.semaphore:
-                self.queue_size -= 1
+                async with self._lock:
+                    if queued:
+                        self.queue_size -= 1
+                        queued = False
                 self.metrics['executed'] += 1
                 
                 # Execute with timeout
@@ -276,8 +281,9 @@ class Bulkhead:
                 f"Bulkhead '{self.name}' operation timed out after {self.timeout}s"
             )
         finally:
-            if self.queue_size > 0:
-                self.queue_size -= 1
+            async with self._lock:
+                if queued:
+                    self.queue_size -= 1
     
     def get_metrics(self) -> Dict[str, Any]:
         """Get bulkhead metrics."""

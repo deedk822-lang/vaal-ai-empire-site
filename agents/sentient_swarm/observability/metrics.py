@@ -4,7 +4,7 @@ Enterprise metrics collection with Prometheus/Grafana export.
 
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
 
 
@@ -65,50 +65,85 @@ class EnterpriseMetrics:
         """Context manager for timing."""
         return TimerContext(self, name)
     
+    def _format_labels(self, labels: Dict[str, str]) -> str:
+        """Format labels for Prometheus."""
+        if not labels:
+            return ""
+        return ",".join([f'{k}="{v}"' for k, v in labels.items()])
+    
     def export_prometheus(self) -> str:
-        """Export in Prometheus text format."""
+        """Export in Prometheus text format with proper label handling."""
         lines = []
         
-        # Counters
+        # Counters - group by label set
         for name, values in self.counters.items():
             if not values:
                 continue
             lines.append(f"# TYPE {name} counter")
-            total = sum(v.value for v in values)
-            lines.append(f"{name} {total}")
+            
+            # Group by label set
+            by_labels: Dict[str, float] = defaultdict(float)
+            for v in values:
+                label_key = self._format_labels(v.labels)
+                by_labels[label_key] += v.value
+            
+            for label_str, total in by_labels.items():
+                if label_str:
+                    lines.append(f'{name}{{{label_str}}} {total}')
+                else:
+                    lines.append(f"{name} {total}")
         
-        # Gauges - only export latest
+        # Gauges - group by label set, use latest
         for name, values in self.gauges.items():
             if not values:
                 continue
             lines.append(f"# TYPE {name} gauge")
-            latest = values[-1]
-            if latest.labels:
-                label_str = ",".join([f'{k}="{v}"' for k, v in latest.labels.items()])
-                lines.append(f'{name}{{{label_str}}} {latest.value}')
-            else:
-                lines.append(f"{name} {latest.value}")
+            
+            # Group by label set, keep latest
+            by_labels: Dict[str, MetricValue] = {}
+            for v in values:
+                label_key = self._format_labels(v.labels)
+                by_labels[label_key] = v  # Later values overwrite earlier
+            
+            for label_str, v in by_labels.items():
+                if label_str:
+                    lines.append(f'{name}{{{label_str}}} {v.value}')
+                else:
+                    lines.append(f"{name} {v.value}")
         
-        # Histograms
+        # Histograms - group by label set
         for name, values in self.histograms.items():
             if not values:
                 continue
-            
             lines.append(f"# TYPE {name} histogram")
             
-            vals = [v.value for v in values]
-            total = sum(vals)
-            count = len(vals)
+            # Group by label set
+            by_labels: Dict[str, List[float]] = defaultdict(list)
+            for v in values:
+                label_key = self._format_labels(v.labels)
+                by_labels[label_key].append(v.value)
             
-            # Buckets
-            for bucket in self.buckets:
-                bucket_count = sum(1 for v in vals if v <= bucket)
-                lines.append(f'{name}_bucket{{le="{bucket}"}} {bucket_count}')
-            
-            # +Inf bucket
-            lines.append(f'{name}_bucket{{le="+Inf"}} {count}')
-            lines.append(f"{name}_sum {total}")
-            lines.append(f"{name}_count {count}")
+            for label_str, vals in by_labels.items():
+                total = sum(vals)
+                count = len(vals)
+                
+                # Buckets
+                for bucket in self.buckets:
+                    bucket_count = sum(1 for v in vals if v <= bucket)
+                    if label_str:
+                        lines.append(f'{name}_bucket{{{label_str},le="{bucket}"}} {bucket_count}')
+                    else:
+                        lines.append(f'{name}_bucket{{le="{bucket}"}} {bucket_count}')
+                
+                # +Inf bucket
+                if label_str:
+                    lines.append(f'{name}_bucket{{{label_str},le="+Inf"}} {count}')
+                    lines.append(f"{name}_sum{{{label_str}}} {total}")
+                    lines.append(f"{name}_count{{{label_str}}} {count}")
+                else:
+                    lines.append(f'{name}_bucket{{le="+Inf"}} {count}')
+                    lines.append(f"{name}_sum {total}")
+                    lines.append(f"{name}_count {count}")
         
         return "\n".join(lines)
     

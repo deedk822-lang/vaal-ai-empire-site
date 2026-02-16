@@ -59,7 +59,23 @@ Output as structured JSON."""
             temperature=0.7
         )
         
-        geo_file = self.write_file("geo-content.json", geo_response.content)
+        if not geo_response.success:
+            return {
+                'agent': self.name,
+                'status': 'failed',
+                'error': geo_response.error,
+                'files': [schema_file]
+            }
+        
+        # Validate JSON before writing
+        try:
+            geo_payload = json.loads(geo_response.content)
+            geo_file = self.write_file("geo-content.json", json.dumps(geo_payload, indent=2))
+        except json.JSONDecodeError:
+            geo_file = self.write_file("geo-content.json", json.dumps({
+                'raw': geo_response.content,
+                'error': 'invalid_json'
+            }, indent=2))
         
         return {
             'agent': self.name,

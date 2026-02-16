@@ -58,7 +58,7 @@ class PerformanceAgent(BaseAgent):
         # Security headers config
         security_config = {
             "headers": {
-                "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.vaalaiempire.co.za;",
+                "Content-Security-Policy": "default-src 'self'; script-src 'self' 'nonce-{csp_nonce}'; style-src 'self' 'nonce-{csp_nonce}'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.vaalaiempire.co.za;",
                 "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
                 "X-Frame-Options": "DENY",
                 "X-Content-Type-Options": "nosniff",

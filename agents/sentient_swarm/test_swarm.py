@@ -38,7 +38,7 @@ async def test_api_keys():
     
     for name, value in keys.items():
         status = "✅" if value else "❌"
-        masked = f"{value[:8]}...{value[-4:]}" if value and len(value) > 12 else ("set" if value else "not set")
+        masked = "set" if value else "not set"
         print(f"{status} {name}: {masked}")
     
     configured = sum(1 for v in keys.values() if v)
@@ -222,10 +222,14 @@ async def main():
     
     print(f"\nTotal: {total_passed}/{total_tests} tests passed")
     
-    if all(isinstance(v, bool) and v for v in results.values()):
+    def _passed(v):
+        return (isinstance(v, bool) and v) or (isinstance(v, int) and v > 0)
+
+    if all(_passed(v) for v in results.values()):
         print("\n✅ ALL TESTS PASSED - SYSTEM READY")
     else:
         print("\n⚠️  SOME TESTS FAILED - CHECK CONFIGURATION")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
