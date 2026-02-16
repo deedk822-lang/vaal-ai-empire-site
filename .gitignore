@@ -29,3 +29,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Swarm output
+output/
+swarm-output/
+*.prom
+traces.json
