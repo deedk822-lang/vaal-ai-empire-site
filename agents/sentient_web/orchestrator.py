@@ -134,13 +134,18 @@ class SentientUIAgent(BaseAgent):
                 # Use GLM-5 generated CSS
                 css_content = api_response.data
                 self.metrics.counter('css_generated', 1, {'source': 'glm5'})
+            elif api_response.success and api_response.fallback_used:
+                # Fallback was used but succeeded
+                self.logger.warning("LLM fallback used", trace_id=trace_id)
+                css_content = api_response.data
+                self.metrics.counter('css_generated', 1, {'source': 'fallback'})
             else:
-                # Use fallback
-                self.logger.warning("GLM-5 unavailable, using fallback", trace_id=trace_id)
+                # All LLMs failed, use template fallback
+                self.logger.error("All LLMs failed, using template fallback", trace_id=trace_id)
                 css_content = await self.fallback_chain.execute(
                     Exception(api_response.error or "GLM-5 failed")
                 )
-                self.metrics.counter('css_generated', 1, {'source': 'fallback'})
+                self.metrics.counter('css_generated', 1, {'source': 'template'})
             
             # Generate files
             span_id = self.tracer.start_span("file_generation", trace_id)

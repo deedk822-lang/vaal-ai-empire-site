@@ -70,12 +70,13 @@ class CodeValidator:
                 message='Double semicolons found'
             ))
         
-        # Calculate metrics
-        lines = code.split('\n')
+        # Calculate metrics (limit lines to prevent memory issues with large files)
+        max_lines = 10000
+        lines = code.split('\n')[:max_lines]
         metrics = {
             'lines': len(lines),
             'non_empty_lines': len([l for l in lines if l.strip()]),
-            'functions': code.count('function') + code.count('=>'),
+            'functions': min(code.count('function') + code.count('=>'), 1000),
         }
         
         return ValidationResult(

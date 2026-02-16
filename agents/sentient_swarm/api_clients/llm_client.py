@@ -74,8 +74,9 @@ class UnifiedLLMClient:
             'failures': {p: 0 for p in LLMProvider},
             'latency': {p: [] for p in LLMProvider},
         }
-        self.cache: Dict[str, LLMResponse] = {}
+        self.cache: Dict[str, Dict] = {}
         self.cache_ttl = 3600  # 1 hour
+        self.max_cache_size = 1000  # Limit cache entries
     
     def _load_api_keys(self) -> Dict[LLMProvider, Optional[str]]:
         """Load API keys from environment."""
@@ -448,7 +449,12 @@ class UnifiedLLMClient:
         return None
     
     def _save_to_cache(self, key: str, response: LLMResponse):
-        """Save to cache."""
+        """Save to cache with size limit."""
+        # Evict oldest entries if cache is full
+        if len(self.cache) >= self.max_cache_size:
+            oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k]['timestamp'])
+            del self.cache[oldest_key]
+        
         self.cache[key] = {
             'response': response,
             'timestamp': time.time()

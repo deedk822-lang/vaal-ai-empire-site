@@ -453,35 +453,35 @@ class HapticFeedback {{
   /**
    * Enable haptic feedback on all interactive elements
    */
-  static initGlobal() {
+  static initGlobal() {{
     const haptic = new HapticFeedback();
     
-    document.querySelectorAll('button, .liquid-button').forEach(btn => {
-      btn.addEventListener('click', () => {
+    document.querySelectorAll('button, .liquid-button').forEach(btn => {{
+      btn.addEventListener('click', () => {{
         haptic.trigger(HapticFeedback.Patterns.TAP);
-      });
-    });
+      }});
+    }});
 
     return haptic;
-  }
-}
+  }}
+}}
 
 // Auto-initialize if not in test environment
-if (typeof module === 'undefined' && typeof window !== 'undefined') {
+if (typeof module === 'undefined' && typeof window !== 'undefined') {{
   window.HapticFeedback = HapticFeedback;
   
   // Initialize on DOM ready
-  if (document.readyState === 'loading') {
+  if (document.readyState === 'loading') {{
     document.addEventListener('DOMContentLoaded', () => HapticFeedback.initGlobal());
-  } else {
+  }} else {{
     HapticFeedback.initGlobal();
-  }
-}
+  }}
+}}
 
 // Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { HapticFeedback };
-}
+if (typeof module !== 'undefined' && module.exports) {{
+  module.exports = {{ HapticFeedback }};
+}}
 '''
     
     def _generate_haptic_feedback(self) -> str:

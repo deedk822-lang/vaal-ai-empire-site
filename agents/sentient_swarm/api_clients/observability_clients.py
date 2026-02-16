@@ -182,14 +182,14 @@ class OpenTelemetryClient:
         self.endpoint = endpoint or os.getenv('OTEL_ENDPOINT', 'https://tempo-eu-west-0.grafana.net')
         self.traces: List[Dict] = []
     
-    def start_span(self, name: str, parent_id: Optional[str] = None, **attributes) -> str:
+    def start_span(self, name: str, parent_id: Optional[str] = None, trace_id: Optional[str] = None, **attributes) -> str:
         """Start a new span."""
         import uuid
         
         span_id = str(uuid.uuid4())[:16]
         
         span = {
-            "trace_id": str(uuid.uuid4()),
+            "trace_id": trace_id or str(uuid.uuid4()),
             "span_id": span_id,
             "parent_span_id": parent_id,
             "name": name,
