@@ -12,6 +12,24 @@ from .base_agent import BaseAgent
 class MXAgent(BaseAgent):
     """Optimizes for Machine Experience and Generative Engine Optimization."""
     
+    # Fallback GEO content when LLM unavailable
+    FALLBACK_GEO = {
+        "faq": [
+            {
+                "question": "What is Digital Sovereignty?",
+                "answer": "Digital sovereignty refers to a nation's ability to control its own digital infrastructure, data, and technology."
+            },
+            {
+                "question": "How can AI help South African SMEs?",
+                "answer": "AI can automate repetitive tasks, improve customer service, and provide data-driven insights for better decision-making."
+            }
+        ],
+        "entities": {
+            "Digital Sovereignty": "Control over digital infrastructure and data",
+            "AI Automation": "Using artificial intelligence to automate business processes"
+        }
+    }
+    
     def __init__(self, llm_client=None, metrics=None, tracer=None):
         super().__init__("MX", llm_client, metrics, tracer)
     
@@ -53,29 +71,30 @@ Create:
 
 Output as structured JSON."""
         
-        geo_response = await self.llm.generate(
-            prompt=geo_prompt,
-            system_message="You are an SEO/GEO expert specializing in AI-parseable content.",
-            temperature=0.7
-        )
+        geo_content = self.FALLBACK_GEO
+        geo_tokens = 0
+        geo_provider = "fallback"
         
-        if not geo_response.success:
-            return {
-                'agent': self.name,
-                'status': 'failed',
-                'error': geo_response.error,
-                'files': [schema_file]
-            }
+        if self.llm:
+            geo_response = await self.llm.generate(
+                prompt=geo_prompt,
+                system_message="You are an SEO/GEO expert specializing in AI-parseable content.",
+                temperature=0.7
+            )
+            
+            if geo_response.success:
+                try:
+                    geo_content = json.loads(geo_response.content)
+                    geo_tokens = geo_response.tokens_used
+                    geo_provider = geo_response.provider.value
+                except json.JSONDecodeError:
+                    self.log("⚠️  LLM returned invalid JSON, using fallback")
+            else:
+                self.log("⚠️  LLM failed, using fallback GEO content")
+        else:
+            self.log("⚠️  No LLM available, using fallback GEO content")
         
-        # Validate JSON before writing
-        try:
-            geo_payload = json.loads(geo_response.content)
-            geo_file = self.write_file("geo-content.json", json.dumps(geo_payload, indent=2))
-        except json.JSONDecodeError:
-            geo_file = self.write_file("geo-content.json", json.dumps({
-                'raw': geo_response.content,
-                'error': 'invalid_json'
-            }, indent=2))
+        geo_file = self.write_file("geo-content.json", json.dumps(geo_content, indent=2))
         
         return {
             'agent': self.name,
@@ -83,7 +102,7 @@ Output as structured JSON."""
             'files': [schema_file, geo_file],
             'metrics': {
                 'schema_entities': len(schema),
-                'geo_tokens': geo_response.tokens_used,
-                'provider': geo_response.provider.value
+                'geo_tokens': geo_tokens,
+                'provider': geo_provider
             }
         }
