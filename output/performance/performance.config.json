@@ -1,0 +1,54 @@
+{
+  "targets": {
+    "LCP": {
+      "value": 2000,
+      "unit": "ms",
+      "priority": "high"
+    },
+    "INP": {
+      "value": 200,
+      "unit": "ms",
+      "priority": "high"
+    },
+    "CLS": {
+      "value": 0.05,
+      "unit": "",
+      "priority": "high"
+    },
+    "TTFB": {
+      "value": 600,
+      "unit": "ms",
+      "priority": "medium"
+    },
+    "FCP": {
+      "value": 1800,
+      "unit": "ms",
+      "priority": "medium"
+    }
+  },
+  "optimizations": {
+    "images": {
+      "format": "webp",
+      "lazy_load": true,
+      "responsive": true
+    },
+    "css": {
+      "critical_inline": true,
+      "unused_remove": true,
+      "minify": true
+    },
+    "js": {
+      "defer": true,
+      "async": false,
+      "code_split": true
+    },
+    "fonts": {
+      "display": "swap",
+      "preload": true
+    },
+    "caching": {
+      "static": "1year",
+      "api": "1hour"
+    }
+  }
+}

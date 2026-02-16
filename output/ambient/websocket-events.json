@@ -1,0 +1,26 @@
+{
+  "protocol": "WebSocket",
+  "events": {
+    "voice.command": {
+      "description": "Real-time voice command stream",
+      "payload": {
+        "text": "string",
+        "confidence": "number"
+      }
+    },
+    "gesture.detected": {
+      "description": "Gesture recognition result",
+      "payload": {
+        "gesture": "string",
+        "confidence": "number"
+      }
+    },
+    "presence.update": {
+      "description": "User presence detection",
+      "payload": {
+        "present": "boolean",
+        "distance": "number"
+      }
+    }
+  }
+}

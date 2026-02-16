@@ -38,6 +38,8 @@ async def test_api_keys():
     
     for name, value in keys.items():
         status = "✅" if value else "❌"
+        # Only print whether key is set, never the actual value
+        # nosec B105 - Not logging sensitive data, just presence indicator
         masked = "set" if value else "not set"
         print(f"{status} {name}: {masked}")
     

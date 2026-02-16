@@ -1,0 +1,23 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Vaal AI Empire",
+  "description": "AI-powered digital sovereignty",
+  "url": "https://vaalaiempire.co.za",
+  "logo": "https://vaalaiempire.co.za/logo.png",
+  "sameAs": [
+    "https://twitter.com/vaalaiempire",
+    "https://linkedin.com/company/vaal-ai-empire"
+  ],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "telephone": "+27-11-123-4567",
+    "contactType": "customer service",
+    "areaServed": "ZA",
+    "availableLanguage": [
+      "English",
+      "Afrikaans",
+      "Zulu"
+    ]
+  }
+}
