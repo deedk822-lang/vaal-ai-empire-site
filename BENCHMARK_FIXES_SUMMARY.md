@@ -30,7 +30,6 @@ This document summarizes all the fixes applied to resolve the benchmark infrastr
 
 ### 5. Missing Files Created
 **Created:**
-- `.github/workflows/benchmark-performance.yml` - CI/CD workflow
 - `server/middleware/prometheus.js` - Prometheus metrics middleware
 
 ## Test Results
@@ -40,7 +39,7 @@ This document summarizes all the fixes applied to resolve the benchmark infrastr
 - ✅ Workflow YAML syntax validated
 
 ## Files Modified
-```
+```text
 .github/workflows/security.yml
 agents/benchmark_executor.py
 .github/workflows/benchmark-performance.yml
@@ -48,7 +47,6 @@ benchmark_data/test_cases.json
 ```
 
 ## Files Created
-```
-.github/workflows/benchmark-performance.yml
+```text
 server/middleware/prometheus.js
 ```
