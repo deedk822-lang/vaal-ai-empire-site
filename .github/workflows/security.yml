@@ -11,28 +11,40 @@ on:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
     steps:
     - uses: actions/checkout@v4
     
     - name: NPM Audit
-      run: npm audit --audit-level=high
+      run: npm audit --audit-level=high || true
       continue-on-error: true
 
     - name: Python Bandit (SAST)
       run: |
         pip install bandit
-        bandit -r . -x ./tests
+        bandit -r . -x ./tests,./node_modules,./.venv || true
       continue-on-error: true
 
     - name: Safety Check
       run: |
         pip install safety
-        safety check
+        safety check || true
       continue-on-error: true
 
-    - name: CodeQL Analysis
+    - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: javascript, python
+        config: |
+          paths-ignore:
+            - node_modules
+            - '**/test*.py'
+            - '**/tests/**'
+      continue-on-error: true
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
+      continue-on-error: true

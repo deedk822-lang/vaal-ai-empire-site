@@ -267,14 +267,15 @@ jobs:
         run: |
           echo "🔍 Validating all changes..."
           
-          # Python syntax check
+          # Python syntax check - properly detect errors
           echo "Checking Python syntax..."
-          find . -name "*.py" -type f -exec python -m py_compile {} \; 2>&1 | head -20
+          SYNTAX_ERRORS=$(find . -name "*.py" -type f -print0 2>/dev/null | xargs -0 -I {} sh -c 'python -m py_compile "$1" 2>&1 || echo "FAIL: $1"' _ {} | grep -E "(FAIL:|SyntaxError|IndentationError)" || true)
           
-          if [ $? -eq 0 ]; then
+          if [ -z "$SYNTAX_ERRORS" ]; then
             echo "✅ All Python files pass syntax check"
           else
-            echo "⚠️ Some syntax issues detected"
+            echo "⚠️ Some syntax issues detected:"
+            echo "$SYNTAX_ERRORS"
           fi
           
           # Run tests if available
@@ -289,9 +290,19 @@ jobs:
           git config user.name "Hybrid Swarm Bot"
           git config user.email "swarm@vaal-ai-empire.local"
 
+ professional-system
+          # Add and commit all changes
+          git add -A
+          
+          if git diff --staged --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "🤖 Hybrid Swarm Auto-Fix [skip ci]"
+
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to push"
           else
+ merge/develop-to-main
             git push origin HEAD:${{ steps.pr.outputs.pr_branch }}
             echo "✅ Pushed fixes to PR branch"
           fi
