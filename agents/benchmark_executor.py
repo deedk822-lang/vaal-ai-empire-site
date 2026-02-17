@@ -863,35 +863,134 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
             }
 
     def _evaluate_quality(self, prompt: str, response: str) -> Dict[str, float]:
-        """Evaluate response quality using GLM-5 if available."""
-        if not self.direct_client.glm_api_key:
-            return self._default_quality_scores()
+        """Evaluate response quality using GLM-5 if available, with fallback to static analysis."""
+        # Try GLM-5 evaluation first
+        if self.direct_client.glm_api_key:
+            try:
+                eval_prompt = self.QUALITY_EVALUATION_PROMPT.format(
+                    prompt=prompt[:500],
+                    response=response[:1500]
+                )
+                result = self.direct_client.call_glm_api(eval_prompt, model="glm-4-flash")
 
-        try:
-            eval_prompt = self.QUALITY_EVALUATION_PROMPT.format(
-                prompt=prompt[:500],
-                response=response[:1500]
-            )
-            result = self.direct_client.call_glm_api(eval_prompt, model="glm-4-flash")
+                if "error" not in result:
+                    content = result.get("content", "{}")
+                    json_match = re.search(r"\{[^{}]*\}", content, re.DOTALL)
+                    if json_match:
+                        scores = json.loads(json_match.group())
+                        return {
+                            "correctness": float(scores.get("correctness", 5.0)),
+                            "security": float(scores.get("security", 5.0)),
+                            "efficiency": float(scores.get("efficiency", 5.0)),
+                            "readability": float(scores.get("readability", 5.0)),
+                            "best_practices": float(scores.get("best_practices", 5.0)),
+                        }
+            except Exception:
+                pass
+        
+        # Fallback to static analysis quality scoring
+        return self._static_quality_scoring(prompt, response)
 
-            if "error" in result:
-                return self._default_quality_scores()
-
-            content = result.get("content", "{}")
-            json_match = re.search(r"\{[^{}]*\}", content, re.DOTALL)
-            if json_match:
-                scores = json.loads(json_match.group())
-                return {
-                    "correctness": float(scores.get("correctness", 5.0)),
-                    "security": float(scores.get("security", 5.0)),
-                    "efficiency": float(scores.get("efficiency", 5.0)),
-                    "readability": float(scores.get("readability", 5.0)),
-                    "best_practices": float(scores.get("best_practices", 5.0)),
-                }
-        except Exception:
-            pass
-
-        return self._default_quality_scores()
+    def _static_quality_scoring(self, prompt: str, response: str) -> Dict[str, float]:
+        """Static analysis-based quality scoring when API not available.
+        
+        Uses heuristics and pattern matching to estimate quality scores.
+        """
+        scores = {
+            "correctness": 5.0,
+            "security": 5.0,
+            "efficiency": 5.0,
+            "readability": 5.0,
+            "best_practices": 5.0,
+        }
+        
+        if not response or len(response.strip()) < 10:
+            return scores
+        
+        response_lower = response.lower()
+        
+        # Security scoring
+        security_keywords = ['secure', 'sanitize', 'validate', 'escape', 'parameterized', 
+                           'bcrypt', 'hash', 'encrypt', 'token', 'auth', 'prevent']
+        security_bad = ['eval(', 'exec(', 'innerHTML', 'os.system', 'shell=True', 
+                       '__import__', 'pickle.loads', 'yaml.load(']
+        
+        security_score = 5.0
+        for kw in security_keywords:
+            if kw in response_lower:
+                security_score += 0.5
+        for bad in security_bad:
+            if bad in response:
+                security_score -= 1.5
+        scores['security'] = max(0.0, min(10.0, security_score))
+        
+        # Efficiency scoring
+        efficiency_keywords = ['O(n)', 'O(log', 'hash', 'cache', 'memo', 'index',
+                             'optimize', 'efficient', 'async', 'parallel', 'batch']
+        efficiency_bad = ['O(n²)', 'O(n^2)', 'nested loop', 'readlines(']
+        
+        efficiency_score = 5.0
+        for kw in efficiency_keywords:
+            if kw in response_lower:
+                efficiency_score += 0.4
+        for bad in efficiency_bad:
+            if bad in response_lower:
+                efficiency_score -= 1.0
+        scores['efficiency'] = max(0.0, min(10.0, efficiency_score))
+        
+        # Readability scoring
+        readability_keywords = ['def ', 'class ', '"""', '# ', 'return ', 'import ',
+                              'if ', 'for ', 'while ', 'try:', 'except:']
+        
+        readability_score = 5.0
+        for kw in readability_keywords:
+            count = response.count(kw)
+            readability_score += min(0.3, count * 0.1)
+        
+        # Check for docstrings
+        if '"""' in response or "'''" in response:
+            readability_score += 0.5
+        # Check for type hints
+        if ': ' in response and '-> ' in response:
+            readability_score += 0.5
+        scores['readability'] = max(0.0, min(10.0, readability_score))
+        
+        # Best practices scoring
+        best_practices_keywords = ['typing', 'logging', 'context manager', 'with ',
+                                  'try:', 'except', 'raise', 'finally:', 
+                                  'if __name__', 'from __future__', 'annotations']
+        
+        best_practices_score = 5.0
+        for kw in best_practices_keywords:
+            if kw in response:
+                best_practices_score += 0.5
+        scores['best_practices'] = max(0.0, min(10.0, best_practices_score))
+        
+        # Correctness (based on code structure)
+        correctness_score = 5.0
+        
+        # Check for balanced brackets/braces
+        open_braces = response.count('{')
+        close_braces = response.count('}')
+        if open_braces == close_braces and open_braces > 0:
+            correctness_score += 0.5
+        
+        open_parens = response.count('(')
+        close_parens = response.count(')')
+        if open_parens == close_parens and open_parens > 0:
+            correctness_score += 0.5
+        
+        # Check for function definitions
+        if 'def ' in response and 'return ' in response:
+            correctness_score += 0.5
+        
+        # Check for class structure
+        if 'class ' in response and '__init__' in response:
+            correctness_score += 0.5
+        
+        scores['correctness'] = max(0.0, min(10.0, correctness_score))
+        
+        return scores
 
     def _default_quality_scores(self) -> Dict[str, float]:
         """Return default quality scores."""
