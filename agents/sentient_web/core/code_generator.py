@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
+# Import the unified CodeValidator from validator.py
+from .validator import CodeValidator, ValidationResult, ValidationIssue
+
 
 @dataclass
 class GeneratedFile:
@@ -39,93 +42,6 @@ class GenerationResult:
     files: List[GeneratedFile] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     metrics: Dict[str, Any] = field(default_factory=dict)
-
-
-class CodeValidator:
-    """Validates generated code for syntax and security issues."""
-    
-    # Security patterns to detect
-    DANGEROUS_PATTERNS = {
-        'eval': re.compile(r'\beval\s*\(', re.IGNORECASE),
-        'innerHTML': re.compile(r'\.innerHTML\s*=', re.IGNORECASE),
-        'document_write': re.compile(r'document\.write\s*\(', re.IGNORECASE),
-        'exec': re.compile(r'\bexec\s*\(', re.IGNORECASE),
-        'os_system': re.compile(r'os\.system\s*\(', re.IGNORECASE),
-        'subprocess': re.compile(r'subprocess\.call', re.IGNORECASE),
-    }
-    
-    def validate_javascript(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate JavaScript code."""
-        errors = []
-        
-        # Check for dangerous patterns
-        for pattern_name, pattern in self.DANGEROUS_PATTERNS.items():
-            if pattern.search(code):
-                errors.append(f"Security: Found dangerous pattern '{pattern_name}'")
-        
-        # Basic syntax checks
-        open_braces = code.count('{') - code.count('}')
-        open_parens = code.count('(') - code.count(')')
-        open_brackets = code.count('[') - code.count(']')
-        
-        if open_braces != 0:
-            errors.append(f"Syntax: Unmatched braces ({open_braces})")
-        if open_parens != 0:
-            errors.append(f"Syntax: Unmatched parentheses ({open_parens})")
-        if open_brackets != 0:
-            errors.append(f"Syntax: Unmatched brackets ({open_brackets})")
-        
-        # Check for basic structure
-        if 'function' in code and '()' not in code:
-            # Not necessarily an error, but worth noting
-            pass
-        
-        return len(errors) == 0, errors
-    
-    def validate_css(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate CSS code."""
-        errors = []
-        
-        # Check for unmatched braces
-        open_braces = code.count('{') - code.count('}')
-        if open_braces != 0:
-            errors.append(f"Syntax: Unmatched braces ({open_braces})")
-        
-        # Check for common CSS issues
-        if 'px' in code and not re.search(r'\d+px', code):
-            errors.append("Warning: 'px' mentioned but no pixel values found")
-        
-        # Check for potentially dangerous CSS
-        dangerous_css = ['expression(', 'javascript:', 'behavior:']
-        for danger in dangerous_css:
-            if danger in code.lower():
-                errors.append(f"Security: Potentially dangerous CSS '{danger}'")
-        
-        return len(errors) == 0, errors
-    
-    def validate_html(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate HTML code."""
-        errors = []
-        
-        # Check for unmatched tags (basic)
-        # This is simplified - real HTML validation would use a parser
-        open_tags = len(re.findall(r'<[a-zA-Z][^>]*[^/]>', code))
-        close_tags = len(re.findall(r'</[a-zA-Z][^>]*>', code))
-        self_closing = len(re.findall(r'<[a-zA-Z][^>]*/\s*>', code))
-        
-        # Very rough check
-        if open_tags > close_tags + self_closing:
-            missing = open_tags - close_tags - self_closing
-            errors.append(f"Warning: Potentially {missing} unclosed tags")
-        
-        # Check for inline event handlers (security concern)
-        inline_events = re.findall(r'\s(on\w+)\s*=', code, re.IGNORECASE)
-        if inline_events:
-            errors.append(
-                f"Security: Inline event handlers found: {set(inline_events)}"
-            )
-        
-        return len(errors) == 0, errors
 
 
 class CodeGenerator(ABC):
@@ -160,18 +76,18 @@ class CodeGenerator(ABC):
             language=language
         )
         
-        # Validate
+        # Validate using the unified CodeValidator
         if language == 'javascript':
-            valid, errors = self.validator.validate_javascript(content)
+            result = self.validator.validate_javascript(content)
         elif language == 'css':
-            valid, errors = self.validator.validate_css(content)
+            result = self.validator.validate_css(content)
         elif language == 'html':
-            valid, errors = self.validator.validate_html(content)
+            result = self.validator.validate_html(content)
         else:
-            valid, errors = True, []
+            result = ValidationResult(valid=True, language=language, issues=[])
         
-        gen_file.validation_status = 'valid' if valid else 'invalid'
-        gen_file.validation_errors = errors
+        gen_file.validation_status = 'valid' if result.valid else 'invalid'
+        gen_file.validation_errors = [i.message for i in result.issues]
         
         self.generated_files.append(gen_file)
         return gen_file

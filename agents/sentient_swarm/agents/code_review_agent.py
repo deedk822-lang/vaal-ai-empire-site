@@ -91,6 +91,6 @@ Output findings as JSON array."""
             'metrics': {
                 'files_reviewed': len(files_to_review),
                 'total_issues': total_issues,
-                'provider': review_response.provider.value if review_results else 'none'
+                'provider': review_results[-1]['provider'] if review_results else 'none'
             }
         }

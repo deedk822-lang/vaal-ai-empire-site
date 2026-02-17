@@ -150,9 +150,21 @@ class SentientUIAgent(BaseAgent):
             # Generate files
             span_id = self.tracer.start_span("file_generation", trace_id)
             generator = CSSGenerator(output_dir)
-            gen_result = await generator.generate({
-                'components': self._get_component_specs()
-            })
+            
+            # Write LLM-generated CSS if available, otherwise use template
+            if css_content and not api_response.fallback_used:
+                # Write the LLM-generated CSS directly
+                gen_file = generator.write_file('liquid-glass-llm.css', css_content, 'css')
+                gen_result = GenerationResult(
+                    success=True, 
+                    files=[gen_file],
+                    metrics={'source': 'glm5'}
+                )
+            else:
+                # Use template-based generation
+                gen_result = await generator.generate({
+                    'components': self._get_component_specs()
+                })
             self.tracer.end_span(span_id, status="success")
             
             # Calculate metrics
@@ -676,8 +688,7 @@ class DigitalPreeminenceOrchestrator:
     def _register_health_checks(self):
         """Register health checks for components."""
         def check_glm5():
-            from .core.resilience import HealthCheck, HealthStatus
-            # Simple check - could be more sophisticated
+            # HealthCheck and HealthStatus already imported at module level
             return HealthCheck(
                 component='GLM5_API',
                 status=HealthStatus.HEALTHY if self.glm5.api_key else HealthStatus.DEGRADED,
