@@ -7,10 +7,11 @@
     "edge_cases",
     "code_generation",
     "refactoring",
-    "debugging"
+    "debugging",
+    "financial"
   ],
   "metadata": {
-    "total_tests": 50,
+    "total_tests": 60,
     "created_date": "2026-02-14",
     "author": "Vaal AI Empire",
     "glm5_enabled": true,
@@ -608,6 +609,118 @@
       "expected_patterns": ["nonlocal", "global", "closure", "lambda"],
       "time_limit_ms": 3000,
       "tags": ["debugging", "scope", "closures"]
+    },
+    {
+      "id": "FIN001",
+      "name": "ZAR Transaction Fee Calculation",
+      "category": "financial",
+      "difficulty": "easy",
+      "prompt": "Write a Python function to calculate transaction fees for ZAR payments: R2.50 flat fee plus 2.9% of the transaction amount. The function should handle edge cases like zero or negative amounts.",
+      "expected_patterns": ["2.9", "2.50", "flat", "percentage", "ZAR", "R", "fee"],
+      "currency": "ZAR",
+      "expected_fee_type": "flat_plus_percentage",
+      "time_limit_ms": 2000,
+      "test_inputs": [100.00, 1000.00, 0.01, 0.00, -100.00],
+      "expected_outputs": [5.40, 31.50, 2.53, 0.00, "Error"],
+      "tags": ["financial", "zar", "transaction_fees", "currency"]
+    },
+    {
+      "id": "FIN002",
+      "name": "USD Transaction Fee Calculation",
+      "category": "financial",
+      "difficulty": "easy",
+      "prompt": "Create a function to calculate transaction fees for USD payments: 3.9% of the amount with no flat fee. Include minimum fee of $0.30.",
+      "expected_patterns": ["3.9", "percentage", "0.30", "minimum", "USD", "$"],
+      "currency": "USD",
+      "expected_fee_type": "percentage_only",
+      "time_limit_ms": 2000,
+      "test_inputs": [10.00, 100.00, 1.00, 0.50],
+      "expected_outputs": [0.39, 3.90, 0.30, 0.30],
+      "tags": ["financial", "usd", "transaction_fees", "currency"]
+    },
+    {
+      "id": "FIN003",
+      "name": "Multi-Currency Conversion",
+      "category": "financial",
+      "difficulty": "medium",
+      "prompt": "Implement a currency conversion function that converts between ZAR, USD, EUR, and GBP with proper handling of exchange rates and rounding to 2 decimal places.",
+      "expected_patterns": ["rate", "convert", "currency", "round", "decimal", "exchange"],
+      "time_limit_ms": 3000,
+      "test_inputs": [{"amount": 100, "from": "ZAR", "to": "USD"}, {"amount": 50, "from": "USD", "to": "EUR"}],
+      "tags": ["financial", "currency_conversion", "multi_currency", "exchange_rates"]
+    },
+    {
+      "id": "FIN004",
+      "name": "VAT Calculation South Africa",
+      "category": "financial",
+      "difficulty": "easy",
+      "prompt": "Write a function to calculate VAT (15%) for South African transactions, handling both inclusive and exclusive prices.",
+      "expected_patterns": ["15", "VAT", "inclusive", "exclusive", "0.15", "multiply"],
+      "time_limit_ms": 2000,
+      "test_inputs": [{"price": 100, "type": "exclusive"}, {"price": 115, "type": "inclusive"}],
+      "expected_outputs": [15.00, 15.00],
+      "tags": ["financial", "vat", "south_africa", "tax"]
+    },
+    {
+      "id": "FIN005",
+      "name": "Payment Gateway Selection",
+      "category": "financial",
+      "difficulty": "medium",
+      "prompt": "Create a function that selects the optimal payment gateway based on transaction amount and currency: PayFast for ZAR under R10000, Stripe for USD/EUR, PayPal for others. Include fee comparison.",
+      "expected_patterns": ["PayFast", "Stripe", "PayPal", "gateway", "currency", "amount", "compare"],
+      "time_limit_ms": 3000,
+      "tags": ["financial", "payment_gateway", "optimization", "fees"]
+    },
+    {
+      "id": "FIN006",
+      "name": "Installment Plan Calculator",
+      "category": "financial",
+      "difficulty": "medium",
+      "prompt": "Write a function to calculate monthly installment amounts for a purchase, including interest calculations for different terms (3, 6, 12 months) with proper amortization.",
+      "expected_patterns": ["installment", "interest", "months", "principal", "rate", "amortization"],
+      "time_limit_ms": 3000,
+      "test_inputs": [{"principal": 10000, "months": 6, "rate": 0.15}],
+      "tags": ["financial", "installments", "interest", "amortization"]
+    },
+    {
+      "id": "FIN007",
+      "name": "Receipt Total Calculation",
+      "category": "financial",
+      "difficulty": "easy",
+      "prompt": "Create a function that calculates the total for a shopping receipt including line items, discounts, and tax. Handle floating point precision properly.",
+      "expected_patterns": ["total", "sum", "discount", "tax", "round", "decimal"],
+      "time_limit_ms": 2000,
+      "tags": ["financial", "receipt", "total", "precision"]
+    },
+    {
+      "id": "FIN008",
+      "name": "Refund Processing",
+      "category": "financial",
+      "difficulty": "medium",
+      "prompt": "Implement a refund processing function that handles partial refunds, calculates pro-rated fees, and validates refund amounts against original transaction.",
+      "expected_patterns": ["refund", "partial", "pro-rate", "validate", "original", "fee"],
+      "time_limit_ms": 3000,
+      "tags": ["financial", "refund", "partial", "validation"]
+    },
+    {
+      "id": "FIN009",
+      "name": "Invoice Number Generation",
+      "category": "financial",
+      "difficulty": "easy",
+      "prompt": "Create a function to generate unique invoice numbers with format: INV-YYYYMMDD-XXXX where XXXX is a sequential number.",
+      "expected_patterns": ["INV", "date", "sequential", "format", "unique", "number"],
+      "time_limit_ms": 2000,
+      "tags": ["financial", "invoice", "number_generation", "formatting"]
+    },
+    {
+      "id": "FIN010",
+      "name": "Financial Report Summary",
+      "category": "financial",
+      "difficulty": "hard",
+      "prompt": "Write a function that generates a financial summary report from transaction data, including total revenue, fees, refunds, and net profit with proper currency formatting.",
+      "expected_patterns": ["revenue", "fees", "refunds", "profit", "format", "currency", "summary"],
+      "time_limit_ms": 5000,
+      "tags": ["financial", "report", "summary", "analytics"]
     }
   ]
 }
