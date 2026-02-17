@@ -220,8 +220,7 @@ jobs:
             htmlcov/
             coverage.xml
           retention-days: 7
-          if-no-files-found: warn
-        continue-on-error: true
+          if-no-files-found: ignore
 
   # Optional: Run benchmarks in Docker
   benchmark-docker:
