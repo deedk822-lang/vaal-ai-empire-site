@@ -14,9 +14,12 @@ class MXAgent(BaseAgent):
     
     def __init__(self, llm_client=None, metrics=None, tracer=None):
         super().__init__("MX", llm_client, metrics, tracer)
+ fix/coderabbit-issues-resolved
         # Validate that LLM client is provided
         if self.llm is None:
             raise ValueError("MXAgent requires a valid LLM client. llm_client parameter cannot be None.")
+
+ merge/develop-to-main
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate structured data and GEO content."""

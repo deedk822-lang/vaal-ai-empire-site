@@ -59,7 +59,11 @@ async def main():
     print("Configuration:")
     print(f"  Project: {config.project_name}")
     print(f"  Output: {config.output_dir}")
+ fix/coderabbit-issues-resolved
     print(f"  Code Review: {config.run_code_review}")
+
+    print(f"  Code Review: {config.enable_code_review}")
+ merge/develop-to-main
     print(f"  Parallel Agents: {config.max_parallel_agents}")
     print()
     
