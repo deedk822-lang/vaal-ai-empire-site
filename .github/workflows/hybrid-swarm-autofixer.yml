@@ -7,6 +7,7 @@ on:
     types: [submitted]
   workflow_dispatch:
 
+ professional-system
 permissions:
   contents: write
   pull-requests: write
@@ -15,6 +16,20 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.11'
+
+env:
+  PYTHON_VERSION: '3.11'
+  # API Keys from repository secrets
+  GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+  KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+  DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+  CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+  GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+  PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+  OPENTELEMETRY_API_KEY: ${{ secrets.OPENTELEMETRY_API_KEY }}
+  OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+ merge/develop-to-main
 
 jobs:
   swarm-execution:
@@ -45,6 +60,7 @@ jobs:
         id: swarm
         env:
           PR_HEAD_REF: ${{ github.head_ref }}
+ professional-system
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
@@ -56,6 +72,10 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           python3 << 'PYEOF'
+
+        run: |
+          python -c "
+ merge/develop-to-main
           import asyncio
           import sys
           import os
@@ -63,6 +83,7 @@ jobs:
           
           sys.path.insert(0, '.')
           
+ professional-system
           try:
               from agents.sentient_swarm import SwarmOrchestrator, SwarmConfig
           except ImportError as e:
@@ -80,6 +101,9 @@ jobs:
                       'note': 'Swarm module not available - placeholder success'
                   }, f, indent=2)
               sys.exit(0)
+
+          from agents.sentient_swarm import SwarmOrchestrator, SwarmConfig
+ merge/develop-to-main
           
           async def main():
               # Check which APIs are configured
@@ -165,6 +189,7 @@ jobs:
                           ]
                       }, f, indent=2)
                   
+ professional-system
                   # Exit gracefully - don't fail the workflow
                   return result
                   
@@ -189,6 +214,24 @@ jobs:
           result = asyncio.run(main())
           PYEOF
 
+                  # Exit with error if all agents failed
+                  if not result.success:
+                      print()
+                      print('❌ Swarm execution failed')
+                      sys.exit(1)
+                  
+                  return result
+                  
+              except Exception as e:
+                  print(f'❌ Swarm execution failed: {e}')
+                  import traceback
+                  traceback.print_exc()
+                  sys.exit(1)
+          
+          result = asyncio.run(main())
+          "
+ merge/develop-to-main
+
       - name: Upload swarm output
         if: always()
         uses: actions/upload-artifact@v4
@@ -198,7 +241,10 @@ jobs:
             swarm-output/
             swarm-results.json
           retention-days: 7
+ professional-system
           if-no-files-found: ignore
+
+ merge/develop-to-main
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && always()
@@ -210,6 +256,7 @@ jobs:
             let summary = '## 🤖 Enterprise Swarm Results\n\n';
             
             try {
+ professional-system
               if (fs.existsSync('swarm-results.json')) {
                 const results = JSON.parse(fs.readFileSync('swarm-results.json', 'utf8'));
                 
@@ -261,6 +308,44 @@ jobs:
               console.log('Could not create comment:', error.message);
             }
 
+              const results = JSON.parse(fs.readFileSync('swarm-results.json', 'utf8'));
+              
+              const statusIcon = results.success ? '✅ Success' : '❌ Failed';
+              summary += `**Status:** ${statusIcon}\n`;
+              summary += `**Duration:** ${results.duration_ms.toFixed(0)}ms\n`;
+              summary += `**Files Generated:** ${results.files_count}\n\n`;
+              
+              summary += '### Agent Results\n\n';
+              summary += '| Agent | Status | Files |\n';
+              summary += '|-------|--------|-------|\n';
+              
+              for (const agent of results.agent_results) {
+                const icon = agent.status === 'success' ? '✅' : '❌';
+                summary += `| ${agent.agent} | ${icon} ${agent.status} | ${agent.files} |\n`;
+              }
+              
+              if (results.files && results.files.length > 0) {
+                summary += '\n### Generated Files\n\n';
+                for (const file of results.files.slice(0, 10)) {
+                  summary += `- \`${file}\`\n`;
+                }
+                if (results.files.length > 10) {
+                  summary += `- *and ${results.files.length - 10} more...*\n`;
+                }
+              }
+              
+            } catch (e) {
+              summary += '⚠️ Could not parse results\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+ merge/develop-to-main
+
   metrics-export:
     name: Export Metrics
     runs-on: ubuntu-latest
@@ -273,7 +358,10 @@ jobs:
         with:
           name: swarm-output
           path: swarm-output
+ professional-system
         continue-on-error: true
+
+ merge/develop-to-main
 
       - name: Export to Prometheus (if configured)
         run: |
@@ -283,8 +371,11 @@ jobs:
           else
             echo "PROMETHEUS_API_KEY not configured, skipping"
           fi
+ professional-system
         env:
           PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+
+ merge/develop-to-main
 
       - name: Export to Grafana (if configured)
         run: |
@@ -294,5 +385,8 @@ jobs:
           else
             echo "GRAFANA_API_KEY not configured, skipping"
           fi
+ professional-system
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+
+ merge/develop-to-main
