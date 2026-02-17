@@ -15,10 +15,7 @@ import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
- professional-system
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-
- merge/develop-to-main
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
@@ -387,16 +384,9 @@ class AXEAccessibilityRunner(BenchmarkRunner):
         except:
             return False
     
- professional-system
     async def _serve_file(self, file_path: str) -> Tuple[Optional[str], Optional[HTTPServer]]:
         """Start temporary HTTP server for file."""
-        # Simplified - in production use a proper server
-
-    async def _serve_file(self, file_path: str) -> tuple[Optional[str], Optional[HTTPServer]]:
-        """Start temporary HTTP server for file."""
-        # Simplified - in production use a proper server
         from http.server import HTTPServer, SimpleHTTPRequestHandler
- merge/develop-to-main
         import threading
         
         file_path = Path(file_path).resolve()
