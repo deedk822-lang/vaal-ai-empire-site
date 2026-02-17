@@ -4,7 +4,7 @@ on:
   pull_request_review:
     types: [submitted]
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -58,12 +58,20 @@ jobs:
             fi
           fi
           
-          # New PR opened
+          # PR events: run on open, sync, reopen, and labeled
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # Only run on PR open, not every sync
-            if [ "${{ github.event.action }}" == "opened" ]; then
+            # Run on PR open, synchronize, reopen
+            if [ "${{ github.event.action }}" == "opened" ] || [ "${{ github.event.action }}" == "synchronize" ] || [ "${{ github.event.action }}" == "reopened" ]; then
               SHOULD_RUN="true"
               PR_NUMBER="${{ github.event.pull_request.number }}"
+            fi
+            # Also run when labeled with specific labels
+            if [ "${{ github.event.action }}" == "labeled" ]; then
+              LABEL="${{ github.event.label.name }}"
+              if [ "$LABEL" == "auto-fix" ] || [ "$LABEL" == "swarm-fix" ] || [ "$LABEL" == "coderabbit-fixes" ]; then
+                SHOULD_RUN="true"
+                PR_NUMBER="${{ github.event.pull_request.number }}"
+              fi
             fi
           fi
           

@@ -1,0 +1,25 @@
+name: Custom CodeQL Configuration
+
+# Disable default queries
+disable-default-queries: false
+
+# Query suites to include
+queries:
+  - uses: security-and-quality
+
+# Paths to analyze
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.venv/**'
+  - '**/venv/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/__pycache__/**'
+  - '**/*.min.js'
+  - '**/coverage/**'
+  - '**/benchmark_results/**'
+
+# Paths to specifically analyze
+paths:
+  - server
+  - agents

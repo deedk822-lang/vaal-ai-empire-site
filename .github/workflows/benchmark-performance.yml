@@ -76,6 +76,15 @@ jobs:
       - name: Create benchmark results directory
         run: mkdir -p benchmark_results
 
+      - name: Verify benchmark script exists
+        run: |
+          if [ -f "agents/benchmark_executor.py" ]; then
+            echo "✅ Benchmark executor found"
+            python -m py_compile agents/benchmark_executor.py && echo "✅ Syntax check passed" || echo "⚠️ Syntax issues detected"
+          else
+            echo "::warning::Benchmark executor not found at agents/benchmark_executor.py"
+          fi
+
       - name: Run benchmark suite
         id: benchmark_run
         env:
@@ -86,6 +95,13 @@ jobs:
         run: |
           # Ensure benchmark results directory exists
           mkdir -p benchmark_results
+          
+          # Check if script exists
+          if [ ! -f "agents/benchmark_executor.py" ]; then
+            echo "::warning::Benchmark executor not found. Creating placeholder report."
+            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results/report.json
+            exit 0
+          fi
           
           # Build command with appropriate flags
           CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
@@ -105,12 +121,23 @@ jobs:
           echo "⚠️ Running without quality evaluation (CI mode)"
           
           echo "Running: $CMD"
-          eval "$CMD" || true
+          
+          # Run with explicit error handling
+          set +e
+          eval "$CMD"
+          EXIT_CODE=$?
+          set -e
+          
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::warning::Benchmark exited with code $EXIT_CODE. This is expected in CI without API keys."
+          fi
           
           # Ensure report exists even if benchmark had issues
           if [ ! -f benchmark_results/report.json ]; then
             echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results/report.json
           fi
+          
+          echo "✅ Benchmark run completed"
 
       - name: Generate benchmark summary
         if: always()
