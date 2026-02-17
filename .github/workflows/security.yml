@@ -2,37 +2,73 @@ name: Security Scanning
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   schedule:
     - cron: '0 0 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: NPM Audit
-      run: npm audit --audit-level=high
-      continue-on-error: true
+      - uses: actions/checkout@v4
 
-    - name: Python Bandit (SAST)
-      run: |
-        pip install bandit
-        bandit -r . -x ./tests
-      continue-on-error: true
+      - name: NPM Audit
+        run: |
+          if [ -f package.json ]; then
+            npm audit --audit-level=high || true
+          else
+            echo "No package.json found, skipping npm audit"
+          fi
+        continue-on-error: true
 
-    - name: Safety Check
-      run: |
-        pip install safety
-        safety check
-      continue-on-error: true
+      - name: Python Bandit (SAST)
+        run: |
+          pip install bandit
+          bandit -r . -x ./tests,./.git,./node_modules || true
+        continue-on-error: true
 
-    - name: CodeQL Analysis
-      uses: github/codeql-action/init@v3
-      with:
-        languages: javascript, python
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      - name: Safety Check
+        run: |
+          pip install safety
+          safety check || true
+        continue-on-error: true
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript', 'python']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        continue-on-error: true
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
