@@ -32,11 +32,8 @@ class MXAgent(BaseAgent):
     
     def __init__(self, llm_client=None, metrics=None, tracer=None):
         super().__init__("MX", llm_client, metrics, tracer)
- professional-system
         if self.llm is None:
             raise ValueError("MXAgent requires a valid LLM client.")
-
- merge/develop-to-main
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate structured data and GEO content."""
