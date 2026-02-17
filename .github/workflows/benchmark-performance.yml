@@ -109,7 +109,7 @@ jobs:
           
           # Ensure report exists even if benchmark had issues
           if [ ! -f benchmark_results/report.json ]; then
-            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "results": []}' > benchmark_results/report.json
+            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results/report.json
           fi
 
       - name: Generate benchmark summary
