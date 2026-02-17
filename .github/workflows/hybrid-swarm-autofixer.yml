@@ -115,10 +115,21 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+ professional-system
           pip install aiohttp pytest pytest-asyncio prometheus-client
           
           # Optional telemetry packages
           pip install opentelemetry-api opentelemetry-sdk 2>/dev/null || true
+
+          # Install required packages explicitly
+          pip install aiohttp==3.13.3 pyyaml
+          # Also install from requirements if exists for other deps
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # Verify aiohttp is installed
+          python -c "import aiohttp; print(f'aiohttp {aiohttp.__version__} installed')"
+ merge/develop-to-main
 
       - name: Install OLLAMA (Primary AI Provider)
         run: |
