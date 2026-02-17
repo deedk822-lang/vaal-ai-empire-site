@@ -289,9 +289,19 @@ jobs:
           git config user.name "Hybrid Swarm Bot"
           git config user.email "swarm@vaal-ai-empire.local"
 
+ professional-system
+          # Add and commit all changes
+          git add -A
+          
+          if git diff --staged --quiet; then
+            echo "No changes to push"
+          else
+            git commit -m "🤖 Hybrid Swarm Auto-Fix [skip ci]"
+
           if git diff --quiet && git diff --staged --quiet; then
             echo "No changes to push"
           else
+ merge/develop-to-main
             git push origin HEAD:${{ steps.pr.outputs.pr_branch }}
             echo "✅ Pushed fixes to PR branch"
           fi

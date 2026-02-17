@@ -7,6 +7,11 @@ This demonstrates how to use all your configured API keys.
 
 import asyncio
 import os
+ professional-system
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+ merge/develop-to-main
 from swarm_orchestrator import SwarmOrchestrator, SwarmConfig
 
 
