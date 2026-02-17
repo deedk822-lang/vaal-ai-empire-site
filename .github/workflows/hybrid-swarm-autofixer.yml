@@ -4,7 +4,9 @@ on:
   pull_request_review:
     types: [submitted]
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened]
+    # Note: Only 'opened' triggers the fixer to avoid redundant runs on sync/reopen
+    # synchronize/reopened events are received but filtered by check-trigger job
   workflow_dispatch:
     inputs:
       pr_number:
@@ -142,13 +144,9 @@ jobs:
           ollama serve &
           sleep 10
           
-          # Pull available models (try all, continue on failure)
-          echo "📦 Pulling OLLAMA models..."
-          
+          # Pull primary model only (others can be pulled on-demand if needed)
+          echo "📦 Pulling primary OLLAMA model..."
           ollama pull llama3.2:latest || echo "llama3.2 not available"
-          ollama pull qwen2.5-coder:14b || echo "qwen2.5-coder not available"
-          ollama pull deepseek-coder:6.7b || echo "deepseek-coder not available"
-          ollama pull codellama:latest || echo "codellama not available"
           
           # List what's available
           echo ""
@@ -266,23 +264,30 @@ jobs:
             --issues issues.json \
             --min-score "$MIN_SCORE" 2>&1 | tee swarm_output.txt
 
-          # Extract results
-          echo "fixes_applied=$(grep -oP 'fixes_applied":\s*\K\d+' swarm_output.txt || echo '0')" >> $GITHUB_OUTPUT
+          # Extract results robustly - try multiple patterns
+          FIXES_APPLIED=$(grep -E 'fixes_applied' swarm_output.txt 2>/dev/null | grep -oE '[0-9]+' | head -1 || echo '0')
+          echo "fixes_applied=${FIXES_APPLIED}" >> $GITHUB_OUTPUT
+          echo "Extracted fixes_applied: ${FIXES_APPLIED}"
 
       - name: Validate applied fixes
         if: success()
         run: |
           echo "🔍 Validating all changes..."
           
-          # Python syntax check - properly detect errors
+          # Python syntax check - safe iteration over filenames
           echo "Checking Python syntax..."
-          SYNTAX_ERRORS=$(find . -name "*.py" -type f -print0 2>/dev/null | xargs -0 -I {} sh -c 'python -m py_compile "$1" 2>&1 || echo "FAIL: $1"' _ {} | grep -E "(FAIL:|SyntaxError|IndentationError)" || true)
+          SYNTAX_ERRORS=""
+          while IFS= read -r -d '' pyfile; do
+            if ! python -m py_compile "$pyfile" 2>&1; then
+              SYNTAX_ERRORS="${SYNTAX_ERRORS}\nFAIL: ${pyfile}"
+            fi
+          done < <(find . -name "*.py" -type f -print0 2>/dev/null)
           
           if [ -z "$SYNTAX_ERRORS" ]; then
             echo "✅ All Python files pass syntax check"
           else
             echo "⚠️ Some syntax issues detected:"
-            echo "$SYNTAX_ERRORS"
+            echo -e "$SYNTAX_ERRORS"
           fi
           
           # Run tests if available

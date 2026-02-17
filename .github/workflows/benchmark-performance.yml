@@ -182,7 +182,7 @@ jobs:
           # Create coverage directory and placeholder if not exists
           mkdir -p htmlcov
           if [ ! -f coverage.xml ]; then
-            echo '<?xml version="1.0" ?><coverage version="5.5" timestamp="'$(date -Iseconds)'" line-rate="0.85"><packages><package name="agents" line-rate="0.85"><classes/></package></packages></coverage>' > coverage.xml
+            echo '<?xml version="1.0" ?><coverage version="5.5" placeholder="true" timestamp="'$(date -Iseconds)'" line-rate="0.0"><packages><package name="agents" line-rate="0.0"><classes/></package></packages></coverage>' > coverage.xml
           fi
 
       - name: Check coverage threshold
@@ -195,17 +195,26 @@ jobs:
           try:
               tree = ET.parse('coverage.xml')
               root = tree.getroot()
-              line_rate = float(root.attrib.get('line-rate', '0'))
-              threshold = 0.80
               
-              print(f"📊 Coverage: {line_rate * 100:.1f}%")
-              print(f"🎯 Threshold: {threshold * 100:.0f}%")
+              # Check if this is placeholder coverage
+              is_placeholder = root.attrib.get('placeholder', 'false').lower() == 'true'
               
-              if line_rate < threshold:
-                  print(f"⚠️ Coverage below threshold, but continuing (placeholder coverage)")
-                  # Don't fail on placeholder coverage
+              if is_placeholder:
+                  print("📋 NOTICE: Using placeholder coverage (no real tests ran)")
+                  print("   Coverage threshold check was skipped")
+                  print("   To get real coverage, ensure tests exist in agents/tests/")
               else:
-                  print(f"✅ Coverage meets threshold")
+                  line_rate = float(root.attrib.get('line-rate', '0'))
+                  threshold = 0.80
+                  
+                  print(f"📊 Coverage: {line_rate * 100:.1f}%")
+                  print(f"🎯 Threshold: {threshold * 100:.0f}%")
+                  
+                  if line_rate < threshold:
+                      print(f"⚠️ Coverage below threshold, but continuing (placeholder coverage)")
+                      # Don't fail on placeholder coverage
+                  else:
+                      print(f"✅ Coverage meets threshold")
           except Exception as e:
               print(f"⚠️ Could not parse coverage: {e}")
               print("Continuing without coverage check")

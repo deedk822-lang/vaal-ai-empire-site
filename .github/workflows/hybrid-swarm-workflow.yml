@@ -176,7 +176,8 @@ jobs:
                   # Create fallback result so workflow doesn't fail
                   with open('swarm-results.json', 'w') as f:
                       json.dump({
-                          'success': True,
+                          'success': False,
+                          'error_handled': True,
                           'duration_ms': 0,
                           'files_count': 0,
                           'files': [],
@@ -276,23 +277,29 @@ jobs:
         continue-on-error: true
 
       - name: Export to Prometheus (if configured)
+        # TODO: Implement Prometheus metrics export - requires PROMETHEUS_API_KEY
+        # See: https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XXX
+        # Expected: Push metrics to Prometheus pushgateway or remote write endpoint
         env:
           PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
         run: |
           if [ -n "$PROMETHEUS_API_KEY" ]; then
+            echo "# TODO: Implement Prometheus export with PROMETHEUS_API_KEY"
             echo "Would export metrics to Prometheus"
-            # Implementation would use PROMETHEUS_API_KEY to push metrics
           else
             echo "PROMETHEUS_API_KEY not configured, skipping"
           fi
 
       - name: Export to Grafana (if configured)
+        # TODO: Implement Grafana logs/metrics export - requires GRAFANA_API_KEY
+        # See: https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XXX
+        # Expected: Push logs to Grafana Loki or metrics to Grafana Cloud
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
           if [ -n "$GRAFANA_API_KEY" ]; then
+            echo "# TODO: Implement Grafana export with GRAFANA_API_KEY"
             echo "Would export logs to Grafana"
-            # Implementation would use GRAFANA_API_KEY to push logs
           else
             echo "GRAFANA_API_KEY not configured, skipping"
           fi

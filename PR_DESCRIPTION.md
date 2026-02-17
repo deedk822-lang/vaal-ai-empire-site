@@ -34,6 +34,7 @@ This PR resolves critical CI failures and CodeRabbit review issues from PR #62, 
 ## Changes Made
 
 ### Workflow Fixes
+
 | File | Change | Reason |
 |------|--------|--------|
 | `.github/workflows/security.yml` | Added permissions, config, continue-on-error | Fix CodeQL "2 configurations not found" |
@@ -42,6 +43,7 @@ This PR resolves critical CI failures and CodeRabbit review issues from PR #62, 
 | `.github/workflows/main.yml` | Removed continue-on-error from pytest | Tests should fail the workflow |
 
 ### Python Code Fixes
+
 | File | Change | Reason |
 |------|--------|--------|
 | `agents/sentient_swarm/example_usage.py` | Fixed relative import | Module import failed when running standalone |

@@ -863,7 +863,23 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
             }
 
     def _evaluate_quality(self, prompt: str, response: str) -> Dict[str, float]:
-        """Evaluate response quality using GLM-5 if available, with fallback to static analysis."""
+        """Evaluate response quality using a two-tier strategy.
+        
+        Strategy:
+        1. GLM-4 Flash API: Attempts structured evaluation using
+           QUALITY_EVALUATION_PROMPT to get scores for correctness, security,
+           efficiency, readability, and best practices.
+        2. Static Analysis Fallback: If GLM API fails or returns invalid JSON,
+           falls back to _static_quality_scoring which uses heuristics and
+           pattern matching to estimate quality scores.
+        
+        Args:
+            prompt: The original prompt sent to the AI
+            response: The AI-generated response to evaluate
+            
+        Returns:
+            Dict with keys: correctness, security, efficiency, readability, best_practices
+        """
         # Try GLM-5 evaluation first
         if self.direct_client.glm_api_key:
             try:
@@ -885,8 +901,9 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
                             "readability": float(scores.get("readability", 5.0)),
                             "best_practices": float(scores.get("best_practices", 5.0)),
                         }
-            except Exception:
-                pass
+            except Exception as e:
+                # Log error and fall back to static analysis
+                print(f"⚠️ GLM evaluation failed: {e}. Using static analysis fallback.")
         
         # Fallback to static analysis quality scoring
         return self._static_quality_scoring(prompt, response)
@@ -895,6 +912,14 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
         """Static analysis-based quality scoring when API not available.
         
         Uses heuristics and pattern matching to estimate quality scores.
+        Incorporates prompt-response relevance checking.
+        
+        Args:
+            prompt: The original prompt - used for keyword extraction and relevance
+            response: The AI-generated response to evaluate
+            
+        Returns:
+            Dict with keys: correctness, security, efficiency, readability, best_practices
         """
         scores = {
             "correctness": 5.0,
@@ -908,6 +933,16 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
             return scores
         
         response_lower = response.lower()
+        prompt_lower = prompt.lower() if prompt else ""
+        
+        # Compute prompt-response relevance: check if key prompt words appear in response
+        if prompt:
+            prompt_keywords = set(re.findall(r'\b[a-z]{4,}\b', prompt_lower))
+            response_keywords = set(re.findall(r'\b[a-z]{4,}\b', response_lower))
+            keyword_overlap = len(prompt_keywords & response_keywords)
+            if prompt_keywords:
+                relevance_score = min(keyword_overlap / len(prompt_keywords), 1.0) * 2.0
+                scores["correctness"] = min(10.0, scores["correctness"] + relevance_score)
         
         # Security scoring
         security_keywords = ['secure', 'sanitize', 'validate', 'escape', 'parameterized', 
