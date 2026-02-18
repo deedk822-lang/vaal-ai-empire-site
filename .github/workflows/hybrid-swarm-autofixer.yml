@@ -338,17 +338,19 @@ jobs:
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          FIXES_APPLIED: ${{ steps.swarm_fix.outputs.fixes_applied }}
+          FIX_OUTCOME: ${{ steps.swarm_fix.outcome }}
         with:
           script: |
             const fs = require('fs');
 
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const fixStatus = process.env.FIX_OUTCOME;
+            const fixesApplied = process.env.FIXES_APPLIED || '0';
+            
             let comment = '## 🤖 Hybrid Swarm Auto-Fixer Results\n\n';
 
-            const fixStatus = '${{ steps.swarm_fix.outcome }}';
-
             if (fixStatus === 'success') {
-              const fixesApplied = '${{ steps.swarm_fix.outputs.fixes_applied }}' || '0';
-
               comment += '✅ **Swarm fixing completed**\n\n';
               comment += '| Metric | Value |\n';
               comment += '|--------|-------|\n';
@@ -378,7 +380,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: Number(process.env.PR_NUMBER),
+              issue_number: prNumber,
               body: comment
             });
 
