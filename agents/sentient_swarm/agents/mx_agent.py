@@ -31,15 +31,41 @@ class MXAgent(BaseAgent):
     }
     
     def __init__(self, llm_client=None, metrics=None, tracer=None):
+        """
+        Initialize the MXAgent and register provided clients.
+        
+        Parameters:
+            llm_client: Language model client used for GEO content generation; must be provided.
+            metrics: Optional metrics collector.
+            tracer: Optional tracing/telemetry client.
+        
+        Raises:
+            ValueError: If `llm_client` is not provided.
+        """
         super().__init__("MX", llm_client, metrics, tracer)
- professional-system
         if self.llm is None:
             raise ValueError("MXAgent requires a valid LLM client.")
-
- merge/develop-to-main
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate structured data and GEO content."""
+        """
+        Generate JSON-LD organization schema and GEO-optimized content, write both to files, and return metadata about the operation.
+        
+        Parameters:
+            context (Dict[str, Any]): Input context used to populate the schema. Recognized keys:
+                - company_name: Organization name (defaults to 'Vaal AI Empire')
+                - description: Organization description (defaults to 'AI-powered digital sovereignty')
+                - url: Organization URL (defaults to 'https://vaalaiempire.co.za')
+        
+        Returns:
+            Dict[str, Any]: Result payload containing:
+                - agent (str): Agent name.
+                - status (str): Operation status (e.g., 'success').
+                - files (List[Dict[str, Any]]): References to the written files (schema and GEO content).
+                - metrics (Dict[str, Any]):
+                    - schema_entities (int): Number of top-level keys in the generated schema.
+                    - geo_tokens (int): Tokens consumed by the LLM for GEO generation (0 if fallback used).
+                    - provider (str): Source of GEO content ('fallback' or LLM provider identifier).
+        """
         self.log("🧠 Optimizing for Machine Experience...")
         
         # Generate JSON-LD schema
