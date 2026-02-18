@@ -211,8 +211,7 @@ jobs:
                   print(f"🎯 Threshold: {threshold * 100:.0f}%")
                   
                   if line_rate < threshold:
-                      print(f"⚠️ Coverage below threshold, but continuing (placeholder coverage)")
-                      # Don't fail on placeholder coverage
+                      print(f"⚠️ Coverage {line_rate * 100:.1f}% is below threshold of {threshold * 100:.0f}%")
                   else:
                       print(f"✅ Coverage meets threshold")
           except Exception as e:
