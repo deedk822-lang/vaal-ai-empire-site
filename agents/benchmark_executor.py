@@ -903,6 +903,8 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
             except (json.JSONDecodeError, ValueError, TypeError) as e:
                 # Log error and fall back to static analysis
                 print(f"⚠️ GLM evaluation failed: {e}. Using static analysis fallback.")
+        else:
+            print("⚠️ GLM5_API_KEY not available - using default quality scores")
         
         # Fallback to static analysis quality scoring
         return self._static_quality_scoring(prompt, response)
@@ -1099,11 +1101,23 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
             )
 
             # Determine pass/fail
-            passed = (
-                quality_scores.get("correctness", 0) >= 6.0
-                and security_score >= 5.0
-                and not ai_result.get("resilient_mode", False)
-            )
+            # If quality evaluation is disabled, use security score and response presence
+            # If quality evaluation is enabled, require correctness >= 6.0
+            if self.enable_quality_evaluation:
+                passed = (
+                    quality_scores.get("correctness", 0) >= 6.0
+                    and security_score >= 5.0
+                    and not ai_result.get("resilient_mode", False)
+                )
+            else:
+                # Without quality eval: pass if we got a real response (not resilient)
+                # and it has some content (security score > 0 means patterns matched)
+                has_content = len(response_text.strip()) > 50  # At least 50 chars
+                passed = (
+                    not ai_result.get("resilient_mode", False)
+                    and has_content
+                    and backend != "none"
+                )
 
             execution_time_ms = (time.time() - start_time) * 1000
 

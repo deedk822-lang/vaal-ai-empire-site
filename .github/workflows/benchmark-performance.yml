@@ -76,12 +76,47 @@ jobs:
       - name: Create benchmark results directory
         run: mkdir -p benchmark_results
 
+      - name: Install Ollama
+        run: |
+          echo "Installing Ollama..."
+          curl -fsSL https://ollama.com/install.sh | sh
+          
+          # Start Ollama service in background
+          ollama serve &
+          
+          # Wait for Ollama to be ready
+          echo "Waiting for Ollama to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama is ready"
+              break
+            fi
+            sleep 1
+          done
+          
+          # Verify Ollama is running
+          ollama --version
+          ollama list
+
+      - name: Pull Ollama models
+        run: |
+          echo "Pulling Ollama models..."
+          
+          # Pull lightweight models for CI
+          ollama pull qwen2.5-coder:1.5b || echo "⚠️ Failed to pull qwen2.5-coder:1.5b"
+          ollama pull phi4 || echo "⚠️ Failed to pull phi4"
+          
+          # List available models
+          ollama list
+
       - name: Run benchmark suite
         id: benchmark_run
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_HOST: http://localhost:11434
           PYTHONPATH: ${{ github.workspace }}
         run: |
           # Ensure benchmark results directory exists
@@ -100,9 +135,19 @@ jobs:
             CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
           
-          # Always disable quality eval in CI (API keys not typically available)
-          CMD="$CMD --no-quality-eval"
-          echo "⚠️ Running without quality evaluation (CI mode)"
+          # Check if any AI backend is available (including Ollama)
+          if [ -z "$KIMI_API_KEY" ] && [ -z "$GLM5_API_KEY" ] && [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$OLLAMA_HOST" ]; then
+            echo "⚠️ No AI backends configured - running in resilient mode"
+            CMD="$CMD --no-quality-eval"
+          else
+            echo "✅ AI backend(s) detected - running with full evaluation"
+            
+            # Show which backends are available
+            if [ -n "$KIMI_API_KEY" ]; then echo "  - Kimi API ✅"; fi
+            if [ -n "$GLM5_API_KEY" ]; then echo "  - GLM API ✅"; fi
+            if [ -n "$DASHSCOPE_API_KEY" ]; then echo "  - DashScope API ✅"; fi
+            if [ -n "$OLLAMA_HOST" ]; then echo "  - Ollama (local) ✅"; fi
+          fi
           
           echo "Running: $CMD"
           eval "$CMD" || true
