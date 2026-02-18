@@ -330,15 +330,14 @@ jobs:
           python3 << 'PYEOF'
           import json
           import os
+          import sys
+          import textwrap
           from pathlib import Path
-          from datetime import datetime
 
           # +AAA Performance SLA Thresholds
           SLA_THRESHOLDS = {
               'overall_score_min': 70.0,      # Minimum overall score %
-              'p95_response_time_ms': 2000,   # P95 response time < 2s
-              'quality_score_min': 7.0,       # Quality score >= 7/10
-              'security_score_min': 8.0,      # Security score >= 8/10
+              'avg_response_time_ms': 2000,   # Average response time < 2s
               'regression_tolerance': 0.05,   # Allow 5% regression tolerance
           }
 
@@ -431,29 +430,44 @@ jobs:
           print(f'   Overall Score >= {SLA_THRESHOLDS["overall_score_min"]}%: {status} ({overall_score:.1f}%)')
           
           # Response time check
-          if avg_response_time > SLA_THRESHOLDS['p95_response_time_ms']:
+          if avg_response_time > SLA_THRESHOLDS['avg_response_time_ms']:
               status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
               sla_results.append(False)
           else:
               status = '✅ PASS'
               sla_results.append(True)
-          print(f'   Response Time < {SLA_THRESHOLDS["p95_response_time_ms"]}ms: {status} ({avg_response_time:.2f}ms)')
+          print(f'   Response Time < {SLA_THRESHOLDS["avg_response_time_ms"]}ms: {status} ({avg_response_time:.2f}ms)')
 
           # Skip failure check if running without backends (CI mode)
           if has_no_backend:
               print('\n::notice::Benchmark ran in resilient mode (no AI backends available). Skipping SLA enforcement.')
               exit(0)
 
-          # Only fail if backends were available but score is critically low
-          if overall_score < 50:
+          # Determine final pass/fail based on all SLA checks
+          final_pass = all(sla_results)
+          
+          if not final_pass:
+              print('\n::error::One or more SLA thresholds not met')
+              sys.exit(1)
+          elif overall_score < 50:
               print('\n::error::Benchmark score critically low (< 50%)')
-              exit(1)
-          elif overall_score < SLA_THRESHOLDS['overall_score_min']:
-              print(f'\n::warning::Benchmark score below SLA threshold of {SLA_THRESHOLDS["overall_score_min"]}%')
+              sys.exit(1)
           else:
               print(f'\n✅ All SLA thresholds met!')
 
           # Write summary to GITHUB_STEP_SUMMARY
+ fix-corrupted-files
+          summary_md = textwrap.dedent(f'''
+          ## 📊 Benchmark Performance Summary
+          
+          | Metric | Current | Baseline | SLA | Status |
+          |--------|---------|----------|-----|--------|
+          | Overall Score | {overall_score:.1f}% | {baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
+          | Avg Response | {avg_response_time:.2f}ms | {baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"}ms | < {SLA_THRESHOLDS["avg_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["avg_response_time_ms"] else "❌"} |
+          
+          ### Category Scores
+          ''')
+
           summary_md = f'''## 📊 Benchmark Performance Summary
 
 | Metric | Current | Baseline | SLA | Status |
@@ -463,6 +477,7 @@ jobs:
 
 ### Category Scores
 '''
+ merge/develop-to-main
           for cat, score in category_scores.items():
               summary_md += f'- **{cat}**: {score:.1f}/10\n'
           
@@ -486,17 +501,7 @@ jobs:
               }
 
               const summary = report.summary || {};
-              const body = `## Benchmark Results
-
-              | Metric | Value |
-              |--------|-------|
-              | Total Tests | ${summary.total_tests || 0} |
-              | Passed | ${summary.passed_tests || 0} |
-              | Failed | ${summary.failed_tests || 0} |
-              | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
-              | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
-
-              ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
+              const body = `## Benchmark Results\n\n| Metric | Value |\n|--------|-------|\n| Total Tests | ${summary.total_tests || 0} |\n| Passed | ${summary.passed_tests || 0} |\n| Failed | ${summary.failed_tests || 0} |\n| Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |\n| Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |\n\n${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
 
               try {
                 await github.rest.issues.createComment({

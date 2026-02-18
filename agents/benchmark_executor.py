@@ -959,10 +959,10 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
                 security_score -= 1.5
         scores['security'] = max(0.0, min(10.0, security_score))
         
-        # Efficiency scoring
-        efficiency_keywords = ['O(n)', 'O(log', 'hash', 'cache', 'memo', 'index',
+        # Efficiency scoring - patterns normalized to lowercase for matching against response_lower
+        efficiency_keywords = ['o(n)', 'o(log', 'hash', 'cache', 'memo', 'index',
                              'optimize', 'efficient', 'async', 'parallel', 'batch']
-        efficiency_bad = ['O(n²)', 'O(n^2)', 'nested loop', 'readlines(']
+        efficiency_bad = ['o(n^2)', 'nested loop', 'readlines(']
         
         efficiency_score = 5.0
         for kw in efficiency_keywords:
@@ -1001,8 +1001,8 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
                 best_practices_score += 0.5
         scores['best_practices'] = max(0.0, min(10.0, best_practices_score))
         
-        # Correctness (based on code structure)
-        correctness_score = 5.0
+        # Correctness (based on code structure) - start from relevance-adjusted score
+        correctness_score = scores['correctness']  # Preserve relevance adjustment from earlier
         
         # Check for balanced brackets/braces
         open_braces = response.count('{')

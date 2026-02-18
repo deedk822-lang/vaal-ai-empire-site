@@ -122,8 +122,6 @@ Output as structured JSON."""
                     self.log("⚠️  LLM returned invalid JSON, using fallback")
             else:
                 self.log("⚠️  LLM failed, using fallback GEO content")
-        else:
-            self.log("⚠️  No LLM available, using fallback GEO content")
         
         geo_file = self.write_file("geo-content.json", json.dumps(geo_content, indent=2))
         
