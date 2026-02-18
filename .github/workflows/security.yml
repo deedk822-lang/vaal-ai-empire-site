@@ -2,11 +2,12 @@ name: Security Scanning
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop, merge/develop-to-main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, develop, merge/develop-to-main ]
   schedule:
     - cron: '0 0 * * 1'
+  workflow_dispatch:
 
 jobs:
   security-scan:
