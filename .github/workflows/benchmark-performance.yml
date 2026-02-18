@@ -337,7 +337,7 @@ jobs:
           # +AAA Performance SLA Thresholds
           SLA_THRESHOLDS = {
               'overall_score_min': 70.0,      # Minimum overall score %
-              'p95_response_time_ms': 2000,   # P95 response time < 2s
+              'avg_response_time_ms': 2000,   # Average response time < 2s
               'quality_score_min': 7.0,       # Quality score >= 7/10
               'security_score_min': 8.0,      # Security score >= 8/10
               'regression_tolerance': 0.05,   # Allow 5% regression tolerance
@@ -432,13 +432,13 @@ jobs:
           print(f'   Overall Score >= {SLA_THRESHOLDS["overall_score_min"]}%: {status} ({overall_score:.1f}%)')
           
           # Response time check
-          if avg_response_time > SLA_THRESHOLDS['p95_response_time_ms']:
+          if avg_response_time > SLA_THRESHOLDS['avg_response_time_ms']:
               status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
               sla_results.append(False)
           else:
               status = '✅ PASS'
               sla_results.append(True)
-          print(f'   Response Time < {SLA_THRESHOLDS["p95_response_time_ms"]}ms: {status} ({avg_response_time:.2f}ms)')
+          print(f'   Response Time < {SLA_THRESHOLDS["avg_response_time_ms"]}ms: {status} ({avg_response_time:.2f}ms)')
 
           # Skip failure check if running without backends (CI mode)
           if has_no_backend:
@@ -461,7 +461,7 @@ jobs:
           | Metric | Current | Baseline | SLA | Status |
           |--------|---------|----------|-----|--------|
           | Overall Score | {overall_score:.1f}% | {baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
-          | Avg Response | {avg_response_time:.2f}ms | {baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"}ms | < {SLA_THRESHOLDS["p95_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["p95_response_time_ms"] else "❌"} |
+          | Avg Response | {avg_response_time:.2f}ms | {baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"}ms | < {SLA_THRESHOLDS["avg_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["avg_response_time_ms"] else "❌"} |
           
           ### Category Scores
           '''

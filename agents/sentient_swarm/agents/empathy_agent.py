@@ -55,6 +55,7 @@ Output as Markdown."""
         
         guidelines_content = self.FALLBACK_GUIDELINES
         guidelines_tokens = 0
+        total_tokens = 0
         provider = "fallback"
         
         if self.llm:
@@ -67,6 +68,7 @@ Output as Markdown."""
             if guidelines_response.success:
                 guidelines_content = guidelines_response.content
                 guidelines_tokens = guidelines_response.tokens_used
+                total_tokens += guidelines_tokens
                 provider = guidelines_response.provider.value
             else:
                 self.log("⚠️  LLM failed, using fallback guidelines")
@@ -100,6 +102,7 @@ Requirements:
                 
                 if page_response.success:
                     page_content = page_response.content
+                    total_tokens += page_response.tokens_used
                 else:
                     self.log(f"⚠️  LLM failed for {page}, using fallback")
             
@@ -112,7 +115,7 @@ Requirements:
             'files': [guidelines_file] + page_files,
             'metrics': {
                 'pages_generated': len(pages),
-                'total_tokens': guidelines_tokens,
+                'total_tokens': total_tokens,
                 'provider': provider
             }
         }
