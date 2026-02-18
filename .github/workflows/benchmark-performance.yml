@@ -211,8 +211,7 @@ jobs:
                   print(f"🎯 Threshold: {threshold * 100:.0f}%")
                   
                   if line_rate < threshold:
-                      print(f"⚠️ Coverage below threshold, but continuing (placeholder coverage)")
-                      # Don't fail on placeholder coverage
+                      print(f"⚠️ Coverage {line_rate * 100:.1f}% is below threshold of {threshold * 100:.0f}%")
                   else:
                       print(f"✅ Coverage meets threshold")
           except Exception as e:
@@ -457,6 +456,7 @@ jobs:
               print(f'\n✅ All SLA thresholds met!')
 
           # Write summary to GITHUB_STEP_SUMMARY
+ fix-corrupted-files
           summary_md = textwrap.dedent(f'''
           ## 📊 Benchmark Performance Summary
           
@@ -467,6 +467,17 @@ jobs:
           
           ### Category Scores
           ''')
+
+          summary_md = f'''## 📊 Benchmark Performance Summary
+
+| Metric | Current | Baseline | SLA | Status |
+|--------|---------|----------|-----|--------|
+| Overall Score | {overall_score:.1f}% | {baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
+| Avg Response | {avg_response_time:.2f}ms | {baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"}ms | < {SLA_THRESHOLDS["p95_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["p95_response_time_ms"] else "❌"} |
+
+### Category Scores
+'''
+ merge/develop-to-main
           for cat, score in category_scores.items():
               summary_md += f'- **{cat}**: {score:.1f}/10\n'
           
