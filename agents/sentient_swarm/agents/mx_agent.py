@@ -5,7 +5,8 @@ Generates structured data and AI-parseable content.
 """
 
 import json
-from typing import Any, Dict
+from typing import Any, ClassVar, Dict
+
 from .base_agent import BaseAgent
 
 
@@ -13,7 +14,7 @@ class MXAgent(BaseAgent):
     """Optimizes for Machine Experience and Generative Engine Optimization."""
     
     # Fallback GEO content when LLM unavailable
-    FALLBACK_GEO = {
+    FALLBACK_GEO: ClassVar[Dict[str, Any]] = {
         "faq": [
             {
                 "question": "What is Digital Sovereignty?",
@@ -106,22 +107,22 @@ Output as structured JSON."""
         geo_tokens = 0
         geo_provider = "fallback"
         
-        if self.llm:
-            geo_response = await self.llm.generate(
-                prompt=geo_prompt,
-                system_message="You are an SEO/GEO expert specializing in AI-parseable content.",
-                temperature=0.7
-            )
-            
-            if geo_response.success:
-                try:
-                    geo_content = json.loads(geo_response.content)
-                    geo_tokens = geo_response.tokens_used
-                    geo_provider = geo_response.provider.value
-                except json.JSONDecodeError:
-                    self.log("⚠️  LLM returned invalid JSON, using fallback")
-            else:
-                self.log("⚠️  LLM failed, using fallback GEO content")
+        # self.llm is guaranteed non-None by __init__ validation
+        geo_response = await self.llm.generate(
+            prompt=geo_prompt,
+            system_message="You are an SEO/GEO expert specializing in AI-parseable content.",
+            temperature=0.7
+        )
+        
+        if geo_response.success:
+            try:
+                geo_content = json.loads(geo_response.content)
+                geo_tokens = geo_response.tokens_used
+                geo_provider = geo_response.provider.value
+            except json.JSONDecodeError:
+                self.log("⚠️  LLM returned invalid JSON, using fallback")
+        else:
+            self.log("⚠️  LLM failed, using fallback GEO content")
         
         geo_file = self.write_file("geo-content.json", json.dumps(geo_content, indent=2))
         

@@ -2,7 +2,8 @@
 Empathy Agent - Human-first content generation.
 """
 
-from typing import Any, Dict
+from typing import Any, ClassVar, Dict
+
 from .base_agent import BaseAgent
 
 
@@ -27,7 +28,7 @@ class EmpathyAgent(BaseAgent):
 - Success: "Great! Everything is ready."
 '''
 
-    FALLBACK_PAGES = {
+    FALLBACK_PAGES: ClassVar[Dict[str, str]] = {
         'home': '# Home\n\n## Empowering South African SMEs with AI\n\nWe understand the unique challenges facing South African businesses. Our AI solutions are designed to help you grow.',
         'about': '# About Us\n\n## Born in South Africa, Built for Africa\n\nWe are a team of local experts passionate about helping businesses succeed with technology.',
         'services': '# Services\n\n## AI Solutions for Your Business\n\n- Process Automation\n- Customer Insights\n- Data Analytics\n- 24/7 Support',
@@ -54,7 +55,6 @@ Sections:
 Output as Markdown."""
         
         guidelines_content = self.FALLBACK_GUIDELINES
-        guidelines_tokens = 0
         total_tokens = 0
         provider = "fallback"
         
@@ -67,8 +67,7 @@ Output as Markdown."""
             
             if guidelines_response.success:
                 guidelines_content = guidelines_response.content
-                guidelines_tokens = guidelines_response.tokens_used
-                total_tokens += guidelines_tokens
+                total_tokens += guidelines_response.tokens_used
                 provider = guidelines_response.provider.value
             else:
                 self.log("⚠️  LLM failed, using fallback guidelines")

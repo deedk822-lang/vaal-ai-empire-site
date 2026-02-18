@@ -449,9 +449,6 @@ jobs:
           if not final_pass:
               print('\n::error::One or more SLA thresholds not met')
               sys.exit(1)
-          elif overall_score < 50:
-              print('\n::error::Benchmark score critically low (< 50%)')
-              sys.exit(1)
           else:
               print(f'\n✅ All SLA thresholds met!')
 

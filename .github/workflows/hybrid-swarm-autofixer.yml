@@ -97,9 +97,20 @@ jobs:
           
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
           
-          # Get PR branch
+          # Get PR branch and repo info
           PR_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
           echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
+          
+          # Check if PR is from a fork (head repo != base repo)
+          HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepositoryOwner,headRepositoryName --jq '"\(.headRepositoryOwner.login)/\(.headRepositoryName)"')
+          BASE_REPO="${{ github.repository }}"
+          if [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+            echo "is_fork=false" >> $GITHUB_OUTPUT
+            echo "PR is from same repository: $HEAD_REPO"
+          else
+            echo "is_fork=true" >> $GITHUB_OUTPUT
+            echo "PR is from fork: $HEAD_REPO (base: $BASE_REPO)"
+          fi
           
           echo "Processing PR #$PR_NUMBER on branch: $PR_BRANCH"
 
@@ -301,7 +312,7 @@ jobs:
           fi
 
       - name: Push approved fixes
-        if: success() && steps.swarm_fix.outputs.fixes_applied != '0'
+        if: success() && steps.swarm_fix.outputs.fixes_applied != '0' && steps.pr.outputs.is_fork != 'true'
         run: |
           git config user.name "Hybrid Swarm Bot"
           git config user.email "swarm@vaal-ai-empire.local"
@@ -317,6 +328,13 @@ jobs:
             git push origin HEAD:${{ steps.pr.outputs.pr_branch }}
             echo "✅ Pushed fixes to PR branch"
           fi
+
+      - name: Notify fork PR of available fixes
+        if: success() && steps.swarm_fix.outputs.fixes_applied != '0' && steps.pr.outputs.is_fork == 'true'
+        run: |
+          echo "⚠️ PR is from a fork - cannot push fixes directly"
+          echo "Fixes were generated but not pushed to fork repository"
+          echo "The PR author can manually apply the suggested changes"
 
       - name: Export Prometheus Metrics
         if: always()
