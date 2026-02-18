@@ -38,6 +38,7 @@ concurrency:
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
+  OLLAMA_HOST: "127.0.0.1:11434"
 
 jobs:
   benchmark:
@@ -73,17 +74,14 @@ jobs:
         run: npm ci || npm install
         continue-on-error: true
 
-      - name: Create benchmark results directory
-        run: mkdir -p benchmark_results
-
       - name: Install Ollama
         run: |
           echo "Installing Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
-          
+
           # Start Ollama service in background
           ollama serve &
-          
+
           # Wait for Ollama to be ready
           echo "Waiting for Ollama to start..."
           for i in {1..30}; do
@@ -93,21 +91,65 @@ jobs:
             fi
             sleep 1
           done
-          
+
           # Verify Ollama is running
-          ollama --version
-          ollama list
+          ollama --version || echo "Ollama version check skipped"
+          ollama list || echo "Ollama list skipped"
 
       - name: Pull Ollama models
         run: |
           echo "Pulling Ollama models..."
-          
+
           # Pull lightweight models for CI
           ollama pull qwen2.5-coder:1.5b || echo "⚠️ Failed to pull qwen2.5-coder:1.5b"
           ollama pull phi4 || echo "⚠️ Failed to pull phi4"
-          
+
           # List available models
-          ollama list
+          ollama list || echo "Ollama list skipped"
+
+      - name: Verify AI Backend Availability
+        env:
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: |
+          python -c "
+          import os
+
+          try:
+              import requests
+          except ImportError:
+              print('requests not installed, skipping Ollama check')
+              requests = None
+
+          apis = {
+              'GLM5': os.getenv('GLM5_API_KEY'),
+              'KIMI': os.getenv('KIMI_API_KEY'),
+              'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
+          }
+
+          print('=== AI Backend Status ===')
+          for name, key in apis.items():
+              status = 'Available' if key else 'Not configured'
+              print(f'{name}: {status}')
+
+          # Check Ollama
+          if requests:
+              try:
+                  response = requests.get('http://127.0.0.1:11434/api/tags', timeout=5)
+                  if response.status_code == 200:
+                      models = response.json().get('models', [])
+                      print(f'Ollama: Available ({len(models)} models)')
+                  else:
+                      print('Ollama: Not responding')
+              except Exception as e:
+                  print(f'Ollama: Not available - {e}')
+          else:
+              print('Ollama: Check skipped (no requests module)')
+          "
+
+      - name: Create benchmark results directory
+        run: mkdir -p benchmark_results
 
       - name: Run benchmark suite
         id: benchmark_run
@@ -116,42 +158,42 @@ jobs:
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-          OLLAMA_HOST: http://localhost:11434
+          OLLAMA_HOST: "127.0.0.1:11434"
           PYTHONPATH: ${{ github.workspace }}
         run: |
           # Ensure benchmark results directory exists
           mkdir -p benchmark_results
-          
+
           # Build command with appropriate flags
           CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
-          
+
           # Add provider if specified
           if [ "${{ github.event.inputs.provider }}" != "" ]; then
             CMD="$CMD --provider ${{ github.event.inputs.provider }}"
           fi
-          
+
           # Add category if specified
           if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
             CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
-          
+
           # Check if any AI backend is available (including Ollama)
           if [ -z "$KIMI_API_KEY" ] && [ -z "$GLM5_API_KEY" ] && [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$OLLAMA_HOST" ]; then
             echo "⚠️ No AI backends configured - running in resilient mode"
             CMD="$CMD --no-quality-eval"
           else
             echo "✅ AI backend(s) detected - running with full evaluation"
-            
+
             # Show which backends are available
             if [ -n "$KIMI_API_KEY" ]; then echo "  - Kimi API ✅"; fi
             if [ -n "$GLM5_API_KEY" ]; then echo "  - GLM API ✅"; fi
             if [ -n "$DASHSCOPE_API_KEY" ]; then echo "  - DashScope API ✅"; fi
             if [ -n "$OLLAMA_HOST" ]; then echo "  - Ollama (local) ✅"; fi
           fi
-          
+
           echo "Running: $CMD"
           eval "$CMD" || true
-          
+
           # Ensure report exists even if benchmark had issues
           if [ ! -f benchmark_results/report.json ]; then
             echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results/report.json
@@ -223,7 +265,7 @@ jobs:
             coverage xml -o coverage.xml || true
             coverage html -d htmlcov || true
           fi
-          
+
           # Create coverage directory and placeholder if not exists
           mkdir -p htmlcov
           if [ ! -f coverage.xml ]; then
@@ -236,14 +278,14 @@ jobs:
           python3 << 'PYEOF'
           import xml.etree.ElementTree as ET
           import os
-          
+
           try:
               tree = ET.parse('coverage.xml')
               root = tree.getroot()
-              
+
               # Check if this is placeholder coverage
               is_placeholder = root.attrib.get('placeholder', 'false').lower() == 'true'
-              
+
               if is_placeholder:
                   print("📋 NOTICE: Using placeholder coverage (no real tests ran)")
                   print("   Coverage threshold check was skipped")
@@ -251,10 +293,10 @@ jobs:
               else:
                   line_rate = float(root.attrib.get('line-rate', '0'))
                   threshold = 0.80
-                  
+
                   print(f"📊 Coverage: {line_rate * 100:.1f}%")
                   print(f"🎯 Threshold: {threshold * 100:.0f}%")
-                  
+
                   if line_rate < threshold:
                       print(f"⚠️ Coverage {line_rate * 100:.1f}% is below threshold of {threshold * 100:.0f}%")
                   else:
@@ -318,14 +360,14 @@ jobs:
             "benchmark-runner"
             "benchmark-runner-1"
           )
-          
+
           for container in "${CONTAINER_NAMES[@]}"; do
             if docker cp ${container}:/app/benchmark_results ./benchmark_results_docker 2>/dev/null; then
               echo "✅ Copied results from ${container}"
               break
             fi
           done
-          
+
           if [ ! -d "benchmark_results_docker" ]; then
             echo "⚠️ Could not copy results - creating placeholder"
             mkdir -p benchmark_results_docker
@@ -419,7 +461,7 @@ jobs:
           avg_response_time = summary.get('avg_response_time_ms', 0)
           backend_stats = current.get('backend_stats', {})
           category_scores = current.get('category_scores', {})
-          
+
           # Check if running in resilient mode (no backends available)
           resilient_fallbacks = backend_stats.get('resilient_fallbacks', 0)
           backend_usage = backend_stats.get('usage', {})
@@ -441,11 +483,11 @@ jobs:
           if baseline and not has_no_backend:
               baseline_score = baseline.get('summary', {}).get('overall_score', 0)
               baseline_response = baseline.get('summary', {}).get('avg_response_time_ms', 0)
-              
+
               print(f'\n📈 Baseline Comparison:')
               print(f'   Baseline Score: {baseline_score:.1f}%')
               print(f'   Baseline Response: {baseline_response:.2f}ms')
-              
+
               # Check for regression
               score_change = overall_score - baseline_score
               if score_change < -baseline_score * SLA_THRESHOLDS['regression_tolerance']:
@@ -453,7 +495,7 @@ jobs:
                   regression_detected = True
               elif score_change > 0:
                   print(f'✅ Improvement: +{score_change:.1f}%')
-              
+
               # Write regression status
               with open(summary_file, 'a') as f:
                   f.write(f'regression_detected={str(regression_detected).lower()}\n')
@@ -462,9 +504,9 @@ jobs:
 
           # SLA Checks
           print(f'\n🎯 SLA Threshold Checks:')
-          
+
           sla_results = []
-          
+
           # Overall score check
           if overall_score < SLA_THRESHOLDS['overall_score_min']:
               status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
@@ -473,7 +515,7 @@ jobs:
               status = '✅ PASS'
               sla_results.append(True)
           print(f'   Overall Score >= {SLA_THRESHOLDS["overall_score_min"]}%: {status} ({overall_score:.1f}%)')
-          
+
           # Response time check
           if avg_response_time > SLA_THRESHOLDS['avg_response_time_ms']:
               status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
@@ -490,7 +532,7 @@ jobs:
 
           # Determine final pass/fail based on all SLA checks
           final_pass = all(sla_results)
-          
+
           if not final_pass:
               print('\n::error::One or more SLA thresholds not met')
               sys.exit(1)
@@ -498,19 +540,22 @@ jobs:
               print(f'\n✅ All SLA thresholds met!')
 
           # Write summary to GITHUB_STEP_SUMMARY
+          baseline_score_val = baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"
+          baseline_response_val = baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"
+
           summary_md = textwrap.dedent(f'''\
               ## 📊 Benchmark Performance Summary
-              
+
               | Metric | Current | Baseline | SLA | Status |
               |--------|---------|----------|-----|--------|
-              | Overall Score | {overall_score:.1f}% | {baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
-              | Avg Response | {avg_response_time:.2f}ms | {baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"}ms | < {SLA_THRESHOLDS["avg_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["avg_response_time_ms"] else "❌"} |
-              
+              | Overall Score | {overall_score:.1f}% | {baseline_score_val} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
+              | Avg Response | {avg_response_time:.2f}ms | {baseline_response_val}ms | < {SLA_THRESHOLDS["avg_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["avg_response_time_ms"] else "❌"} |
+
               ### Category Scores
               ''')
           for cat, score in category_scores.items():
               summary_md += f'- **{cat}**: {score:.1f}/10\n'
-          
+
           with open(os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null'), 'a') as f:
               f.write(summary_md)
           PYEOF
@@ -545,5 +590,5 @@ jobs:
                 console.error('Failed to post comment:', error.message);
               }
             }
-            
+
             await main();
