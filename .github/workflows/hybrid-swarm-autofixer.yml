@@ -348,13 +348,23 @@ jobs:
         continue-on-error: true
 
       - name: Export to Prometheus (if configured)
-        if: ${{ secrets.PROMETHEUS_API_KEY != '' }}
+        env:
+          PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
         run: |
-          echo "Would export metrics to Prometheus"
+          if [ -n "$PROMETHEUS_API_KEY" ]; then
+            echo "Would export metrics to Prometheus"
+          else
+            echo "Prometheus API key not configured, skipping"
+          fi
         continue-on-error: true
 
       - name: Export to Grafana (if configured)
-        if: ${{ secrets.GRAFANA_API_KEY != '' }}
+        env:
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
-          echo "Would export logs to Grafana"
+          if [ -n "$GRAFANA_API_KEY" ]; then
+            echo "Would export logs to Grafana"
+          else
+            echo "Grafana API key not configured, skipping"
+          fi
         continue-on-error: true
