@@ -621,7 +621,7 @@
       "expected_fee_type": "flat_plus_percentage",
       "time_limit_ms": 2000,
       "test_inputs": [100.00, 1000.00, 0.01, 0.00, -100.00],
-      "expected_outputs": [5.40, 31.50, 2.53, 0.00, "Error"],
+      "expected_outputs": [5.40, 31.50, 2.50, 2.50, "Error"],
       "tags": ["financial", "zar", "transaction_fees", "currency"]
     },
     {
