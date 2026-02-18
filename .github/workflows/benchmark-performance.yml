@@ -38,6 +38,7 @@ concurrency:
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
+  OLLAMA_HOST: "127.0.0.1:11434"
 
 jobs:
   benchmark:
@@ -73,6 +74,50 @@ jobs:
         run: npm ci || npm install
         continue-on-error: true
 
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          sleep 5
+
+      - name: Pull Ollama models
+        run: |
+          ollama pull qwen2.5-coder:1.5b || echo "Warning: Could not pull qwen2.5-coder:1.5b"
+          ollama pull phi4 || echo "Warning: Could not pull phi4"
+
+      - name: Verify AI Backend Availability
+        env:
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: |
+          python -c "
+          import os
+          import requests
+
+          apis = {
+              'GLM5': os.getenv('GLM5_API_KEY'),
+              'KIMI': os.getenv('KIMI_API_KEY'),
+              'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
+          }
+
+          print('=== AI Backend Status ===')
+          for name, key in apis.items():
+              status = 'Available' if key else 'Not configured'
+              print(f'{name}: {status}')
+
+          # Check Ollama
+          try:
+              response = requests.get('http://127.0.0.1:11434/api/tags', timeout=5)
+              if response.status_code == 200:
+                  models = response.json().get('models', [])
+                  print(f'Ollama: Available ({len(models)} models)')
+              else:
+                  print('Ollama: Not responding')
+          except Exception as e:
+              print(f'Ollama: Not available - {e}')
+          "
+
       - name: Create benchmark results directory
         run: mkdir -p benchmark_results
 
@@ -82,6 +127,7 @@ jobs:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          OLLAMA_HOST: "127.0.0.1:11434"
           PYTHONPATH: ${{ github.workspace }}
         run: |
           # Ensure benchmark results directory exists
@@ -99,11 +145,14 @@ jobs:
           if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
             CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
-          
-          # Always disable quality eval in CI (API keys not typically available)
-          CMD="$CMD --no-quality-eval"
-          echo "⚠️ Running without quality evaluation (CI mode)"
-          
+
+          # Check for quality evaluation APIs
+          if [ -n "$GLM5_API_KEY" ] || [ -n "$KIMI_API_KEY" ]; then
+              echo "✓ Quality evaluation enabled (API keys detected)"
+          else
+              echo "⚠️ Running with Ollama fallback for quality evaluation"
+          fi
+
           echo "Running: $CMD"
           eval "$CMD" || true
           
