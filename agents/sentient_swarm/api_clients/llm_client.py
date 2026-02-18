@@ -217,7 +217,16 @@ class UnifiedLLMClient:
         max_tokens: int
     ) -> LLMResponse:
         """Call GLM-5 API."""
-        import aiohttp
+        try:
+            import aiohttp
+        except ImportError:
+            return LLMResponse(
+                success=False,
+                content="",
+                provider=LLMProvider.GLM5,
+                latency_ms=0,
+                error="aiohttp not installed"
+            )
         
         url = self.ENDPOINTS[LLMProvider.GLM5]
         headers = {
@@ -272,7 +281,16 @@ class UnifiedLLMClient:
         max_tokens: int
     ) -> LLMResponse:
         """Call Kimi API."""
-        import aiohttp
+        try:
+            import aiohttp
+        except ImportError:
+            return LLMResponse(
+                success=False,
+                content="",
+                provider=LLMProvider.KIMI,
+                latency_ms=0,
+                error="aiohttp not installed"
+            )
         
         url = self.ENDPOINTS[LLMProvider.KIMI]
         headers = {
@@ -327,7 +345,16 @@ class UnifiedLLMClient:
         max_tokens: int
     ) -> LLMResponse:
         """Call DashScope API."""
-        import aiohttp
+        try:
+            import aiohttp
+        except ImportError:
+            return LLMResponse(
+                success=False,
+                content="",
+                provider=LLMProvider.DASHSCOPE,
+                latency_ms=0,
+                error="aiohttp not installed"
+            )
         
         url = self.ENDPOINTS[LLMProvider.DASHSCOPE]
         headers = {
@@ -383,7 +410,16 @@ class UnifiedLLMClient:
         max_tokens: int
     ) -> LLMResponse:
         """Call Ollama local API."""
-        import aiohttp
+        try:
+            import aiohttp
+        except ImportError:
+            return LLMResponse(
+                success=False,
+                content="",
+                provider=LLMProvider.OLLAMA,
+                latency_ms=0,
+                error="aiohttp not installed"
+            )
         
         url = self.ENDPOINTS[LLMProvider.OLLAMA]
         

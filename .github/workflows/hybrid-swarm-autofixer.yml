@@ -1,11 +1,21 @@
-name: Enterprise Swarm Auto-Fixer
+name: Hybrid Swarm Auto-Fixer
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   pull_request_review:
     types: [submitted]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to process'
+        required: true
+        type: number
+      min_score:
+        description: 'Minimum approval score (0.0-1.0)'
+        required: false
+        default: '0.7'
+        type: string
 
 permissions:
   contents: write
@@ -27,6 +37,7 @@ jobs:
     outputs:
       is_fork: ${{ steps.check.outputs.is_fork }}
       should_run: ${{ steps.check.outputs.should_run }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
 
     steps:
       - name: Check if PR is from fork
@@ -35,6 +46,16 @@ jobs:
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
         run: |
+          # Determine PR number
+          PR_NUMBER=""
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          elif [ "${{ github.event_name }}" == "pull_request_review" ]; then
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+
           # Fork detection
           if [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
             echo "is_fork=true" >> $GITHUB_OUTPUT
@@ -45,6 +66,8 @@ jobs:
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "PR is from same repository, proceeding with autofixer"
           fi
+
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
 
   swarm-execution:
     name: Execute Enterprise Swarm
@@ -76,6 +99,31 @@ jobs:
             pip install -r requirements.txt || echo "Some requirements failed"
           fi
 
+      - name: Install Ollama
+        run: |
+          echo "Installing Ollama..."
+          curl -fsSL https://ollama.com/install.sh | sh
+
+          # Start Ollama daemon in background
+          ollama serve &
+
+          # Wait for Ollama to be ready
+          echo "Waiting for Ollama to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Pull lightweight models for CI
+          ollama pull qwen2.5-coder:1.5b || echo "Failed to pull qwen2.5-coder:1.5b"
+          ollama pull phi4 || echo "Failed to pull phi4"
+
+          # List available models
+          ollama list || true
+
       - name: Execute Enterprise Swarm
         id: swarm
         env:
@@ -83,6 +131,7 @@ jobs:
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          OLLAMA_HOST: "127.0.0.1:11434"
         run: |
           set -eo pipefail
 
@@ -118,6 +167,7 @@ jobs:
                   'GLM5': os.getenv('GLM5_API_KEY'),
                   'KIMI': os.getenv('KIMI_API_KEY'),
                   'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
+                  'OLLAMA': os.getenv('OLLAMA_HOST'),
               }
 
               print('API Configuration:')
@@ -286,7 +336,7 @@ jobs:
   metrics-export:
     name: Export Metrics
     runs-on: ubuntu-latest
-    needs: swarm-execution
+    needs: [detect-context, swarm-execution]
     if: always() && needs.detect-context.outputs.should_run == 'true'
 
     steps:
