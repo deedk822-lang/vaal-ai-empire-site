@@ -62,11 +62,14 @@ jobs:
           sleep 5
         
       - name: Authenticate Ollama Cloud (if configured)
-        if: ${{ secrets.OLLAMA_TOKEN != '' }}
         env:
           OLLAMA_TOKEN: ${{ secrets.OLLAMA_TOKEN }}
         run: |
-          echo "$OLLAMA_TOKEN" | ollama signin || echo "Ollama Cloud auth skipped"
+          if [ -n "$OLLAMA_TOKEN" ]; then
+            echo "$OLLAMA_TOKEN" | ollama signin || echo "Ollama Cloud auth skipped"
+          else
+            echo "Ollama token not configured, skipping authentication"
+          fi
 
       - name: Pull models
         run: |
