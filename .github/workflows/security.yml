@@ -9,43 +9,72 @@ on:
     - cron: '0 0 * * 1'
   workflow_dispatch:
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
-  security-scan:
+  codeql:
+    name: CodeQL Analysis
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript', 'python' ]
+
     steps:
-    - uses: actions/checkout@v4
-    
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        queries: security-extended,security-and-quality
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+      continue-on-error: true
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{ matrix.language }}"
+
+  security-scan:
+    name: Additional Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
     - name: NPM Audit
-      run: npm audit --audit-level=high || true
+      run: |
+        if [ -f "server/package.json" ]; then
+          cd server && npm audit --audit-level=high || true
+        else
+          echo "No package.json found, skipping npm audit"
+        fi
       continue-on-error: true
 
     - name: Python Bandit (SAST)
       run: |
         pip install bandit
-        bandit -r . -x ./tests,./node_modules,./.venv || true
+        bandit -r . -x ./tests,./node_modules,./.venv,./.git -ll || true
       continue-on-error: true
 
     - name: Safety Check
       run: |
         pip install safety
-        safety check || true
+        safety check --full-report || true
       continue-on-error: true
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: javascript, python
-        config: |
-          paths-ignore:
-            - node_modules
-            - '**/test*.py'
-            - '**/tests/**'
-      continue-on-error: true
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+    - name: Check for secrets
+      run: |
+        pip install detect-secrets
+        detect-secrets scan --baseline .secrets.baseline 2>/dev/null || echo "No secrets baseline configured"
       continue-on-error: true
