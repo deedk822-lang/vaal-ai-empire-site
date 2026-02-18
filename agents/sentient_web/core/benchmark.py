@@ -372,7 +372,14 @@ class AXEAccessibilityRunner(BenchmarkRunner):
                 server.server_close()
     
     async def _check_axe(self) -> bool:
-        """Check if axe CLI is available."""
+        """
+        Determine whether the `axe` CLI is installed and executable.
+        
+        Attempts to run `axe --version` with a 5-second timeout to verify availability.
+        
+        Returns:
+            True if the `axe` command executed successfully (exit code 0), False otherwise.
+        """
         try:
             process = await asyncio.create_subprocess_exec(
                 'axe', '--version',
@@ -385,7 +392,15 @@ class AXEAccessibilityRunner(BenchmarkRunner):
             return False
     
     async def _serve_file(self, file_path: str) -> Tuple[Optional[str], Optional[HTTPServer]]:
-        """Start temporary HTTP server for file."""
+        """
+        Start a temporary HTTP server that serves the directory containing the given file and return a URL to access that specific file.
+        
+        Parameters:
+            file_path (str): Path to the local file to serve.
+        
+        Returns:
+            Tuple[Optional[str], Optional[HTTPServer]]: A tuple where the first element is the HTTP URL pointing to the file (e.g. "http://localhost:PORT/filename") and the second element is the running HTTPServer instance. Returns (None, None) if the server could not be started.
+        """
         from http.server import HTTPServer, SimpleHTTPRequestHandler
         import threading
         
