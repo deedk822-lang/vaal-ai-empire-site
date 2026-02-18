@@ -141,7 +141,7 @@ jobs:
           import os
           import json
 
-          sys.path.insert('.')
+          sys.path.insert(0, '.')
 
           try:
               from agents.sentient_swarm import SwarmOrchestrator, SwarmConfig
