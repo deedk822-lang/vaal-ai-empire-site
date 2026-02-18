@@ -115,19 +115,19 @@ fi
 # Create output directory
 mkdir -p "$(dirname "$OUTPUT")"
 
-# Build command
-CMD="python3 agents/benchmark_executor.py --run-all --report --backend $BACKEND --output $OUTPUT"
+# Build command as array (safer than eval)
+CMD=(python3 agents/benchmark_executor.py --run-all --report --backend "$BACKEND" --output "$OUTPUT")
 
 if [ -n "$CATEGORY" ]; then
-    CMD="$CMD --category $CATEGORY"
+    CMD+=(--category "$CATEGORY")
 fi
 
 # Run benchmark
 echo -e "${BLUE}Running benchmark...${NC}"
-echo -e "Command: $CMD"
+echo -e "Command: ${CMD[*]}"
 echo ""
 
-eval $CMD
+"${CMD[@]}"
 
 # Show results
 echo ""
