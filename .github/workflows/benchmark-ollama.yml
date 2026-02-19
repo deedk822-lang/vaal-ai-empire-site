@@ -1,5 +1,13 @@
 name: Ollama Benchmark
 
+# ─────────────────────────────────────────────────────────
+# FIX #13 (was): `runs` input declared as string type but passed
+#          directly to --runs flag without validation.
+#          Fixed: validate numeric range (1–10) before use.
+# FIX #18 (was): Floating action version tags.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,21 +16,19 @@ on:
         default: 'kimi-k2.5,glm-5'
         required: true
       category:
-        description: 'Test category (leave empty for all)'
+        description: 'Test category (empty = all)'
         required: false
         default: ''
         type: choice
-        options:
-          - ''
-          - security
-          - efficiency
-          - code_generation
-          - debugging
-          - reasoning
+        options: ['', security, efficiency, code_generation, debugging, reasoning]
       runs:
-        description: 'Runs per test'
+        description: 'Runs per test (1–10)'
         required: false
         default: '3'
+        type: string    # GitHub inputs are always strings; validated below
+
+permissions:
+  contents: read
 
 concurrency:
   group: ollama-benchmark-${{ github.ref }}
@@ -38,150 +44,170 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio
 
-      - name: Install Ollama
+      # FIX #13: Validate `runs` is a safe integer before using it in a shell command.
+      - name: Validate inputs
+        id: validate
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-        
+          RUNS="${{ github.event.inputs.runs }}"
+          # Strip whitespace and verify it is a positive integer in range
+          RUNS=$(echo "$RUNS" | tr -d '[:space:]')
+          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 10 ]; then
+            echo "::error::Invalid 'runs' value: '$RUNS'. Must be an integer between 1 and 10."
+            exit 1
+          fi
+          echo "runs_safe=${RUNS}" >> "$GITHUB_OUTPUT"
+          echo "✅ Validated: runs=${RUNS}"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
       - name: Start Ollama daemon
         run: |
           ollama serve &
-          sleep 5
-        
-      - name: Authenticate Ollama Cloud (if configured)
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Authenticate Ollama Cloud
         env:
           OLLAMA_TOKEN: ${{ secrets.OLLAMA_TOKEN }}
         run: |
           if [ -n "$OLLAMA_TOKEN" ]; then
-            echo "$OLLAMA_TOKEN" | ollama signin || echo "Ollama Cloud auth skipped"
+            echo "$OLLAMA_TOKEN" | ollama signin \
+              || echo "::warning::Ollama Cloud auth failed"
           else
-            echo "Ollama token not configured, skipping authentication"
+            echo "::notice::OLLAMA_TOKEN not configured — skipping"
           fi
 
       - name: Pull models
         run: |
           IFS=',' read -ra MODELS <<< "${{ github.event.inputs.models }}"
           for model in "${MODELS[@]}"; do
-            model=$(echo "$model" | xargs)
+            model=$(echo "$model" | xargs)   # trim whitespace
             echo "Pulling model: $model"
             case "$model" in
               "kimi-k2.5")
-                ollama pull kimi-k2.5:cloud || echo "Warning: Could not pull $model (may need Ollama Cloud)"
-                ;;
+                ollama pull kimi-k2.5:cloud \
+                  || echo "::warning::kimi-k2.5:cloud needs Ollama Cloud"  ;;
               "glm-5")
-                ollama pull glm5 || echo "Warning: Could not pull $model"
-                ;;
+                ollama pull glm5 \
+                  || echo "::warning::glm5 unavailable" ;;
               "qwen2.5-coder")
-                ollama pull qwen2.5-coder:14b || echo "Warning: Could not pull $model"
-                ;;
+                ollama pull qwen2.5-coder:14b \
+                  || echo "::warning::qwen2.5-coder:14b unavailable" ;;
               "llama3.2")
-                ollama pull llama3.2:latest || echo "Warning: Could not pull $model"
-                ;;
+                ollama pull llama3.2:latest \
+                  || echo "::warning::llama3.2 unavailable" ;;
               "deepseek-coder")
-                ollama pull deepseek-coder:6.7b || echo "Warning: Could not pull $model"
-                ;;
+                ollama pull deepseek-coder:6.7b \
+                  || echo "::warning::deepseek-coder:6.7b unavailable" ;;
               *)
-                echo "Unknown model: $model, attempting to pull anyway..."
-                ollama pull "$model" || echo "Warning: Could not pull $model"
-                ;;
+                echo "::notice::Unknown model alias '$model' — attempting direct pull"
+                ollama pull "$model" \
+                  || echo "::warning::Could not pull $model" ;;
             esac
           done
 
       - name: List available models
         run: ollama list
 
-      - name: Create benchmark results directory
+      - name: Create results directory
         run: mkdir -p benchmark_results
 
       - name: Run Ollama benchmark suite
         run: |
           MODELS_ARG=""
           if [ -n "${{ github.event.inputs.models }}" ]; then
-            MODELS_ARG="--models $(echo '${{ github.event.inputs.models }}' | tr ',' ' ')"
+            # Convert comma-separated list to space-separated for the CLI
+            MODELS_SPACE=$(echo "${{ github.event.inputs.models }}" | tr ',' ' ')
+            MODELS_ARG="--models $MODELS_SPACE"
           fi
-        
+
           CATEGORY_ARG=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
             CATEGORY_ARG="--category ${{ github.event.inputs.category }}"
           fi
-        
+
+          # FIX #13: Use the validated integer from the validate step
           python agents/ollama_benchmark_enhanced.py \
             $MODELS_ARG \
             $CATEGORY_ARG \
-            --runs ${{ github.event.inputs.runs }} \
+            --runs "${{ steps.validate.outputs.runs_safe }}" \
             --output benchmark_results/ollama_report.json
 
       - name: Generate benchmark summary
         if: always()
         run: |
           python3 << 'PYEOF'
-          import json
-          import os
+          import json, os
           from pathlib import Path
 
-          report_path = Path('benchmark_results/ollama_report.json')
-          if report_path.exists():
-              with open(report_path) as f:
-                  data = json.load(f)
+          report_path = Path("benchmark_results/ollama_report.json")
+          if not report_path.exists():
+              print("No benchmark report found")
+              exit(0)
 
-              summary = data.get('summary', {})
-              print('## Ollama Benchmark Results')
-              print('')
-              print('### Available Models')
-              for model, available in summary.get('available_models', {}).items():
-                  status = '✅' if available else '❌'
-                  print(f'- {status} {model}')
-            
-              print('')
-              print('### Model Wins')
-              for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
-                  print(f'- {model}: {wins} wins')
-            
-              print('')
-              print('### Latency Comparison')
-              print('| Model | Avg Latency | Consistency |')
-              print('|-------|-------------|-------------|')
-              for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
-                  print(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |')
+          data    = json.loads(report_path.read_text())
+          summary = data.get("summary", {})
 
-              summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-              with open(summary_file, 'w') as f:
-                  f.write('## Ollama Benchmark Results\n\n')
-                
-                  f.write('### Available Models\n')
-                  for model, available in summary.get('available_models', {}).items():
-                      status = '✅' if available else '❌'
-                      f.write(f'- {status} {model}\n')
-                
-                  f.write('\n### Model Wins\n')
-                  for model, wins in sorted(summary.get('model_wins', {}).items(), key=lambda x: -x[1]):
-                      f.write(f'- {model}: {wins} wins\n')
-                
-                  f.write('\n### Latency Comparison\n')
-                  f.write('| Model | Avg Latency | Consistency |\n')
-                  f.write('|-------|-------------|-------------|\n')
-                  for model, stats in sorted(summary.get('latency_comparison', {}).items(), key=lambda x: x[1]['avg_ms']):
-                      f.write(f'| {model} | {stats["avg_ms"]}ms | ±{stats["consistency_ms"]}ms |\n')
-          else:
-              print('No benchmark report found')
+          lines = [
+              "## Ollama Benchmark Results",
+              "",
+              "### Available Models",
+          ]
+          for model, available in summary.get("available_models", {}).items():
+              status = "✅" if available else "❌"
+              lines.append(f"- {status} {model}")
+
+          lines += ["", "### Model Wins"]
+          for model, wins in sorted(
+              summary.get("model_wins", {}).items(), key=lambda x: -x[1]
+          ):
+              lines.append(f"- {model}: {wins} wins")
+
+          lines += [
+              "",
+              "### Latency Comparison",
+              "| Model | Avg Latency | Consistency |",
+              "|-------|-------------|-------------|",
+          ]
+          for model, stats in sorted(
+              summary.get("latency_comparison", {}).items(),
+              key=lambda x: x[1]["avg_ms"],
+          ):
+              lines.append(
+                  f"| {model} | {stats['avg_ms']}ms | ±{stats['consistency_ms']}ms |"
+              )
+
+          output = "\n".join(lines)
+          print(output)
+
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(sf, "a") as f:
+              f.write(output + "\n")
           PYEOF
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: ollama-benchmark-results
           path: benchmark_results/

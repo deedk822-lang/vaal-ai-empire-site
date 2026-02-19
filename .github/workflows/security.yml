@@ -1,80 +1,216 @@
 name: Security Scanning
 
+# ─────────────────────────────────────────────────────────
+# FIX #2  (was): ALL security scans used continue-on-error:true
+#          → Vulnerabilities never blocked merges. Pure theater.
+# FIX #3  (was): Bandit output not uploaded as SARIF
+#          → Findings invisible in GitHub Security tab.
+# FIX #18 (was): Floating action version tags.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
+
 on:
   push:
-    branches: [ main, master, develop, merge/develop-to-main ]
+    branches: [main, master, develop, merge/develop-to-main]
   pull_request:
-    branches: [ main, master, develop, merge/develop-to-main ]
+    branches: [main, master, develop, merge/develop-to-main]
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 0 * * 1'     # Weekly Monday midnight scan
   workflow_dispatch:
 
 permissions:
-  security-events: write
+  security-events: write    # Required for SARIF upload
   actions: read
   contents: read
 
 jobs:
+  # ── CodeQL (SAST — GitHub-native) ──────────────────────────────────────────
   codeql:
-    name: CodeQL Analysis
+    name: CodeQL — ${{ matrix.language }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript', 'python' ]
+        language: ['javascript', 'python']
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
-        config-file: ./.github/codeql/codeql-config.yml
+      - name: Initialize CodeQL
+        # SHA-pinned: github/codeql-action v3.28.13
+        uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        with:
+          languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
-      continue-on-error: true
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        # Autobuild is best-effort; analysis still runs even if it fails
+        continue-on-error: true
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:${{ matrix.language }}"
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        with:
+          category: '/language:${{ matrix.language }}'
 
-  security-scan:
-    name: Additional Security Checks
+  # ── Bandit (Python SAST) — ENFORCED with SARIF upload ──────────────────────
+  bandit:
+    name: Bandit — Python SAST
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-    - name: NPM Audit
-      run: |
-        if [ -f "server/package.json" ]; then
-          cd server && npm audit --audit-level=high || true
-        else
-          echo "No package.json found, skipping npm audit"
-        fi
-      continue-on-error: true
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-    - name: Python Bandit (SAST)
-      run: |
-        pip install bandit
-        bandit -r . -x ./tests,./node_modules,./.venv,./.git -ll || true
-      continue-on-error: true
+      - name: Install Bandit
+        run: pip install bandit[sarif]
 
-    - name: Safety Check
-      run: |
-        pip install safety
-        safety check --full-report || true
-      continue-on-error: true
+      - name: Run Bandit (SARIF output)
+        # ENFORCED: -ll flag means medium+ severity fails the step.
+        # Output is SARIF so findings appear in GitHub Security tab.
+        run: |
+          bandit -r . \
+            -x ./tests,./node_modules,./.venv,./.git \
+            --severity-level medium \
+            --confidence-level medium \
+            -f sarif \
+            -o bandit-results.sarif
+        # Exit code 1 means findings — we handle threshold below, not here
 
-    - name: Check for secrets
-      run: |
-        pip install detect-secrets
-        detect-secrets scan --baseline .secrets.baseline 2>/dev/null || echo "No secrets baseline configured"
-      continue-on-error: true
+      - name: Upload SARIF to GitHub Security tab
+        # FIX #3: Was missing entirely. Now findings appear in Security tab.
+        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        if: always()    # Upload even when bandit finds issues
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit-python
+
+      - name: Enforce HIGH/CRITICAL gate
+        # FIX #2: Was continue-on-error. Now high-severity findings block the PR.
+        run: |
+          python3 << 'PYEOF'
+          import json, sys
+
+          with open("bandit-results.sarif") as f:
+              sarif = json.load(f)
+
+          high_critical = []
+          for run in sarif.get("runs", []):
+              rules = {r["id"]: r for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
+              for result in run.get("results", []):
+                  rule = rules.get(result.get("ruleId", ""), {})
+                  severity = rule.get("properties", {}).get("tags", [])
+                  level = result.get("level", "note")
+                  # 'error' maps to HIGH/CRITICAL in bandit's SARIF output
+                  if level == "error":
+                      loc = result.get("locations", [{}])[0]
+                      uri = loc.get("physicalLocation", {}).get("artifactLocation", {}).get("uri", "?")
+                      line = loc.get("physicalLocation", {}).get("region", {}).get("startLine", "?")
+                      high_critical.append(f"  {result['ruleId']} @ {uri}:{line}")
+
+          if high_critical:
+              print(f"❌ {len(high_critical)} HIGH/CRITICAL issue(s) found:")
+              for h in high_critical:
+                  print(h)
+              print()
+              print("These must be resolved before merging. See the Security tab for details.")
+              sys.exit(1)
+          else:
+              print("✅ No HIGH/CRITICAL security issues found.")
+          PYEOF
+
+  # ── npm audit (dependency CVEs) — ENFORCED ─────────────────────────────────
+  npm-audit:
+    name: npm audit — Dependency CVEs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: '20'
+
+      - name: npm audit — HIGH and above block the build
+        # FIX #2: Was continue-on-error. --audit-level=high now fails the job.
+        run: |
+          if [ -f "server/package.json" ]; then
+            cd server
+            npm install --package-lock-only --ignore-scripts 2>/dev/null || npm ci
+            # --audit-level=high exits non-zero when high/critical CVEs exist
+            npm audit --audit-level=high
+          else
+            echo "::notice::No server/package.json found — skipping npm audit"
+          fi
+
+  # ── Safety (Python dependency CVEs) — ENFORCED ─────────────────────────────
+  safety:
+    name: Safety — Python Dependency CVEs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: '3.11'
+
+      - name: Install Safety
+        run: pip install safety
+
+      - name: Run Safety check
+        # FIX #2: Was continue-on-error. Now exits non-zero on any CVE.
+        # --full-report gives CVSS scores for triage.
+        run: |
+          if [ -f requirements.txt ]; then
+            safety check --full-report -r requirements.txt
+          else
+            echo "::notice::No requirements.txt found — scanning installed packages"
+            safety check --full-report
+          fi
+
+  # ── Secret detection ────────────────────────────────────────────────────────
+  detect-secrets:
+    name: Detect Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          # Scan full history for accidentally committed secrets
+          fetch-depth: 0
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for secrets
+        # FIX #2: Was continue-on-error with a misleading message.
+        # Now explicitly fails if new secrets are found vs the baseline.
+        run: |
+          if [ -f .secrets.baseline ]; then
+            # Audit against committed baseline — new findings fail the build
+            detect-secrets audit .secrets.baseline --report --fail-on-unaudited
+          else
+            # No baseline yet: generate it and fail so the team commits it
+            detect-secrets scan > .secrets.baseline
+            echo "::error::No .secrets.baseline found. A fresh scan has been saved."
+            echo "::error::Review it, commit it, and re-run. This prevents accidental secret exposure."
+            exit 1
+          fi

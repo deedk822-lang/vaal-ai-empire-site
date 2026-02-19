@@ -1,5 +1,23 @@
 name: Benchmark Performance
 
+# ─────────────────────────────────────────────────────────
+# FIX #6  (was): OLLAMA_HOST set in env: block at job level →
+#          [ -z "$OLLAMA_HOST" ] was ALWAYS false → resilient-mode branch
+#          was unreachable dead code. Fixed: check actual API availability
+#          at runtime, not presence of a static env var.
+# FIX #7  (was): Placeholder coverage.xml generated; threshold checker
+#          detected placeholder and silently skipped → metric fraud.
+#          Fixed: real coverage always runs; placeholder only on no-test-dir.
+# FIX #8  (was): Docker cp used guessed hardcoded container names → fragile.
+#          Fixed: use COMPOSE_PROJECT_NAME + docker ps to find the container.
+# FIX #9  (was): regression-check uses context.issue.number on push events
+#          → undefined → GitHub Script crash. Fixed: guard with event check.
+# FIX #10 (was): SLA overall_score_min = 70% → too low for AAA. Now 85%.
+# FIX #11 (was): SLA avg_response_time_ms = 2000ms → too loose. Now 1000ms.
+# FIX #18 (was): Floating action version tags → supply-chain risk.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
+
 on:
   push:
     branches: [main, master, develop, merge/develop-to-main]
@@ -8,28 +26,21 @@ on:
   workflow_dispatch:
     inputs:
       category:
-        description: 'Benchmark category to run'
+        description: 'Benchmark category'
         required: false
         default: 'all'
         type: choice
-        options:
-          - all
-          - security
-          - efficiency
-          - edge_cases
-          - code_generation
-          - refactoring
-          - debugging
+        options: [all, security, efficiency, edge_cases, code_generation, refactoring, debugging]
       provider:
-        description: 'AI provider to use'
+        description: 'AI provider'
         required: false
         default: 'auto'
         type: choice
-        options:
-          - auto
-          - kimi
-          - dashscope
-          - glm
+        options: [auto, kimi, dashscope, glm]
+
+permissions:
+  contents: read
+  pull-requests: write      # Required for PR comments in regression-check
 
 concurrency:
   group: benchmark-${{ github.ref }}
@@ -38,564 +49,532 @@ concurrency:
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
-  OLLAMA_HOST: "127.0.0.1:11434"
+  # FIX #6: Do NOT set OLLAMA_HOST here as a static env var.
+  # Whether Ollama is available is determined at runtime by probing the API.
 
 jobs:
+  # ── Main benchmark ──────────────────────────────────────────────────────────
   benchmark:
     name: Run Benchmark Suite
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
       - name: Set up Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: 'server/package-lock.json'
-        continue-on-error: true
+        continue-on-error: true   # Node is optional for benchmarks
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || pip install pytest pytest-asyncio pytest-cov requests
+          pip install -r requirements.txt 2>/dev/null \
+            || pip install pytest pytest-asyncio pytest-cov requests
 
       - name: Install Node.js dependencies
         working-directory: ./server
         run: npm ci || npm install
         continue-on-error: true
 
-      - name: Install Ollama
+      - name: Install and start Ollama
         run: |
-          echo "Installing Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
-
-          # Start Ollama service in background
           ollama serve &
-
-          # Wait for Ollama to be ready
-          echo "Waiting for Ollama to start..."
+          echo "Waiting for Ollama..."
           for i in {1..30}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-              echo "✅ Ollama is ready"
+              echo "✅ Ollama ready"
               break
             fi
             sleep 1
           done
-
-          # Verify Ollama is running
-          ollama --version || echo "Ollama version check skipped"
-          ollama list || echo "Ollama list skipped"
+          # Explicitly export so child processes can find it
+          echo "OLLAMA_HOST=127.0.0.1:11434" >> "$GITHUB_ENV"
 
       - name: Pull Ollama models
         run: |
-          echo "Pulling Ollama models..."
-
-          # Pull lightweight models for CI
           ollama pull qwen2.5-coder:1.5b || echo "⚠️ Failed to pull qwen2.5-coder:1.5b"
-          ollama pull phi4 || echo "⚠️ Failed to pull phi4"
+          ollama pull phi4               || echo "⚠️ Failed to pull phi4"
+          ollama list
 
-          # List available models
-          ollama list || echo "Ollama list skipped"
-
-      - name: Verify AI Backend Availability
+      - name: Verify AI backend availability
+        id: backend_check
         env:
-          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY:      ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY:      ${{ secrets.KIMI_API_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
-          python -c "
-          import os
-
-          try:
-              import requests
-          except ImportError:
-              print('requests not installed, skipping Ollama check')
-              requests = None
+          # FIX #6: Check actual runtime availability, not presence of a static var.
+          python3 << 'PYEOF'
+          import os, subprocess, sys
 
           apis = {
-              'GLM5': os.getenv('GLM5_API_KEY'),
-              'KIMI': os.getenv('KIMI_API_KEY'),
-              'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
+              "GLM5":      os.getenv("GLM5_API_KEY"),
+              "KIMI":      os.getenv("KIMI_API_KEY"),
+              "DASHSCOPE": os.getenv("DASHSCOPE_API_KEY"),
           }
 
-          print('=== AI Backend Status ===')
+          print("=== AI Backend Status ===")
+          has_cloud_api = False
           for name, key in apis.items():
-              status = 'Available' if key else 'Not configured'
-              print(f'{name}: {status}')
+              status = "Available" if key else "Not configured"
+              if key:
+                  has_cloud_api = True
+              print(f"  {name}: {status}")
 
-          # Check Ollama
-          if requests:
-              try:
-                  response = requests.get('http://127.0.0.1:11434/api/tags', timeout=5)
-                  if response.status_code == 200:
-                      models = response.json().get('models', [])
-                      print(f'Ollama: Available ({len(models)} models)')
-                  else:
-                      print('Ollama: Not responding')
-              except Exception as e:
-                  print(f'Ollama: Not available - {e}')
-          else:
-              print('Ollama: Check skipped (no requests module)')
-          "
+          has_ollama = False
+          try:
+              import urllib.request
+              with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=5) as r:
+                  import json
+                  models = json.loads(r.read()).get("models", [])
+                  print(f"  Ollama: Available ({len(models)} models loaded)")
+                  has_ollama = True
+          except Exception as e:
+              print(f"  Ollama: Not available — {e}")
 
-      - name: Create benchmark results directory
+          has_any = has_cloud_api or has_ollama
+          print(f"\nHas any backend: {has_any}")
+
+          # Write to GITHUB_OUTPUT for downstream steps
+          with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
+              f.write(f"has_any_backend={'true' if has_any else 'false'}\n")
+              f.write(f"has_cloud_api={'true' if has_cloud_api else 'false'}\n")
+              f.write(f"has_ollama={'true' if has_ollama else 'false'}\n")
+          PYEOF
+
+      - name: Create results directory
         run: mkdir -p benchmark_results
 
       - name: Run benchmark suite
         id: benchmark_run
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-          OLLAMA_HOST: "127.0.0.1:11434"
-          PYTHONPATH: ${{ github.workspace }}
+          GLM5_API_KEY:      ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY:      ${{ secrets.KIMI_API_KEY }}
+          OLLAMA_API_KEY:    ${{ secrets.OLLAMA_API_KEY }}
+          PYTHONPATH:        ${{ github.workspace }}
         run: |
-          # Ensure benchmark results directory exists
-          mkdir -p benchmark_results
+          CMD="python agents/benchmark_executor.py --run-all --report \
+               --output benchmark_results/report.json"
 
-          # Build command with appropriate flags
-          CMD="python agents/benchmark_executor.py --run-all --report --output benchmark_results/report.json"
-
-          # Add provider if specified
-          if [ "${{ github.event.inputs.provider }}" != "" ]; then
+          if [ -n "${{ github.event.inputs.provider }}" ]; then
             CMD="$CMD --provider ${{ github.event.inputs.provider }}"
           fi
 
-          # Add category if specified
-          if [ "${{ github.event.inputs.category }}" != "" ] && [ "${{ github.event.inputs.category }}" != "all" ]; then
+          if [ -n "${{ github.event.inputs.category }}" ] \
+             && [ "${{ github.event.inputs.category }}" != "all" ]; then
             CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
 
-          # Check if any AI backend is available (including Ollama)
-          if [ -z "$KIMI_API_KEY" ] && [ -z "$GLM5_API_KEY" ] && [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$OLLAMA_HOST" ]; then
-            echo "⚠️ No AI backends configured - running in resilient mode"
+          # FIX #6: Use the output from the backend_check step, not a static env var
+          if [ "${{ steps.backend_check.outputs.has_any_backend }}" != "true" ]; then
+            echo "⚠️ No AI backends available — running in resilient (no-eval) mode"
             CMD="$CMD --no-quality-eval"
           else
-            echo "✅ AI backend(s) detected - running with full evaluation"
-
-            # Show which backends are available
-            if [ -n "$KIMI_API_KEY" ]; then echo "  - Kimi API ✅"; fi
-            if [ -n "$GLM5_API_KEY" ]; then echo "  - GLM API ✅"; fi
-            if [ -n "$DASHSCOPE_API_KEY" ]; then echo "  - DashScope API ✅"; fi
-            if [ -n "$OLLAMA_HOST" ]; then echo "  - Ollama (local) ✅"; fi
+            echo "✅ AI backend(s) available — running full evaluation"
+            if [ "${{ steps.backend_check.outputs.has_cloud_api }}" = "true" ]; then
+              echo "   Cloud API: yes"
+            fi
+            if [ "${{ steps.backend_check.outputs.has_ollama }}" = "true" ]; then
+              echo "   Ollama:    yes"
+            fi
           fi
 
           echo "Running: $CMD"
           eval "$CMD" || true
 
-          # Ensure report exists even if benchmark had issues
+          # Guarantee a report exists downstream consumers can parse
           if [ ! -f benchmark_results/report.json ]; then
-            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results/report.json
+            echo '{"timestamp":"'$(date -Iseconds)'","summary":{"total_tests":0,
+              "passed_tests":0,"failed_tests":0,"overall_score":0,
+              "avg_execution_time_ms":0},"category_scores":{},
+              "backend_stats":{"resilient_fallbacks":0,"usage":{}},"results":[]}' \
+              > benchmark_results/report.json
           fi
+
+      - name: Run test coverage
+        # FIX #7: Real coverage always attempted; no placeholder XML generated
+        #         unless the test directory truly does not exist.
+        run: |
+          pip install coverage
+
+          if [ -d "agents/tests" ] || [ -f "pytest.ini" ]; then
+            echo "Running coverage..."
+            coverage run -m pytest agents/tests/ --tb=short -q
+            coverage xml  -o coverage.xml
+            coverage html -d htmlcov
+            coverage report --fail-under=80
+          else
+            echo "::warning::No agents/tests directory found — coverage skipped."
+            echo "::warning::Add tests to agents/tests/ to enforce the 80% coverage gate."
+            # Create a minimal, CLEARLY LABELLED placeholder — not a fake metric
+            mkdir -p htmlcov
+            cat > coverage.xml << 'COVEOF'
+          <?xml version="1.0" ?>
+          <coverage version="7.0" no-tests="true" line-rate="0">
+            <packages/>
+          </coverage>
+          COVEOF
+            cat > htmlcov/index.html << 'HTMLEOF'
+          <!DOCTYPE html><html><body>
+          <h1>No Tests Found</h1>
+          <p>Add tests to <code>agents/tests/</code> to generate a coverage report.</p>
+          </body></html>
+          HTMLEOF
+          fi
+
+      - name: Enforce coverage threshold
+        # FIX #7: No longer silently skips on placeholder — only skips when
+        #         no-tests="true" attribute is present (explicit signal).
+        run: |
+          python3 << 'PYEOF'
+          import xml.etree.ElementTree as ET, sys
+
+          tree = ET.parse("coverage.xml")
+          root = tree.getroot()
+
+          # Only skip when tests genuinely don't exist yet
+          if root.attrib.get("no-tests") == "true":
+              print("::notice::Coverage check skipped — no tests directory found.")
+              sys.exit(0)
+
+          line_rate  = float(root.attrib.get("line-rate", "0"))
+          threshold  = 0.80
+          pct        = line_rate * 100
+
+          print(f"📊 Coverage: {pct:.1f}%  (threshold: {threshold*100:.0f}%)")
+
+          if line_rate < threshold:
+              print(f"::error::Coverage {pct:.1f}% is below the {threshold*100:.0f}% AAA threshold.")
+              sys.exit(1)
+          else:
+              print("✅ Coverage meets AAA threshold.")
+          PYEOF
 
       - name: Generate benchmark summary
         if: always()
         run: |
           python3 << 'PYEOF'
-          import json
-          import os
+          import json, os
           from pathlib import Path
 
-          report_path = Path('benchmark_results/report.json')
-          if report_path.exists():
-              with open(report_path) as f:
-                  data = json.load(f)
+          report_path = Path("benchmark_results/report.json")
+          if not report_path.exists():
+              print("No benchmark report found")
+              exit(0)
 
-              summary = data.get('summary', {})
-              print('## 📊 Benchmark Results')
-              print('')
-              print('| Metric | Value |')
-              print('|--------|-------|')
-              print(f"| Total Tests | {summary.get('total_tests', 0)} |")
-              print(f"| Passed | {summary.get('passed_tests', 0)} ✅ |")
-              print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
-              print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
-              print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
+          with open(report_path) as f:
+              data = json.load(f)
 
-              # Write to GITHUB_STEP_SUMMARY (append mode to preserve prior summaries)
-              summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-              with open(summary_file, 'a') as f:
-                  f.write('## 📊 Benchmark Results\n\n')
-                  f.write('| Metric | Value |\n')
-                  f.write('|--------|-------|\n')
-                  f.write(f"| Total Tests | {summary.get('total_tests', 0)} |\n")
-                  f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
-                  f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
-                  f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
-                  f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
+          summary = data.get("summary", {})
+          lines = [
+              "## 📊 Benchmark Results\n",
+              "| Metric | Value |",
+              "|--------|-------|",
+              f"| Total Tests          | {summary.get('total_tests', 0)} |",
+              f"| Passed               | {summary.get('passed_tests', 0)} ✅ |",
+              f"| Failed               | {summary.get('failed_tests', 0)} ❌ |",
+              f"| Overall Score        | {summary.get('overall_score', 0):.1f}% |",
+              f"| Avg Execution Time   | {summary.get('avg_execution_time_ms', 0):.2f}ms |",
+          ]
 
-              # Category scores
-              categories = data.get('category_scores', {})
-              if categories:
-                  print('')
-                  print('### Category Scores')
-                  print('')
-                  for cat, score in categories.items():
-                      print(f"- **{cat}**: {score:.1f}/10")
-          else:
-              print('No benchmark report found')
+          cats = data.get("category_scores", {})
+          if cats:
+              lines += ["", "### Category Scores", ""]
+              for cat, score in cats.items():
+                  lines.append(f"- **{cat}**: {score:.1f}/10")
+
+          output = "\n".join(lines)
+          print(output)
+
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(sf, "a") as f:   # FIX #12: append mode, not overwrite
+              f.write(output + "\n")
           PYEOF
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: benchmark-results
           path: benchmark_results/
           retention-days: 30
 
-      - name: Generate coverage report
-        if: always()
-        run: |
-          # Run coverage if tests exist
-          if [ -d "agents/tests" ] || [ -f "pytest.ini" ]; then
-            pip install coverage
-            coverage run -m pytest agents/tests/ --tb=short -q || true
-            coverage xml -o coverage.xml || true
-            coverage html -d htmlcov || true
-          fi
-
-          # Create coverage directory and placeholder if not exists
-          mkdir -p htmlcov
-          if [ ! -f coverage.xml ]; then
-            echo '<?xml version="1.0" ?><coverage version="5.5" placeholder="true" timestamp="'$(date -Iseconds)'" line-rate="0.0"><packages><package name="agents" line-rate="0.0"><classes/></package></packages></coverage>' > coverage.xml
-          fi
-
-          # Create placeholder index.html in htmlcov if empty
-          if [ ! -f htmlcov/index.html ]; then
-            echo '<!DOCTYPE html><html><head><title>Coverage Report</title></head><body><h1>Coverage Report</h1><p>No coverage data available. Run tests to generate coverage report.</p></body></html>' > htmlcov/index.html
-          fi
-
-      - name: Check coverage threshold
-        if: always()
-        run: |
-          python3 << 'PYEOF'
-          import xml.etree.ElementTree as ET
-          import os
-
-          try:
-              tree = ET.parse('coverage.xml')
-              root = tree.getroot()
-
-              # Check if this is placeholder coverage
-              is_placeholder = root.attrib.get('placeholder', 'false').lower() == 'true'
-
-              if is_placeholder:
-                  print("📋 NOTICE: Using placeholder coverage (no real tests ran)")
-                  print("   Coverage threshold check was skipped")
-                  print("   To get real coverage, ensure tests exist in agents/tests/")
-              else:
-                  line_rate = float(root.attrib.get('line-rate', '0'))
-                  threshold = 0.80
-
-                  print(f"📊 Coverage: {line_rate * 100:.1f}%")
-                  print(f"🎯 Threshold: {threshold * 100:.0f}%")
-
-                  if line_rate < threshold:
-                      print(f"⚠️ Coverage {line_rate * 100:.1f}% is below threshold of {threshold * 100:.0f}%")
-                  else:
-                      print(f"✅ Coverage meets threshold")
-          except Exception as e:
-              print(f"⚠️ Could not parse coverage: {e}")
-              print("Continuing without coverage check")
-          PYEOF
-
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: coverage-report
           path: |
             htmlcov/
             coverage.xml
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
-  # Optional: Run benchmarks in Docker
+  # ── Docker benchmark ────────────────────────────────────────────────────────
   benchmark-docker:
-    name: Run Benchmark in Docker
+    name: Docker Benchmark
     runs-on: ubuntu-latest
     needs: benchmark
-    # Run on push to main/develop/merge branches or on PRs
-    if: |
-      (github.event_name == 'push') ||
-      (github.event_name == 'pull_request') ||
-      (github.event_name == 'workflow_dispatch')
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
 
       - name: Build benchmark image
-        run: |
-          docker compose -f docker-compose.benchmark.yml build
+        run: docker compose -f docker-compose.benchmark.yml build
         continue-on-error: true
 
       - name: Run benchmark container
-        run: |
-          # Set container name explicitly for consistent reference
-          export COMPOSE_PROJECT_NAME=vaal
-          docker compose -f docker-compose.benchmark.yml up --abort-on-container-exit
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY:      ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY:      ${{ secrets.KIMI_API_KEY }}
+        run: |
+          # Use a deterministic project name for container lookup
+          export COMPOSE_PROJECT_NAME=vaal-bench
+          docker compose -f docker-compose.benchmark.yml \
+            up --abort-on-container-exit
         continue-on-error: true
 
       - name: Copy results from container
-        if: always()
-        run: |
-          # Try multiple possible container names (project-name-service-name pattern)
-          CONTAINER_NAMES=(
-            "vaal-benchmark-runner"
-            "vaal-benchmark-runner-1"
-            "benchmark-runner"
-            "benchmark-runner-1"
-          )
-
-          for container in "${CONTAINER_NAMES[@]}"; do
-            if docker cp ${container}:/app/benchmark_results ./benchmark_results_docker 2>/dev/null; then
-              echo "✅ Copied results from ${container}"
-              break
-            fi
-          done
-
-          if [ ! -d "benchmark_results_docker" ]; then
-            echo "⚠️ Could not copy results - creating placeholder"
-            mkdir -p benchmark_results_docker
-          fi
-        continue-on-error: true
-
-      - name: Create placeholder results if missing
+        # FIX #8: Use docker ps to find the container rather than guessing names.
         if: always()
         run: |
           mkdir -p benchmark_results_docker
+
+          # Find the benchmark container by label rather than by guessed name
+          CONTAINER_ID=$(docker ps -a \
+            --filter "label=com.docker.compose.service=benchmark-runner" \
+            --filter "label=com.docker.compose.project=vaal-bench" \
+            --format "{{.ID}}" | head -1)
+
+          if [ -n "$CONTAINER_ID" ]; then
+            docker cp "${CONTAINER_ID}:/app/benchmark_results/." \
+              benchmark_results_docker/ && echo "✅ Results copied from ${CONTAINER_ID}"
+          else
+            echo "::warning::benchmark-runner container not found — results unavailable"
+          fi
+
+          # Guarantee a parseable file exists downstream
           if [ ! -f benchmark_results_docker/report.json ]; then
-            echo '{"timestamp": "'$(date -Iseconds)'", "summary": {"total_tests": 0, "passed_tests": 0, "failed_tests": 0, "overall_score": 0}, "category_scores": {}, "backend_stats": {"resilient_fallbacks": 0, "usage": {}}, "results": []}' > benchmark_results_docker/report.json
+            echo '{"timestamp":"'$(date -Iseconds)'","summary":{"total_tests":0,
+              "overall_score":0},"note":"docker run did not produce results"}' \
+              > benchmark_results_docker/report.json
           fi
 
       - name: Upload Docker benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: benchmark-results-docker
           path: benchmark_results_docker/
           retention-days: 30
           if-no-files-found: warn
-        continue-on-error: true
 
-  # Performance regression check
+  # ── Performance regression check ────────────────────────────────────────────
   regression-check:
-    name: Check for Performance Regressions
+    name: Performance Regression Check
     runs-on: ubuntu-latest
     needs: benchmark
-    # Run on all events (push, PR, workflow_dispatch)
     if: always()
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Download current benchmark results
-        uses: actions/download-artifact@v4
+      - name: Download benchmark results
+        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
         with:
           name: benchmark-results
           path: current_results
         continue-on-error: true
 
-      - name: Compare with baseline
+      - name: Compare with baseline & enforce SLA
         id: compare
         continue-on-error: true
         run: |
           python3 << 'PYEOF'
-          import json
-          import os
-          import sys
-          import textwrap
+          import json, os, sys, textwrap
           from pathlib import Path
 
-          # +AAA Performance SLA Thresholds
-          SLA_THRESHOLDS = {
-              'overall_score_min': 70.0,      # Minimum overall score %
-              'avg_response_time_ms': 2000,   # Average response time < 2s
-              'regression_tolerance': 0.05,   # Allow 5% regression tolerance
+          # FIX #10: AAA threshold raised from 70% → 85%
+          # FIX #11: Response-time SLA tightened from 2000ms → 1000ms
+          SLA = {
+              "overall_score_min":    85.0,
+              "avg_response_time_ms": 1000,
+              "regression_tolerance": 0.05,
           }
 
-          # Load current results
-          current_path = Path('current_results/report.json')
+          current_path = Path("current_results/report.json")
           if not current_path.exists():
-              print('::notice::No benchmark results found for comparison')
-              with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
-                  f.write('overall_score=0\n')
-                  f.write('regression_detected=false\n')
-              exit(0)
+              print("::notice::No benchmark results found — skipping comparison")
+              with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
+                  f.write("overall_score=0\nregression_detected=false\n")
+              sys.exit(0)
 
           try:
-              with open(current_path) as f:
-                  current = json.load(f)
+              current = json.loads(current_path.read_text())
           except Exception as e:
-              print(f'::warning::Could not parse benchmark results: {e}')
-              exit(0)
+              print(f"::warning::Could not parse results: {e}")
+              sys.exit(0)
 
-          # Load baseline for comparison
-          baseline_path = Path('benchmark_report.json')
-          baseline = None
+          summary          = current.get("summary", {})
+          overall_score    = summary.get("overall_score", 0)
+          avg_response     = summary.get("avg_response_time_ms", 0)
+          backend_stats    = current.get("backend_stats", {})
+          category_scores  = current.get("category_scores", {})
+          resilient_mode   = (
+              backend_stats.get("resilient_fallbacks", 0) > 0
+              or not backend_stats.get("usage", {})
+              or "none" in backend_stats.get("usage", {})
+          )
+
+          gho = os.environ.get("GITHUB_OUTPUT", "/dev/null")
+          with open(gho, "a") as f:
+              f.write(f"overall_score={overall_score}\n")
+              f.write(f"avg_response_time_ms={avg_response}\n")
+
+          print(f"\n📊 Current Results:")
+          print(f"   Score:         {overall_score:.1f}%")
+          print(f"   Response time: {avg_response:.2f}ms")
+          print(f"   Resilient mode:{resilient_mode}")
+
+          # Baseline comparison
+          baseline_path = Path("benchmark_report.json")
+          baseline      = None
           if baseline_path.exists():
               try:
-                  with open(baseline_path) as f:
-                      baseline = json.load(f)
-                  print(f'📊 Loaded baseline from {baseline_path}')
-              except Exception as e:
-                  print(f'::warning::Could not load baseline: {e}')
+                  baseline = json.loads(baseline_path.read_text())
+              except Exception:
+                  pass
 
-          # Get current metrics
-          summary = current.get('summary', {})
-          overall_score = summary.get('overall_score', 0)
-          avg_response_time = summary.get('avg_response_time_ms', 0)
-          backend_stats = current.get('backend_stats', {})
-          category_scores = current.get('category_scores', {})
+          regression = False
+          if baseline and not resilient_mode:
+              base_score = baseline.get("summary", {}).get("overall_score", 0)
+              delta      = overall_score - base_score
+              print(f"\n📈 Baseline: {base_score:.1f}%  Δ={delta:+.1f}%")
+              if delta < -(base_score * SLA["regression_tolerance"]):
+                  print(f"::error::Regression: score dropped {abs(delta):.1f}%")
+                  regression = True
+              elif delta > 0:
+                  print(f"✅ Improvement: +{delta:.1f}%")
+              with open(gho, "a") as f:
+                  f.write(f"regression_detected={str(regression).lower()}\n")
+                  f.write(f"baseline_score={base_score}\n")
+                  f.write(f"score_change={delta}\n")
 
-          # Check if running in resilient mode (no backends available)
-          resilient_fallbacks = backend_stats.get('resilient_fallbacks', 0)
-          backend_usage = backend_stats.get('usage', {})
-          has_no_backend = resilient_fallbacks > 0 or (not backend_usage or 'none' in backend_usage)
+          # SLA enforcement
+          print(f"\n🎯 SLA Checks (AAA thresholds):")
+          sla_pass = []
 
-          # Write outputs
-          summary_file = os.environ.get('GITHUB_OUTPUT', '/dev/null')
-          with open(summary_file, 'a') as f:
-              f.write(f'overall_score={overall_score}\n')
-              f.write(f'avg_response_time_ms={avg_response_time}\n')
+          # Score
+          ok = overall_score >= SLA["overall_score_min"]
+          sla_pass.append(ok or resilient_mode)
+          lbl = "✅ PASS" if ok else ("⚠️ SKIP (resilient)" if resilient_mode else "❌ FAIL")
+          print(f"   Score >= {SLA['overall_score_min']}%:     {lbl} ({overall_score:.1f}%)")
 
-          print(f'\n📊 Current Benchmark Results:')
-          print(f'   Overall Score: {overall_score:.1f}%')
-          print(f'   Avg Response Time: {avg_response_time:.2f}ms')
-          print(f'   Categories: {list(category_scores.keys())}')
+          # Response time (skip if 0 — means no tests ran)
+          if avg_response > 0:
+              ok = avg_response < SLA["avg_response_time_ms"]
+              sla_pass.append(ok or resilient_mode)
+              lbl = "✅ PASS" if ok else ("⚠️ SKIP (resilient)" if resilient_mode else "❌ FAIL")
+              print(f"   Response < {SLA['avg_response_time_ms']}ms: {lbl} ({avg_response:.0f}ms)")
 
-          # Compare with baseline if available
-          regression_detected = False
-          if baseline and not has_no_backend:
-              baseline_score = baseline.get('summary', {}).get('overall_score', 0)
-              baseline_response = baseline.get('summary', {}).get('avg_response_time_ms', 0)
+          if resilient_mode:
+              print("\n::notice::Resilient mode — SLA enforcement skipped.")
+              sys.exit(0)
 
-              print(f'\n📈 Baseline Comparison:')
-              print(f'   Baseline Score: {baseline_score:.1f}%')
-              print(f'   Baseline Response: {baseline_response:.2f}ms')
-
-              # Check for regression
-              score_change = overall_score - baseline_score
-              if score_change < -baseline_score * SLA_THRESHOLDS['regression_tolerance']:
-                  print(f'::error::Regression detected! Score dropped by {abs(score_change):.1f}%')
-                  regression_detected = True
-              elif score_change > 0:
-                  print(f'✅ Improvement: +{score_change:.1f}%')
-
-              # Write regression status
-              with open(summary_file, 'a') as f:
-                  f.write(f'regression_detected={str(regression_detected).lower()}\n')
-                  f.write(f'baseline_score={baseline_score}\n')
-                  f.write(f'score_change={score_change}\n')
-
-          # SLA Checks
-          print(f'\n🎯 SLA Threshold Checks:')
-
-          sla_results = []
-
-          # Overall score check
-          if overall_score < SLA_THRESHOLDS['overall_score_min']:
-              status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
-              sla_results.append(False)
-          else:
-              status = '✅ PASS'
-              sla_results.append(True)
-          print(f'   Overall Score >= {SLA_THRESHOLDS["overall_score_min"]}%: {status} ({overall_score:.1f}%)')
-
-          # Response time check
-          if avg_response_time > SLA_THRESHOLDS['avg_response_time_ms']:
-              status = '❌ FAIL' if not has_no_backend else '⚠️ SKIP (resilient mode)'
-              sla_results.append(False)
-          else:
-              status = '✅ PASS'
-              sla_results.append(True)
-          print(f'   Response Time < {SLA_THRESHOLDS["avg_response_time_ms"]}ms: {status} ({avg_response_time:.2f}ms)')
-
-          # Skip failure check if running without backends (CI mode)
-          if has_no_backend:
-              print('\n::notice::Benchmark ran in resilient mode (no AI backends available). Skipping SLA enforcement.')
-              exit(0)
-
-          # Determine final pass/fail based on all SLA checks
-          final_pass = all(sla_results)
-
-          if not final_pass:
-              print('\n::error::One or more SLA thresholds not met')
+          if not all(sla_pass):
+              print("\n::error::AAA SLA threshold(s) not met.")
               sys.exit(1)
           else:
-              print(f'\n✅ All SLA thresholds met!')
+              print("\n✅ All AAA SLA thresholds met.")
 
-          # Write summary to GITHUB_STEP_SUMMARY
-          baseline_score_val = baseline.get("summary", {}).get("overall_score", "N/A") if baseline else "N/A"
-          baseline_response_val = baseline.get("summary", {}).get("avg_response_time_ms", "N/A") if baseline else "N/A"
+          # Step Summary
+          base_score_str = f"{baseline.get('summary',{}).get('overall_score',0):.1f}%" if baseline else "N/A"
+          base_resp_str  = f"{baseline.get('summary',{}).get('avg_response_time_ms',0):.0f}ms" if baseline else "N/A"
 
-          summary_md = textwrap.dedent(f'''\
-              ## 📊 Benchmark Performance Summary
+          md = textwrap.dedent(f"""\
+              ## 📊 Performance SLA Summary (AAA)
 
               | Metric | Current | Baseline | SLA | Status |
               |--------|---------|----------|-----|--------|
-              | Overall Score | {overall_score:.1f}% | {baseline_score_val} | >= {SLA_THRESHOLDS["overall_score_min"]}% | {"✅" if overall_score >= SLA_THRESHOLDS["overall_score_min"] else "❌"} |
-              | Avg Response | {avg_response_time:.2f}ms | {baseline_response_val}ms | < {SLA_THRESHOLDS["avg_response_time_ms"]}ms | {"✅" if avg_response_time < SLA_THRESHOLDS["avg_response_time_ms"] else "❌"} |
+              | Overall Score | {overall_score:.1f}% | {base_score_str} | ≥ {SLA['overall_score_min']}% | {"✅" if overall_score >= SLA['overall_score_min'] else "❌"} |
+              | Avg Response  | {avg_response:.0f}ms | {base_resp_str} | < {SLA['avg_response_time_ms']}ms | {"✅" if avg_response < SLA['avg_response_time_ms'] else "❌"} |
 
               ### Category Scores
-              ''')
+          """)
           for cat, score in category_scores.items():
-              summary_md += f'- **{cat}**: {score:.1f}/10\n'
+              md += f"- **{cat}**: {score:.1f}/10\n"
 
-          with open(os.environ.get('GITHUB_STEP_SUMMARY', '/dev/null'), 'a') as f:
-              f.write(summary_md)
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(sf, "a") as f:
+              f.write(md)
           PYEOF
 
-      - name: Comment on PR
-        if: always()
-        uses: actions/github-script@v7
+      - name: Comment on PR with results
+        # FIX #9: Was using context.issue.number which is undefined on push events.
+        #         Now guarded: only runs on pull_request events.
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           script: |
-            async function main() {
-              const fs = require('fs');
-              let report = {};
-              try {
-                report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
-              } catch (e) {
-                console.log('Could not read report:', e.message);
-                return;
-              }
-
-              const summary = report.summary || {};
-              const body = `## Benchmark Results\n\n| Metric | Value |\n|--------|-------|\n| Total Tests | ${summary.total_tests || 0} |\n| Passed | ${summary.passed_tests || 0} |\n| Failed | ${summary.failed_tests || 0} |\n| Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |\n| Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |\n\n${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
-
-              try {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  body: body
-                });
-                console.log('Comment posted successfully');
-              } catch (error) {
-                console.error('Failed to post comment:', error.message);
-              }
+            const fs = require('fs');
+            let report = {};
+            try {
+              report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
+            } catch (e) {
+              console.log('Could not read report:', e.message);
+              return;
             }
 
-            await main();
+            const s = report.summary || {};
+            const score = (s.overall_score || 0).toFixed(1);
+            const rt    = (s.avg_execution_time_ms || 0).toFixed(2);
+            const badge = s.overall_score >= 85 ? '✅' : '❌';
+
+            const body = [
+              '## Benchmark Results',
+              '',
+              '| Metric | Value |',
+              '|--------|-------|',
+              `| Total Tests   | ${s.total_tests    || 0} |`,
+              `| Passed        | ${s.passed_tests   || 0} |`,
+              `| Failed        | ${s.failed_tests   || 0} |`,
+              `| Overall Score | ${score}% ${badge} |`,
+              `| Avg Exec Time | ${rt}ms |`,
+              '',
+              s.overall_score >= 85
+                ? '✅ **AAA SLA met** — all benchmarks passing.'
+                : '❌ **AAA SLA not met** — score below 85% threshold.',
+            ].join('\n');
+
+            // FIX #9: context.issue.number is valid here because we guard
+            //         this step with `if: github.event_name == 'pull_request'`
+            await github.rest.issues.createComment({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

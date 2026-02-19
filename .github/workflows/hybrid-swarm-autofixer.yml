@@ -1,10 +1,26 @@
-name: Hybrid Swarm Auto-Fixer
+name: Swarm Auto-Fixer
+
+# ─────────────────────────────────────────────────────────
+# FIX #14 (was): Two near-identical workflows existed:
+#          hybrid-swarm-autofixer.yml AND hybrid-swarm-workflow.yml
+#          Both triggered on the same events → double PR comments,
+#          race conditions on git history, wasted CI minutes.
+#          Fixed: consolidated into this single authoritative workflow.
+#          The other file (hybrid-swarm-workflow.yml) should be DELETED.
+#
+# FIX #22 (was): metrics-export job had `needs: swarm-execution` but
+#          swarm-execution can be skipped when is_fork=true → broken DAG.
+#          Fixed: metrics-export guards with `needs.detect-context.outputs.*`
+#
+# FIX #18 (was): Floating action version tags.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
 
 on:
-  pull_request_review:
-    types: [submitted]
   pull_request:
     types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -12,7 +28,7 @@ on:
         required: true
         type: number
       min_score:
-        description: 'Minimum approval score (0.0-1.0)'
+        description: 'Minimum approval score (0.0–1.0)'
         required: false
         default: '0.7'
         type: string
@@ -24,51 +40,53 @@ permissions:
   actions: read
 
 concurrency:
-  group: autofixer-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_number }}
+  group: swarm-autofixer-${{ github.event.pull_request.number || github.run_number }}
   cancel-in-progress: true
 
 env:
   PYTHON_VERSION: '3.11'
 
 jobs:
+  # ── Fork / context detection ────────────────────────────────────────────────
   detect-context:
     name: Detect PR Context
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      is_fork: ${{ steps.check.outputs.is_fork }}
+      is_fork:    ${{ steps.check.outputs.is_fork }}
       should_run: ${{ steps.check.outputs.should_run }}
-      pr_number: ${{ steps.check.outputs.pr_number }}
+      pr_number:  ${{ steps.check.outputs.pr_number }}
 
     steps:
-      - name: Check if PR is from fork
+      - name: Check if PR is from a fork
         id: check
         env:
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          BASE_REPO: ${{ github.repository }}
+          BASE_REPO:    ${{ github.repository }}
         run: |
-          # Determine PR number
-          PR_NUMBER=""
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          # Determine PR number from whatever event triggered us
+          if   [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             PR_NUMBER="${{ github.event.inputs.pr_number }}"
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
-          elif [ "${{ github.event_name }}" == "pull_request_review" ]; then
+          elif [ "${{ github.event_name }}" = "pull_request_review" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
           fi
 
-          # Fork detection
-          if [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "is_fork=true" >> $GITHUB_OUTPUT
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "::notice::Skipping autofixer for fork PR (no write access)"
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+          # Fork detection: forks cannot receive write tokens from the base repo
+          if [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "is_fork=true"   >> "$GITHUB_OUTPUT"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork PR detected — autofixer requires write access to head branch. Skipping."
           else
-            echo "is_fork=false" >> $GITHUB_OUTPUT
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "PR is from same repository, proceeding with autofixer"
+            echo "is_fork=false"  >> "$GITHUB_OUTPUT"
+            echo "should_run=true"  >> "$GITHUB_OUTPUT"
+            echo "Same-repo PR — proceeding with swarm autofixer."
           fi
 
-          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-
+  # ── Swarm execution ─────────────────────────────────────────────────────────
   swarm-execution:
     name: Execute Enterprise Swarm
     runs-on: ubuntu-latest
@@ -77,16 +95,16 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout (head branch with write token)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref:         ${{ github.event.pull_request.head.ref }}
+          token:       ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -95,168 +113,125 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install aiohttp pyyaml requests
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt || echo "Some requirements failed"
-          fi
+          [ -f requirements.txt ] && pip install -r requirements.txt \
+            || echo "::notice::No requirements.txt"
 
-      - name: Install Ollama
+      - name: Install and start Ollama (local AI fallback)
         run: |
-          echo "Installing Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
-
-          # Start Ollama daemon in background
           ollama serve &
-
-          # Wait for Ollama to be ready
-          echo "Waiting for Ollama to start..."
           for i in {1..30}; do
-            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-              echo "Ollama is ready"
-              break
-            fi
+            curl -s http://localhost:11434/api/tags > /dev/null 2>&1 && break
             sleep 1
           done
-
-          # Pull lightweight models for CI
-          ollama pull qwen2.5-coder:1.5b || echo "Failed to pull qwen2.5-coder:1.5b"
-          ollama pull phi4 || echo "Failed to pull phi4"
-
-          # List available models
-          ollama list || true
+          # Pull lightweight models only — heavy models would timeout in CI
+          ollama pull qwen2.5-coder:1.5b || echo "::warning::qwen2.5-coder:1.5b unavailable"
+          ollama pull phi4               || echo "::warning::phi4 unavailable"
+          ollama list
 
       - name: Execute Enterprise Swarm
         id: swarm
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
+          PR_HEAD_REF:  ${{ github.head_ref }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          OLLAMA_HOST: "127.0.0.1:11434"
+          OLLAMA_HOST:  "127.0.0.1:11434"
         run: |
-          set -eo pipefail
+          python3 << 'PYEOF'
+          import asyncio, sys, os, json
 
-          python -c "
-          import asyncio
-          import sys
-          import os
-          import json
-
-          sys.path.insert(0, '.')
+          sys.path.insert(0, ".")
 
           try:
               from agents.sentient_swarm import SwarmOrchestrator, SwarmConfig
           except ImportError as e:
-              print(f'Warning: Could not import SwarmOrchestrator: {e}')
-              print('Creating placeholder result...')
-
-              # Create placeholder result
-              with open('swarm-results.json', 'w') as f:
+              print(f"::notice::SwarmOrchestrator not found: {e}")
+              print("Writing placeholder result.")
+              with open("swarm-results.json", "w") as f:
                   json.dump({
-                      'success': True,
-                      'duration_ms': 0,
-                      'files_count': 0,
-                      'files': [],
-                      'agent_results': [],
-                      'note': 'Swarm module not available - placeholder success'
+                      "success": True,
+                      "duration_ms": 0,
+                      "files_count": 0,
+                      "files": [],
+                      "agent_results": [],
+                      "note": "Swarm module not available — placeholder success",
                   }, f, indent=2)
               sys.exit(0)
 
           async def main():
-              # Check which APIs are configured
               apis = {
-                  'GLM5': os.getenv('GLM5_API_KEY'),
-                  'KIMI': os.getenv('KIMI_API_KEY'),
-                  'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
-                  'OLLAMA': os.getenv('OLLAMA_HOST'),
+                  "GLM5":      os.getenv("GLM5_API_KEY"),
+                  "KIMI":      os.getenv("KIMI_API_KEY"),
+                  "DASHSCOPE": os.getenv("DASHSCOPE_API_KEY"),
+                  "OLLAMA":    os.getenv("OLLAMA_HOST"),
               }
+              print("API Configuration:")
+              for name, val in apis.items():
+                  print(f"  {'✅' if val else '❌'} {name}")
 
-              print('API Configuration:')
-              for name, key in apis.items():
-                  status = 'Available' if key else 'Not configured'
-                  print(f'  {name}: {status}')
-
-              # Configure swarm
               config = SwarmConfig(
-                  project_name='vaal-ai-empire-pr-${{ github.event.pull_request.number || github.run_number }}',
-                  output_dir='swarm-output',
+                  project_name=f"vaal-ai-pr-${{ github.event.pull_request.number || github.run_number }}",
+                  output_dir="swarm-output",
                   run_code_review=True,
                   enable_vercel_deploy=False,
-                  max_parallel_agents=6
+                  max_parallel_agents=6,
               )
 
-              # Execute swarm
               orchestrator = SwarmOrchestrator(config)
-
               try:
                   result = await orchestrator.run({
-                      'pr_number': '${{ github.event.pull_request.number }}',
-                      'branch': os.getenv('PR_HEAD_REF', ''),
-                      'repo': '${{ github.repository }}'
+                      "pr_number": "${{ github.event.pull_request.number }}",
+                      "branch":    os.getenv("PR_HEAD_REF", ""),
+                      "repo":      "${{ github.repository }}",
                   })
 
-                  # Collect files
                   all_files = []
-                  for agent_result in result.agent_results:
-                      all_files.extend(agent_result.get('files', []))
+                  for r in result.agent_results:
+                      all_files.extend(r.get("files", []))
 
-                  # Output summary
-                  print()
-                  print('=' * 70)
-                  print('SWARM EXECUTION COMPLETE')
-                  print('=' * 70)
-                  print(f'Success: {result.success}')
-                  print(f'Duration: {result.duration_seconds:.2f}s')
-                  print(f'Files Generated: {len(all_files)}')
-                  print()
+                  print(f"\n{'='*60}")
+                  print("SWARM COMPLETE")
+                  print(f"  Success:  {result.success}")
+                  print(f"  Duration: {result.duration_seconds:.2f}s")
+                  print(f"  Files:    {len(all_files)}")
 
-                  # Save results
-                  with open('swarm-results.json', 'w') as f:
+                  for r in result.agent_results:
+                      icon = "✅" if r.get("status") == "success" else "❌"
+                      print(f"  {icon} {r.get('agent','?'):20} | {r.get('status','?'):10} | {len(r.get('files',[]))} files")
+
+                  with open("swarm-results.json", "w") as f:
                       json.dump({
-                          'success': result.success,
-                          'duration_ms': result.duration_seconds * 1000,
-                          'files_count': len(all_files),
-                          'files': all_files,
-                          'agent_results': [
-                              {
-                                  'agent': r.get('agent'),
-                                  'status': r.get('status'),
-                                  'files': len(r.get('files', []))
-                              }
+                          "success":       result.success,
+                          "duration_ms":   result.duration_seconds * 1000,
+                          "files_count":   len(all_files),
+                          "files":         all_files,
+                          "agent_results": [
+                              {"agent": r.get("agent"), "status": r.get("status"),
+                               "files": len(r.get("files", []))}
                               for r in result.agent_results
-                          ]
+                          ],
                       }, f, indent=2)
-
-                  return result
 
               except Exception as e:
-                  print(f'Error: Swarm execution error: {e}')
-                  import traceback
-                  traceback.print_exc()
-
-                  # Create fallback result so workflow doesn't fail
-                  with open('swarm-results.json', 'w') as f:
+                  print(f"::error::Swarm error: {e}")
+                  import traceback; traceback.print_exc()
+                  with open("swarm-results.json", "w") as f:
                       json.dump({
-                          'success': True,
-                          'duration_ms': 0,
-                          'files_count': 0,
-                          'files': [],
-                          'agent_results': [],
-                          'error': str(e)
+                          "success":       False,
+                          "duration_ms":   0,
+                          "files_count":   0,
+                          "files":         [],
+                          "agent_results": [],
+                          "error":         str(e),
                       }, f, indent=2)
 
-                  return None
-
-          result = asyncio.run(main())
-
-          if result and not result.success:
-              print()
-              print('Swarm execution had failures')
-              sys.exit(0)  # Don't fail the workflow
-          "
+          asyncio.run(main())
+          PYEOF
 
       - name: Upload swarm output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: swarm-output
           path: |
@@ -265,54 +240,48 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Comment PR with results
-        if: github.event_name == 'pull_request' && always()
-        uses: actions/github-script@v7
+      - name: Comment on PR with swarm results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
           script: |
             const fs = require('fs');
 
-            let summary = '## 🤖 Enterprise Swarm Results\n\n';
+            let summary = '## 🤖 Swarm Auto-Fixer Results\n\n';
 
             try {
               if (fs.existsSync('swarm-results.json')) {
-                const results = JSON.parse(fs.readFileSync('swarm-results.json', 'utf8'));
+                const r = JSON.parse(fs.readFileSync('swarm-results.json', 'utf8'));
+                summary += `**Status:** ${r.success ? '✅ Success' : '❌ Failed'}\n`;
+                summary += `**Duration:** ${(r.duration_ms || 0).toFixed(0)}ms\n`;
+                summary += `**Files Generated:** ${r.files_count || 0}\n\n`;
 
-                const statusIcon = results.success ? '✅ Success' : '❌ Failed';
-                summary += `**Status:** ${statusIcon}\n`;
-                summary += `**Duration:** ${results.duration_ms?.toFixed(0) || 0}ms\n`;
-                summary += `**Files Generated:** ${results.files_count || 0}\n\n`;
-
-                if (results.agent_results && results.agent_results.length > 0) {
+                if (r.agent_results?.length > 0) {
                   summary += '### Agent Results\n\n';
-                  summary += '| Agent | Status | Files |\n';
-                  summary += '|-------|--------|-------|\n';
-
-                  for (const agent of results.agent_results) {
-                    const icon = agent.status === 'success' ? '✅' : '❌';
-                    summary += `| ${agent.agent || 'unknown'} | ${icon} ${agent.status || 'unknown'} | ${agent.files || 0} |\n`;
+                  summary += '| Agent | Status | Files |\n|-------|--------|-------|\n';
+                  for (const a of r.agent_results) {
+                    const icon = a.status === 'success' ? '✅' : '❌';
+                    summary += `| ${a.agent || '?'} | ${icon} ${a.status || '?'} | ${a.files || 0} |\n`;
                   }
                 }
 
-                if (results.files && results.files.length > 0) {
+                if (r.files?.length > 0) {
                   summary += '\n### Generated Files\n\n';
-                  for (const file of results.files.slice(0, 10)) {
+                  for (const file of r.files.slice(0, 10)) {
                     summary += `- \`${file}\`\n`;
                   }
-                  if (results.files.length > 10) {
-                    summary += `- *and ${results.files.length - 10} more...*\n`;
+                  if (r.files.length > 10) {
+                    summary += `- *…and ${r.files.length - 10} more*\n`;
                   }
                 }
 
-                if (results.note) {
-                  summary += `\n*Note: ${results.note}*\n`;
-                }
+                if (r.note) summary += `\n*${r.note}*\n`;
+                if (r.error) summary += `\n> ⚠️ Error: ${r.error}\n`;
               } else {
-                summary += '⚠️ No results file found\n';
+                summary += '⚠️ No results file found.\n';
               }
-
             } catch (e) {
               summary += `⚠️ Could not parse results: ${e.message}\n`;
             }
@@ -321,50 +290,59 @@ jobs:
               await github.rest.issues.createComment({
                 issue_number: parseInt(process.env.PR_NUMBER),
                 owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: summary
+                repo:  context.repo.repo,
+                body:  summary,
               });
-            } catch (error) {
-              console.log('Could not create comment:', error.message);
+            } catch (err) {
+              console.log('Could not post comment:', err.message);
             }
 
-      - name: Report skip for forks
+      - name: Notice for fork PRs
         if: needs.detect-context.outputs.is_fork == 'true'
         run: |
-          echo "::notice::This PR is from a fork. Autofixer requires write access to the head branch."
+          echo "::notice::Fork PR: autofixer skipped (requires write access to head branch)."
 
+  # ── Metrics export ──────────────────────────────────────────────────────────
   metrics-export:
     name: Export Metrics
     runs-on: ubuntu-latest
     needs: [detect-context, swarm-execution]
+    # FIX #22: Guard with detect-context output, not swarm-execution status.
+    #          swarm-execution is skipped for forks; this job should be too.
     if: always() && needs.detect-context.outputs.should_run == 'true'
+    timeout-minutes: 5
 
     steps:
       - name: Download swarm output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
         with:
           name: swarm-output
           path: swarm-output
         continue-on-error: true
 
-      - name: Export to Prometheus (if configured)
+      - name: Export to Prometheus
         env:
           PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+          PROMETHEUS_URL:     ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER:    ${{ secrets.PROMETHEUS_USER }}
         run: |
-          if [ -n "$PROMETHEUS_API_KEY" ]; then
-            echo "Would export metrics to Prometheus"
+          if [ -n "$PROMETHEUS_API_KEY" ] && [ -n "$PROMETHEUS_URL" ]; then
+            echo "Exporting metrics to Prometheus..."
+            # TODO: Implement push-gateway or remote-write export
+            # See: docs/metrics-export.md for implementation guide
+            echo "::notice::Prometheus export not yet implemented — see docs/metrics-export.md"
           else
-            echo "Prometheus API key not configured, skipping"
+            echo "::notice::PROMETHEUS_API_KEY / PROMETHEUS_URL not configured — skipping"
           fi
-        continue-on-error: true
 
-      - name: Export to Grafana (if configured)
+      - name: Export to Grafana
         env:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
         run: |
           if [ -n "$GRAFANA_API_KEY" ]; then
-            echo "Would export logs to Grafana"
+            echo "Exporting logs to Grafana..."
+            # TODO: Implement Loki push or Grafana Cloud metrics export
+            echo "::notice::Grafana export not yet implemented — see docs/metrics-export.md"
           else
-            echo "Grafana API key not configured, skipping"
+            echo "::notice::GRAFANA_API_KEY not configured — skipping"
           fi
-        continue-on-error: true
