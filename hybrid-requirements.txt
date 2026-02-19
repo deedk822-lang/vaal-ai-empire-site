@@ -16,7 +16,7 @@ prometheus-client>=0.19.0,<0.21.0
 opentelemetry-api>=1.22.0,<2.0.0
 opentelemetry-sdk>=1.22.0,<2.0.0
 opentelemetry-exporter-prometheus>=0.43b0,<0.46b0
-opentelemetry-instrumentation-aiohttp-client>=0.43b0,<0.46b0
+opentelemetry-instrumentation-aiohttp-client>=0.43b0,<0.61
 
 # Code analysis
 astroid>=3.0.0,<4.0.0
