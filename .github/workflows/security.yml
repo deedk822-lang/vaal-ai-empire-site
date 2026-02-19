@@ -40,18 +40,18 @@ jobs:
 
       - name: Initialize CodeQL
         # SHA-pinned: github/codeql-action v3.28.13
-        uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/init@9e907b5e64f6b83e7804b09294d44122997950d6
         with:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/autobuild@9e907b5e64f6b83e7804b09294d44122997950d6
         # Autobuild is best-effort; analysis still runs even if it fails
         continue-on-error: true
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/analyze@9e907b5e64f6b83e7804b09294d44122997950d6
         with:
           category: '/language:${{ matrix.language }}'
 
@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security tab
         # FIX #3: Was missing entirely. Now findings appear in Security tab.
-        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6
         if: always()    # Upload even when bandit finds issues
         with:
           sarif_file: bandit-results.sarif
