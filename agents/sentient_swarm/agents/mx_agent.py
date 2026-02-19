@@ -18,17 +18,17 @@ class MXAgent(BaseAgent):
         "faq": [
             {
                 "question": "What is Digital Sovereignty?",
-                "answer": "Digital sovereignty refers to a nation's ability to control its own digital infrastructure, data, and technology."
+                "answer": "Digital sovereignty refers to a nation's ability to control its own digital infrastructure, data, and technology.",
             },
             {
                 "question": "How can AI help South African SMEs?",
-                "answer": "AI can automate repetitive tasks, improve customer service, and provide data-driven insights for better decision-making."
-            }
+                "answer": "AI can automate repetitive tasks, improve customer service, and provide data-driven insights for better decision-making.",
+            },
         ],
         "entities": {
             "Digital Sovereignty": "Control over digital infrastructure and data",
-            "AI Automation": "Using artificial intelligence to automate business processes"
-        }
+            "AI Automation": "Using artificial intelligence to automate business processes",
+        },
     }
 
     def __init__(self, llm_client=None, metrics=None, tracer=None):
@@ -73,24 +73,26 @@ class MXAgent(BaseAgent):
         schema = {
             "@context": "https://schema.org",
             "@type": "Organization",
-            "name": context.get('company_name', 'Vaal AI Empire'),
-            "description": context.get('description', 'AI-powered digital sovereignty'),
-            "url": context.get('url', 'https://vaalaiempire.co.za'),
+            "name": context.get("company_name", "Vaal AI Empire"),
+            "description": context.get("description", "AI-powered digital sovereignty"),
+            "url": context.get("url", "https://vaalaiempire.co.za"),
             "logo": "https://vaalaiempire.co.za/logo.png",
             "sameAs": [
                 "https://twitter.com/vaalaiempire",
-                "https://linkedin.com/company/vaal-ai-empire"
+                "https://linkedin.com/company/vaal-ai-empire",
             ],
             "contactPoint": {
                 "@type": "ContactPoint",
                 "telephone": "+27-11-123-4567",
                 "contactType": "customer service",
                 "areaServed": "ZA",
-                "availableLanguage": ["English", "Afrikaans", "Zulu"]
-            }
+                "availableLanguage": ["English", "Afrikaans", "Zulu"],
+            },
         }
 
-        schema_file = self.write_file("organization-schema.json", json.dumps(schema, indent=2))
+        schema_file = self.write_file(
+            "organization-schema.json", json.dumps(schema, indent=2)
+        )
 
         # Generate GEO-optimized content structure
         geo_prompt = """Generate a content structure optimized for Generative Engine Optimization (GEO):
@@ -111,7 +113,7 @@ Output as structured JSON."""
         geo_response = await self.llm.generate(
             prompt=geo_prompt,
             system_message="You are an SEO/GEO expert specializing in AI-parseable content.",
-            temperature=0.7
+            temperature=0.7,
         )
 
         if geo_response.success:
@@ -124,15 +126,17 @@ Output as structured JSON."""
         else:
             self.log("⚠️  LLM failed, using fallback GEO content")
 
-        geo_file = self.write_file("geo-content.json", json.dumps(geo_content, indent=2))
+        geo_file = self.write_file(
+            "geo-content.json", json.dumps(geo_content, indent=2)
+        )
 
         return {
-            'agent': self.name,
-            'status': 'success',
-            'files': [schema_file, geo_file],
-            'metrics': {
-                'schema_entities': len(schema),
-                'geo_tokens': geo_tokens,
-                'provider': geo_provider
-            }
+            "agent": self.name,
+            "status": "success",
+            "files": [schema_file, geo_file],
+            "metrics": {
+                "schema_entities": len(schema),
+                "geo_tokens": geo_tokens,
+                "provider": geo_provider,
+            },
         }

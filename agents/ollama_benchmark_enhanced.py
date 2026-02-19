@@ -196,7 +196,13 @@ class OllamaEnhancedBenchmark:
                 "name": "SQL Injection Vulnerability",
                 "category": "security",
                 "prompt": "Identify and fix the SQL injection vulnerability in this code: app.post('/login', (req, res) => { db.query('SELECT * FROM users WHERE username = \"' + req.body.username + '\"') })",
-                "expected_patterns": ["parameterized", "prepared", "statement", "?", "$1"],
+                "expected_patterns": [
+                    "parameterized",
+                    "prepared",
+                    "statement",
+                    "?",
+                    "$1",
+                ],
                 "difficulty": "medium",
             },
             {
@@ -213,7 +219,13 @@ class OllamaEnhancedBenchmark:
                 "name": "XSS Prevention",
                 "category": "security",
                 "prompt": "Write a Python function to sanitize user input for safe HTML display, preventing XSS attacks",
-                "expected_patterns": ["html.escape", "escape", "sanitize", "&lt;", "&gt;"],
+                "expected_patterns": [
+                    "html.escape",
+                    "escape",
+                    "sanitize",
+                    "&lt;",
+                    "&gt;",
+                ],
                 "difficulty": "medium",
             },
             {
@@ -246,7 +258,13 @@ class OllamaEnhancedBenchmark:
                 "name": "Large File Processing",
                 "category": "efficiency",
                 "prompt": "Write Python code to process a 10GB CSV file efficiently without loading it all into memory",
-                "expected_patterns": ["chunk", "iterator", "with open", "csv.reader", "yield"],
+                "expected_patterns": [
+                    "chunk",
+                    "iterator",
+                    "with open",
+                    "csv.reader",
+                    "yield",
+                ],
                 "difficulty": "medium",
             },
             {
@@ -263,7 +281,13 @@ class OllamaEnhancedBenchmark:
                 "name": "API Architecture",
                 "category": "reasoning",
                 "prompt": "Explain the trade-offs between REST and GraphQL for a microservices architecture handling real-time data",
-                "expected_patterns": ["REST", "GraphQL", "websocket", "subscription", "caching"],
+                "expected_patterns": [
+                    "REST",
+                    "GraphQL",
+                    "websocket",
+                    "subscription",
+                    "caching",
+                ],
                 "difficulty": "hard",
             },
             {
@@ -271,7 +295,13 @@ class OllamaEnhancedBenchmark:
                 "name": "Database Selection",
                 "category": "reasoning",
                 "prompt": "Compare PostgreSQL vs MongoDB for an e-commerce product catalog with variable product attributes",
-                "expected_patterns": ["PostgreSQL", "MongoDB", "JSONB", "schema", "flexible"],
+                "expected_patterns": [
+                    "PostgreSQL",
+                    "MongoDB",
+                    "JSONB",
+                    "schema",
+                    "flexible",
+                ],
                 "difficulty": "medium",
             },
             # Creative tasks
@@ -280,7 +310,13 @@ class OllamaEnhancedBenchmark:
                 "name": "Technical Documentation",
                 "category": "creative",
                 "prompt": "Write clear documentation for a rate-limiting middleware function for an Express.js API",
-                "expected_patterns": ["rate", "limit", "requests", "window", "middleware"],
+                "expected_patterns": [
+                    "rate",
+                    "limit",
+                    "requests",
+                    "window",
+                    "middleware",
+                ],
                 "difficulty": "medium",
             },
         ]
@@ -304,7 +340,9 @@ class OllamaEnhancedBenchmark:
                 self.available_models[name] = ollama_name.split(":")[0] in result.stdout
 
         except FileNotFoundError:
-            print("❌ Ollama is not installed. Install with: curl -fsSL https://ollama.com/install.sh | sh")
+            print(
+                "❌ Ollama is not installed. Install with: curl -fsSL https://ollama.com/install.sh | sh"
+            )
             self.available_models = {name: False for name in self.models}
         except subprocess.TimeoutExpired:
             print("⚠️ Ollama command timed out")
@@ -368,7 +406,9 @@ class OllamaEnhancedBenchmark:
 
                 # Create async subprocess for Ollama
                 process = await asyncio.create_subprocess_exec(
-                    "ollama", "run", ollama_name,
+                    "ollama",
+                    "run",
+                    ollama_name,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -408,15 +448,27 @@ class OllamaEnhancedBenchmark:
             "latency": {
                 "mean_ms": round(statistics.mean(latencies), 2),
                 "median_ms": round(statistics.median(latencies), 2),
-                "stdev_ms": round(statistics.stdev(latencies), 2) if len(latencies) > 1 else 0,
+                "stdev_ms": (
+                    round(statistics.stdev(latencies), 2) if len(latencies) > 1 else 0
+                ),
                 "min_ms": round(min(latencies), 2),
                 "max_ms": round(max(latencies), 2),
-                "p95_ms": round(sorted(latencies)[int(len(latencies) * 0.95)], 2) if len(latencies) > 1 else latencies[0],
+                "p95_ms": (
+                    round(sorted(latencies)[int(len(latencies) * 0.95)], 2)
+                    if len(latencies) > 1
+                    else latencies[0]
+                ),
             },
             "throughput": {
-                "mean_tokens_per_sec": round(statistics.mean(tokens_per_sec_list), 2) if tokens_per_sec_list else 0,
+                "mean_tokens_per_sec": (
+                    round(statistics.mean(tokens_per_sec_list), 2)
+                    if tokens_per_sec_list
+                    else 0
+                ),
             },
-            "sample_response": responses[0][:500] + "..." if len(responses[0]) > 500 else responses[0],
+            "sample_response": (
+                responses[0][:500] + "..." if len(responses[0]) > 500 else responses[0]
+            ),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -443,7 +495,9 @@ class OllamaEnhancedBenchmark:
         if models:
             models_to_test = [m for m in models if self.available_models.get(m, False)]
         else:
-            models_to_test = [m for m, available in self.available_models.items() if available]
+            models_to_test = [
+                m for m, available in self.available_models.items() if available
+            ]
 
         if not models_to_test:
             print("❌ No models available. Pull models with: ollama pull <model>")
@@ -495,19 +549,26 @@ class OllamaEnhancedBenchmark:
                     else:
                         test_result.models[model] = result
                         model_latencies[model].append(result["latency"]["mean_ms"])
-                        print(f"    ✅ {model}: {result['latency']['mean_ms']}ms (±{result['latency']['stdev_ms']}ms)")
+                        print(
+                            f"    ✅ {model}: {result['latency']['mean_ms']}ms (±{result['latency']['stdev_ms']}ms)"
+                        )
 
                 except Exception as e:
                     print(f"    ❌ {model}: {str(e)}")
                     test_result.models[model] = {"error": str(e)}
 
             # Determine winner for this test
-            valid_results = {k: v for k, v in test_result.models.items() if "latency" in v}
+            valid_results = {
+                k: v for k, v in test_result.models.items() if "latency" in v
+            }
             if len(valid_results) >= 2:
-                winner = min(valid_results.items(), key=lambda x: x[1]["latency"]["mean_ms"])
+                winner = min(
+                    valid_results.items(), key=lambda x: x[1]["latency"]["mean_ms"]
+                )
                 test_result.winner = winner[0]
                 test_result.margin_ms = round(
-                    max(v["latency"]["mean_ms"] for v in valid_results.values()) - winner[1]["latency"]["mean_ms"],
+                    max(v["latency"]["mean_ms"] for v in valid_results.values())
+                    - winner[1]["latency"]["mean_ms"],
                     2,
                 )
                 model_wins[winner[0]] += 1
@@ -522,7 +583,11 @@ class OllamaEnhancedBenchmark:
             if latencies:
                 latency_comparison[model] = {
                     "avg_ms": round(statistics.mean(latencies), 2),
-                    "consistency_ms": round(statistics.stdev(latencies), 2) if len(latencies) > 1 else 0,
+                    "consistency_ms": (
+                        round(statistics.stdev(latencies), 2)
+                        if len(latencies) > 1
+                        else 0
+                    ),
                 }
 
         return BenchmarkReport(
@@ -534,7 +599,9 @@ class OllamaEnhancedBenchmark:
             available_models=self.available_models,
         )
 
-    def save_report(self, report: BenchmarkReport, output_path: str = "benchmark_report_ollama.json"):
+    def save_report(
+        self, report: BenchmarkReport, output_path: str = "benchmark_report_ollama.json"
+    ):
         """Save benchmark report to JSON file.
 
         Args:
@@ -586,7 +653,9 @@ class OllamaEnhancedBenchmark:
             print(f"  {model}: {wins} wins")
 
         print(f"\n⏱️ Average Latency:")
-        for model, stats in sorted(report.latency_comparison.items(), key=lambda x: x[1]["avg_ms"]):
+        for model, stats in sorted(
+            report.latency_comparison.items(), key=lambda x: x[1]["avg_ms"]
+        ):
             print(f"  {model}: {stats['avg_ms']}ms (±{stats['consistency_ms']}ms)")
 
         print("=" * 60)

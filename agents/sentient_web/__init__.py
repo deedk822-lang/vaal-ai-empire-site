@@ -11,10 +11,10 @@ Production-grade implementation with enterprise reliability:
 Example:
     import asyncio
     from agents.sentient_web import DigitalPreeminenceOrchestrator
-    
+
     async def main():
         orchestrator = DigitalPreeminenceOrchestrator()
-        
+
         try:
             report = await orchestrator.achieve_preeminence({
                 'project': 'my-site',
@@ -22,47 +22,64 @@ Example:
                 'run_benchmarks': True,
                 'benchmark_url': 'http://localhost:8080'
             })
-            
+
             print(f"Score: {report.overall_score}/100")
             print(f"Status: {report.award_status}")
-            
+
             # Access observability
             print(orchestrator.get_metrics_report())
-            
+
         finally:
             await orchestrator.cleanup()
-    
+
     asyncio.run(main())
 """
 
-__version__ = '2026.1.0+aaa'
-__author__ = 'Vaal AI Empire'
+__version__ = "2026.1.0+aaa"
+__author__ = "Vaal AI Empire"
 
 # Core infrastructure
 from .core.api_client import (
-    GLM5Client,
+    APIResponse,
     CircuitBreaker,
     CircuitBreakerOpenError,
+    GLM5Client,
     RetryPolicy,
-    APIResponse,
 )
-
+from .core.benchmark import (
+    AXEAccessibilityRunner,
+    BenchmarkMetric,
+    BenchmarkResult,
+    LighthouseRunner,
+    RealBenchmarkRunner,
+)
 from .core.code_generator import (
     CodeGenerator,
     CSSGenerator,
-    JSGenerator,
     GeneratedFile,
     GenerationResult,
+    JSGenerator,
 )
-
-from .core.benchmark import (
-    RealBenchmarkRunner,
-    LighthouseRunner,
-    AXEAccessibilityRunner,
-    BenchmarkResult,
-    BenchmarkMetric,
+from .core.observability import (
+    MetricsCollector,
+    StructuredLogger,
+    Tracer,
+    measure_performance,
 )
-
+from .core.resilience import (
+    Bulkhead,
+    BulkheadFullError,
+    BulkheadTimeoutError,
+    CachedResponseFallback,
+    FallbackChain,
+    FallbackStrategy,
+    GracefulDegradation,
+    HealthCheck,
+    HealthChecker,
+    HealthStatus,
+    LocalTemplateFallback,
+    SimplifiedGenerationFallback,
+)
 from .core.validator import (
     CodeValidator,
     SecurityScanner,
@@ -70,97 +87,69 @@ from .core.validator import (
     ValidationResult,
 )
 
-from .core.resilience import (
-    FallbackChain,
-    FallbackStrategy,
-    LocalTemplateFallback,
-    CachedResponseFallback,
-    SimplifiedGenerationFallback,
-    Bulkhead,
-    BulkheadFullError,
-    BulkheadTimeoutError,
-    HealthChecker,
-    HealthStatus,
-    HealthCheck,
-    GracefulDegradation,
-)
-
-from .core.observability import (
-    StructuredLogger,
-    MetricsCollector,
-    Tracer,
-    measure_performance,
-)
-
 # Main orchestrator
 from .orchestrator import (
-    DigitalPreeminenceOrchestrator,
-    SentientUIAgent,
-    MXAgent,
-    EmpathyAgent,
-    PerfAgent,
     AmbientAgent,
+    DigitalPreeminenceOrchestrator,
+    EmpathyAgent,
     GLM5AwardEvaluator,
-    SwarmResult,
+    MXAgent,
+    PerfAgent,
     PreeminenceReport,
+    SentientUIAgent,
+    SwarmResult,
 )
 
 __all__ = [
     # Core API
-    'GLM5Client',
-    'CircuitBreaker',
-    'CircuitBreakerOpenError',
-    'RetryPolicy',
-    'APIResponse',
-    
+    "GLM5Client",
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+    "RetryPolicy",
+    "APIResponse",
     # Code Generation
-    'CodeGenerator',
-    'CSSGenerator',
-    'JSGenerator',
-    'GeneratedFile',
-    'GenerationResult',
-    
+    "CodeGenerator",
+    "CSSGenerator",
+    "JSGenerator",
+    "GeneratedFile",
+    "GenerationResult",
     # Benchmarking
-    'RealBenchmarkRunner',
-    'LighthouseRunner',
-    'AXEAccessibilityRunner',
-    'BenchmarkResult',
-    'BenchmarkMetric',
-    
+    "RealBenchmarkRunner",
+    "LighthouseRunner",
+    "AXEAccessibilityRunner",
+    "BenchmarkResult",
+    "BenchmarkMetric",
     # Validator
-    'CodeValidator',
-    'SecurityScanner',
-    'ValidationIssue',
-    'ValidationResult',
-    
+    "CodeValidator",
+    "SecurityScanner",
+    "ValidationIssue",
+    "ValidationResult",
     # Resilience
-    'FallbackChain',
-    'FallbackStrategy',
-    'LocalTemplateFallback',
-    'CachedResponseFallback',
-    'SimplifiedGenerationFallback',
-    'Bulkhead',
-    'BulkheadFullError',
-    'BulkheadTimeoutError',
-    'HealthChecker',
-    'HealthStatus',
-    'HealthCheck',
-    'GracefulDegradation',
-    
+    "FallbackChain",
+    "FallbackStrategy",
+    "LocalTemplateFallback",
+    "CachedResponseFallback",
+    "SimplifiedGenerationFallback",
+    "Bulkhead",
+    "BulkheadFullError",
+    "BulkheadTimeoutError",
+    "HealthChecker",
+    "HealthStatus",
+    "HealthCheck",
+    "GracefulDegradation",
     # Observability
-    'StructuredLogger',
-    'MetricsCollector',
-    'Tracer',
-    'measure_performance',
-    
+    "StructuredLogger",
+    "MetricsCollector",
+    "Tracer",
+    "measure_performance",
     # Agents
-    'DigitalPreeminenceOrchestrator',
-    'SentientUIAgent',
-    'MXAgent',
-    'EmpathyAgent',
-    'PerfAgent',
-    'AmbientAgent',
-    'GLM5AwardEvaluator',
-    'SwarmResult',
-    'PreeminenceReport',
+    "DigitalPreeminenceOrchestrator",
+    "SentientUIAgent",
+    "MXAgent",
+    "EmpathyAgent",
+    "PerfAgent",
+    "AmbientAgent",
+    "GLM5AwardEvaluator",
+    "SwarmResult",
+    "PreeminenceReport",
 ]
