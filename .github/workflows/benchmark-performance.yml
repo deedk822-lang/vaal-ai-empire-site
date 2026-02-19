@@ -278,11 +278,19 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const path = 'current_results/report.json';
+            
+            // Check if file exists before reading
+            if (!fs.existsSync(path)) {
+              console.log('::notice::No benchmark report found — skipping PR comment');
+              return;
+            }
+            
             let report = {};
             try {
-              report = JSON.parse(fs.readFileSync('current_results/report.json', 'utf8'));
+              report = JSON.parse(fs.readFileSync(path, 'utf8'));
             } catch (e) {
-              console.log('Could not read report:', e.message);
+              console.log('::warning::Could not parse report:', e.message);
               return;
             }
             
@@ -303,9 +311,14 @@ jobs:
               'Benchmarks completed successfully.',
             ].join('\n');
             
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body,
-            });
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+              console.log('::notice::PR comment posted successfully');
+            } catch (err) {
+              console.log('::warning::Could not post PR comment:', err.message);
+            }

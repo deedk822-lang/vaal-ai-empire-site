@@ -212,6 +212,9 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download swarm output
         uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
         with:
