@@ -1,84 +1,65 @@
- feature/stripe-checkout
-// Vaal AI Empire - Stripe Checkout Server
-// Handles subscription checkout for SA SMEs
-
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const path = require('path');
-
-// Initialize Stripe with your secret key
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-const app = express();
-const port = process.env.PORT || 4242;
-
-// Middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(process.env.STATIC_DIR || '../client'));
-
-// CORS for development
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-});
-
-// Routes
-app.get('/', (req, res) => {
-  const indexPath = path.resolve(process.env.STATIC_DIR || '../client', 'index.html');
-  res.sendFile(indexPath);
-});
-
-// Get pricing configuration
-app.get('/config', (req, res) => {
-  res.send({
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-    prices: {
-      starter: process.env.STARTER_PRICE_ID,
-      empire: process.env.EMPIRE_PRICE_ID
-    }
-  });
-
 // Vaal AI Empire - Main Server
 // Enterprise-grade Stripe + Auth + Observability Platform
 // Built in the Vaal. Built for Africa.
 
 require('dotenv').config();
 const express = require('express');
+const bodyParser = require('body-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const hpp = require('hpp');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-
-// Database connection
-const connectDB = require('./config/database');
 
 // Initialize Stripe
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+// Database connection
+let connectDB;
+try {
+    connectDB = require('./config/database');
+} catch (error) {
+    console.log('ℹ️  Database module not found, running without MongoDB');
+    connectDB = async () => console.log('📊 MongoDB connection skipped');
+}
+
 // Import middleware
-const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
+let globalErrorHandler, notFound;
+try {
+    const errorHandler = require('./middleware/errorHandler');
+    globalErrorHandler = errorHandler.globalErrorHandler;
+    notFound = errorHandler.notFound;
+} catch (error) {
+    console.log('ℹ️  Error handler module not found, using defaults');
+    globalErrorHandler = (err, req, res, next) => {
+        console.error(err);
+        res.status(500).json({ error: 'Internal server error' });
+    };
+    notFound = (req, res) => res.status(404).json({ error: 'Not found' });
+}
 
 // Import routes
-const authRoutes = require('./routes/auth');
- feat/auth-error-handling-5447018483623698560
-const paymentRoutes = require('./routes/paymentRoutes');
-const subscriptionRoutes = require('./routes/subscriptionRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
+let authRoutes, paymentRoutes, subscriptionRoutes, analyticsRoutes, observabilityRoutes;
+try {
+    authRoutes = require('./routes/auth');
+} catch (e) { console.log('ℹ️  Auth routes not found'); }
+try {
+    paymentRoutes = require('./routes/paymentRoutes');
+} catch (e) { console.log('ℹ️  Payment routes not found'); }
+try {
+    subscriptionRoutes = require('./routes/subscriptionRoutes');
+} catch (e) { console.log('ℹ️  Subscription routes not found'); }
+try {
+    analyticsRoutes = require('./routes/analyticsRoutes');
+} catch (e) { console.log('ℹ️  Analytics routes not found'); }
+try {
+    observabilityRoutes = require('./routes/observability');
+} catch (e) { console.log('ℹ️  Observability routes not found'); }
 
- main
-
-// Import observability (if exists)
-let observabilityRoutes, tracer;
+// Import tracer if available
+let tracer;
 try {
     const { getTracer } = require('./lib/tracing');
-    observabilityRoutes = require('./routes/observability');
     tracer = getTracer({
         projectName: 'vaal-ai-empire',
         environment: process.env.NODE_ENV || 'development'
@@ -88,72 +69,26 @@ try {
 }
 
 const app = express();
-const port = process.env.PORT || 4242;
+const port = process.env.PORT || 3000;
 
 // =============================
 // SECURITY MIDDLEWARE
 // =============================
- feat/auth-error-handling-5447018483623698560
 
 // Set security HTTP headers
 app.use(helmet());
 
 // Rate limiting
 const limiter = rateLimit({
-    max: 100, // 100 requests per windowMs
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api', limiter);
-
-// Auth-specific rate limiter (stricter)
-const authLimiter = rateLimit({
-    max: 5, // 5 login attempts per windowMs
+    max: 100,
     windowMs: 15 * 60 * 1000,
-    message: 'Too many login attempts, please try again later.',
-    skipSuccessfulRequests: true
-});
-app.use('/api/auth/login', authLimiter);
-
-// CORS
-const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
-    credentials: true,
-    optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
-
-// =============================
-// BODY PARSING & SANITIZATION
-// =============================
-
-// Body parser (limit payload size)
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-app.use(cookieParser());
-
-// Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
-
-// Data sanitization against XSS
-app.use(xss());
-
-
-
-// Set security HTTP headers
-app.use(helmet());
-
-// Rate limiting
-const limiter = rateLimit({
-    max: 100, // 100 requests per windowMs
-    windowMs: 15 * 60 * 1000, // 15 minutes
     message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api', limiter);
 
-// Auth-specific rate limiter (stricter)
+// Auth-specific rate limiter
 const authLimiter = rateLimit({
-    max: 5, // 5 login attempts per windowMs
+    max: 5,
     windowMs: 15 * 60 * 1000,
     message: 'Too many login attempts, please try again later.',
     skipSuccessfulRequests: true
@@ -170,25 +105,12 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // =============================
-// BODY PARSING & SANITIZATION
+// BODY PARSING
 // =============================
 
-// Body parser (limit payload size)
-app.use(bodyParser.json({ limit: '10kb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
-
-// Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
-
-// Data sanitization against XSS
-app.use(xss());
-
- main
-// Prevent parameter pollution
-app.use(hpp({
-    whitelist: ['price', 'plan', 'status'] // Allow these params to be duplicated
-}));
 
 // Static files
 app.use(express.static(path.join(__dirname, '..')));
@@ -204,15 +126,7 @@ app.use((req, res, next) => {
             path: req.path,
             ip: req.ip
         });
- feat/auth-error-handling-5447018483623698560
-
         req.traceId = traceId;
-
-
-        
-        req.traceId = traceId;
-        
- main
         res.on('finish', () => {
             tracer.endTrace(traceId, {
                 statusCode: res.statusCode,
@@ -220,11 +134,6 @@ app.use((req, res, next) => {
             });
         });
     }
- feat/auth-error-handling-5447018483623698560
-
-
-    
- main
     req.timestamp = Date.now();
     next();
 });
@@ -233,21 +142,15 @@ app.use((req, res, next) => {
 // ROUTES
 // =============================
 
-// Health check (before authentication)
+// Health check
 app.get('/health', (req, res) => {
     const stats = tracer ? tracer.getStats() : {};
- feat/auth-error-handling-5447018483623698560
-
-
-    
- main
     res.json({
         status: 'ok',
         service: 'vaal-ai-empire',
         timestamp: new Date().toISOString(),
         node: process.version,
         uptime: process.uptime(),
-        database: 'connected', // Will be updated by connectDB
         stats
     });
 });
@@ -258,17 +161,11 @@ app.get('/', (req, res) => {
 });
 
 // API Routes
-app.use('/api/auth', authRoutes);
- feat/auth-error-handling-5447018483623698560
-app.use('/api/payments', paymentRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/analytics', analyticsRoutes);
-
- main
-
-if (observabilityRoutes) {
-    app.use('/api/observability', observabilityRoutes);
-}
+if (authRoutes) app.use('/api/auth', authRoutes);
+if (paymentRoutes) app.use('/api/payments', paymentRoutes);
+if (subscriptionRoutes) app.use('/api/subscriptions', subscriptionRoutes);
+if (analyticsRoutes) app.use('/api/analytics', analyticsRoutes);
+if (observabilityRoutes) app.use('/api/observability', observabilityRoutes);
 
 // =============================
 // STRIPE ROUTES
@@ -283,179 +180,16 @@ app.get('/config', (req, res) => {
             empire: process.env.EMPIRE_PRICE_ID
         }
     });
- main
 });
 
 // Create Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
- feature/stripe-checkout
-  const { priceId } = req.body;
-  
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      // Success and cancel URLs
-      success_url: `${process.env.DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.DOMAIN}/canceled`,
-      // Automatically create customer
-      customer_creation: 'always',
-      // Collect billing address
-      billing_address_collection: 'required',
-      // Allow promotion codes
-      allow_promotion_codes: true,
-      // Payment method types
-      payment_method_types: ['card'],
-      // Metadata for tracking
-      metadata: {
-        product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire',
-        source: 'vaalai_website'
-      },
-      // Subscription data
-      subscription_data: {
-        metadata: {
-          product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
-        },
-        // Optional: Add trial period
-        // trial_period_days: 7,
-      },
-    });
-    
-    res.json({ sessionId: session.id });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get session details for success page
-app.get('/checkout-session', async (req, res) => {
-  const { sessionId } = req.query;
-  
-  try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    res.json(session);
-  } catch (error) {
-    console.error('Error retrieving session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Webhook endpoint for Stripe events
-app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-  
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-  
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      const session = event.data.object;
-      console.log('✅ Checkout completed:', session.id);
-      console.log('Customer:', session.customer);
-      console.log('Subscription:', session.subscription);
-      // TODO: Send welcome email, provision access, etc.
-      break;
-      
-    case 'customer.subscription.created':
-      const subscription = event.data.object;
-      console.log('✅ Subscription created:', subscription.id);
-      break;
-      
-    case 'customer.subscription.updated':
-      const updatedSub = event.data.object;
-      console.log('🔄 Subscription updated:', updatedSub.id);
-      break;
-      
-    case 'customer.subscription.deleted':
-      const deletedSub = event.data.object;
-      console.log('❌ Subscription canceled:', deletedSub.id);
-      // TODO: Revoke access
-      break;
-      
-    case 'invoice.paid':
-      const invoice = event.data.object;
-      console.log('💰 Invoice paid:', invoice.id);
-      break;
-      
-    case 'invoice.payment_failed':
-      const failedInvoice = event.data.object;
-      console.log('⚠️ Payment failed:', failedInvoice.id);
-      // TODO: Send payment failure email
-      break;
-      
-    default:
-      console.log(`Unhandled event type: ${event.type}`);
-  }
-  
-  res.json({ received: true });
-});
-
-// Customer Portal - Allow customers to manage subscription
-app.post('/create-portal-session', async (req, res) => {
-  const { customerId } = req.body;
-  
-  try {
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${process.env.DOMAIN}/account`,
-    });
-    
-    res.json({ url: portalSession.url });
-  } catch (error) {
-    console.error('Error creating portal session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    service: 'vaal-ai-empire-checkout',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Start server
-app.listen(port, () => {
-  console.log('⚡ Vaal AI Empire Checkout Server');
-  console.log(`🚀 Running on http://localhost:${port}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
-module.exports = app;
-=======
     const { priceId } = req.body;
- feat/auth-error-handling-5447018483623698560
 
-
-    
- main
     try {
         const session = await stripe.checkout.sessions.create({
             mode: 'subscription',
-            line_items: [
-                {
-                    price: priceId,
-                    quantity: 1,
-                },
-            ],
+            line_items: [{ price: priceId, quantity: 1 }],
             success_url: `${process.env.DOMAIN}/success.html?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${process.env.DOMAIN}/canceled.html`,
             customer_creation: 'always',
@@ -470,8 +204,8 @@ module.exports = app;
                 trial_period_days: 7,
                 metadata: {
                     product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
-                },
-            },
+                }
+            }
         });
 
         if (tracer) {
@@ -498,12 +232,8 @@ app.get('/checkout-session', async (req, res) => {
     }
 });
 
-// Webhook endpoint (must use raw body)
- feat/auth-error-handling-5447018483623698560
-app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-
-app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res) => {
- main
+// Webhook endpoint
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
 
@@ -521,37 +251,23 @@ app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res
     // Handle events
     switch (event.type) {
         case 'checkout.session.completed':
-            const session = event.data.object;
-            console.log('✅ Checkout completed:', session.id);
-            // TODO: Create user subscription in database
+            console.log('✅ Checkout completed:', event.data.object.id);
             break;
-
         case 'customer.subscription.created':
-            const subscription = event.data.object;
-            console.log('✅ Subscription created:', subscription.id);
+            console.log('✅ Subscription created:', event.data.object.id);
             break;
-
         case 'customer.subscription.updated':
-            const updatedSub = event.data.object;
-            console.log('🔄 Subscription updated:', updatedSub.id);
+            console.log('🔄 Subscription updated:', event.data.object.id);
             break;
-
         case 'customer.subscription.deleted':
-            const deletedSub = event.data.object;
-            console.log('❌ Subscription canceled:', deletedSub.id);
+            console.log('❌ Subscription canceled:', event.data.object.id);
             break;
-
         case 'invoice.paid':
-            const invoice = event.data.object;
-            console.log('💰 Invoice paid:', invoice.id);
+            console.log('💰 Invoice paid:', event.data.object.id);
             break;
-
         case 'invoice.payment_failed':
-            const failedInvoice = event.data.object;
-            console.log('⚠️ Payment failed:', failedInvoice.id);
-            // TODO: Send email to customer
+            console.log('⚠️ Payment failed:', event.data.object.id);
             break;
-
         default:
             console.log(`Unhandled event type: ${event.type}`);
     }
@@ -566,9 +282,8 @@ app.post('/create-portal-session', async (req, res) => {
     try {
         const portalSession = await stripe.billingPortal.sessions.create({
             customer: customerId,
-            return_url: `${process.env.DOMAIN}/account.html`,
+            return_url: `${process.env.DOMAIN}/account.html`
         });
-
         res.json({ url: portalSession.url });
     } catch (error) {
         console.error('Error creating portal session:', error);
@@ -580,56 +295,34 @@ app.post('/create-portal-session', async (req, res) => {
 // ERROR HANDLING
 // =============================
 
-// Handle 404 - must be after all other routes
 app.use(notFound);
-
-// Global error handler - must be last
 app.use(globalErrorHandler);
 
 // =============================
-// DATABASE & SERVER STARTUP
+// SERVER STARTUP
 // =============================
 
 const startServer = async () => {
     try {
-        // Connect to MongoDB
         await connectDB();
- feat/auth-error-handling-5447018483623698560
 
-
-        
- main
-        // Cleanup old traces every hour (if tracer exists)
+        // Cleanup old traces every hour
         if (tracer) {
             setInterval(() => {
-                tracer.cleanup(24 * 60 * 60 * 1000); // 24 hours
+                tracer.cleanup(24 * 60 * 60 * 1000);
             }, 60 * 60 * 1000);
         }
- feat/auth-error-handling-5447018483623698560
 
-
-        
- main
-        // Start server
         app.listen(port, () => {
             console.log('');
             console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
             console.log('   VAAL AI EMPIRE - SERVER');
-            console.log('   10X Enterprise Platform');
             console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
             console.log('');
             console.log(`🚀 Running on: http://localhost:${port}`);
-            console.log(`🔐 Auth API: http://localhost:${port}/api/auth`);
-            console.log(`💳 Stripe API: http://localhost:${port}/create-checkout-session`);
-            console.log(`📊 Dashboard: http://localhost:${port}/dashboard.html`);
-            if (tracer) {
-                console.log(`🔍 Observability: http://localhost:${port}/api/observability`);
-            }
             console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`🌍 Domain: ${process.env.DOMAIN}`);
             console.log('');
             console.log('🇿🇦 Built in the Vaal. Built for Africa.');
-            console.log('');
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
@@ -651,8 +344,6 @@ process.on('uncaughtException', (err) => {
     process.exit(1);
 });
 
-// Start the server
 startServer();
 
 module.exports = app;
- main
