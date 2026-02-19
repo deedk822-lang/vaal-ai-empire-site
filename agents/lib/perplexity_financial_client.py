@@ -469,9 +469,12 @@ Use null for unavailable data. data_quality should be 0.0-1.0 based on data fres
 def example_usage():
     """Example usage of PerplexityFinancialClient."""
     
-    # Initialize (requires PERPLEXITY_API_KEY env var or passed key)
+    # Initialize (requires PERPLEXITY_API_KEY env var)
     import os
-    api_key = os.getenv("PERPLEXITY_API_KEY", "your_api_key_here")
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        print("Error: Set PERPLEXITY_API_KEY environment variable")
+        return
     
     client = PerplexityFinancialClient(api_key=api_key)
     
