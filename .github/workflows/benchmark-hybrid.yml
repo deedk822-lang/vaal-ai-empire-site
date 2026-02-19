@@ -43,10 +43,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload Ollama results
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        uses: actions/upload-artifact@v4
         with:
           name: ollama-benchmark-results
           path: benchmark_results/
@@ -107,10 +107,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload Direct API results
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        uses: actions/upload-artifact@v4
         with:
           name: direct-api-benchmark-results
           path: benchmark_results/
@@ -155,14 +155,14 @@ jobs:
 
     steps:
       - name: Download Ollama results
-        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
+        uses: actions/download-artifact@v4
         with:
           name: ollama-benchmark-results
           path: results/ollama
         continue-on-error: true
 
       - name: Download Direct API results
-        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
+        uses: actions/download-artifact@v4
         with:
           name: direct-api-benchmark-results
           path: results/direct
