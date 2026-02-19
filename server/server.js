@@ -1,6 +1,6 @@
 // Vaal AI Empire - Main Server
-// Enterprise-grade Stripe + Auth + Observability Platform
-// Built in the Vaal. Built for Africa.
+// Enterprise-grade PayFast + Auth + Observability Platform
+// Built in the Vaal. Built for Africa. 🇿🇦
 
 require('dotenv').config();
 const express = require('express');
@@ -10,9 +10,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-
-// Initialize Stripe
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const crypto = require('crypto');
 
 // Database connection
 let connectDB;
@@ -72,10 +70,49 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // =============================
+// PAYFAST CONFIGURATION
+// =============================
+
+const PAYFAST_CONFIG = {
+    merchant_id: process.env.PAYFAST_MERCHANT_ID || '10000100',
+    merchant_key: process.env.PAYFAST_MERCHANT_KEY || '',
+    passphrase: process.env.PAYFAST_PASSPHRASE || '',
+    sandbox: process.env.PAYFAST_SANDBOX === 'true',
+    // PayFast URLs
+    get baseUrl() {
+        return this.sandbox 
+            ? 'https://sandbox.payfast.co.za/eng/process'
+            : 'https://www.payfast.co.za/eng/process';
+    }
+};
+
+// PayFast signature generator
+function generatePayFastSignature(data, passphrase = '') {
+    // Sort data alphabetically by key
+    const sortedKeys = Object.keys(data).sort();
+    const paramString = sortedKeys
+        .map(key => `${key}=${encodeURIComponent(data[key]).replace(/%20/g, '+')}`)
+        .join('&');
+    
+    // Add passphrase if provided
+    const stringToHash = passphrase ? `${paramString}&passphrase=${encodeURIComponent(passphrase)}` : paramString;
+    
+    return crypto.createHash('md5').update(stringToHash).digest('hex');
+}
+
+// Verify PayFast ITN signature
+function verifyPayFastSignature(data, passphrase = '') {
+    const receivedSignature = data.signature;
+    delete data.signature;
+    
+    const calculatedSignature = generatePayFastSignature(data, passphrase);
+    return receivedSignature === calculatedSignature;
+}
+
+// =============================
 // SECURITY MIDDLEWARE
 // =============================
 
-// Set security HTTP headers
 app.use(helmet());
 
 // Rate limiting
@@ -151,6 +188,7 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString(),
         node: process.version,
         uptime: process.uptime(),
+        payment: 'PayFast',
         stats
     });
 });
@@ -168,127 +206,164 @@ if (analyticsRoutes) app.use('/api/analytics', analyticsRoutes);
 if (observabilityRoutes) app.use('/api/observability', observabilityRoutes);
 
 // =============================
-// STRIPE ROUTES
+// PAYFAST ROUTES
 // =============================
 
-// Get configuration
+// Get PayFast configuration (for frontend)
 app.get('/config', (req, res) => {
     res.json({
-        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+        merchantId: PAYFAST_CONFIG.merchant_id,
+        merchantKey: PAYFAST_CONFIG.merchant_key,
+        sandbox: PAYFAST_CONFIG.sandbox,
+        returnUrl: `${process.env.DOMAIN}/success.html`,
+        cancelUrl: `${process.env.DOMAIN}/canceled.html`,
+        notifyUrl: `${process.env.DOMAIN}/payfast/notify`,
         prices: {
-            starter: process.env.STARTER_PRICE_ID,
-            empire: process.env.EMPIRE_PRICE_ID
+            starter: {
+                name: 'Vaal Starter',
+                amount: parseInt(process.env.VAAL_STARTER_PRICE) || 99900, // R999.00 in cents
+                description: 'Vaal Starter - Monthly Subscription'
+            },
+            empire: {
+                name: 'Vaal Empire',
+                amount: parseInt(process.env.VAAL_EMPIRE_PRICE) || 299900, // R2,999.00 in cents
+                description: 'Vaal Empire - Monthly Subscription'
+            }
         }
     });
 });
 
-// Create Checkout Session
-app.post('/create-checkout-session', async (req, res) => {
-    const { priceId } = req.body;
-
-    try {
-        const session = await stripe.checkout.sessions.create({
-            mode: 'subscription',
-            line_items: [{ price: priceId, quantity: 1 }],
-            success_url: `${process.env.DOMAIN}/success.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.DOMAIN}/canceled.html`,
-            customer_creation: 'always',
-            billing_address_collection: 'required',
-            allow_promotion_codes: true,
-            payment_method_types: ['card'],
-            metadata: {
-                product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire',
-                source: 'vaalai_website'
-            },
-            subscription_data: {
-                trial_period_days: 7,
-                metadata: {
-                    product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
-                }
-            }
-        });
-
-        if (tracer) {
-            tracer.recordMetric('checkout_created', { priceId, sessionId: session.id });
-        }
-
-        res.json({ sessionId: session.id });
-    } catch (error) {
-        console.error('Error creating checkout session:', error);
-        res.status(500).json({ error: error.message });
+// Create PayFast payment
+app.post('/create-payment', async (req, res) => {
+    const { plan, email, name } = req.body;
+    
+    // Determine plan details
+    let amount, itemName;
+    if (plan === 'empire') {
+        amount = parseInt(process.env.VAAL_EMPIRE_PRICE) || 299900;
+        itemName = 'Vaal Empire';
+    } else {
+        amount = parseInt(process.env.VAAL_STARTER_PRICE) || 99900;
+        itemName = 'Vaal Starter';
     }
+
+    // Generate unique payment ID
+    const paymentId = `Vaal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // PayFast payment data
+    const paymentData = {
+        merchant_id: PAYFAST_CONFIG.merchant_id,
+        merchant_key: PAYFAST_CONFIG.merchant_key,
+        return_url: `${process.env.DOMAIN}/success.html?payment_id=${paymentId}`,
+        cancel_url: `${process.env.DOMAIN}/canceled.html`,
+        notify_url: `${process.env.DOMAIN}/payfast/notify`,
+        name_first: name ? name.split(' ')[0] : 'Customer',
+        name_last: name ? name.split(' ').slice(1).join(' ') || '' : '',
+        email_address: email || '',
+        m_payment_id: paymentId,
+        amount: (amount / 100).toFixed(2), // Convert cents to Rands
+        item_name: itemName,
+        item_description: `${itemName} - Monthly Subscription`,
+        custom_str1: plan,
+        custom_str2: 'vaal-ai-empire',
+        custom_int1: 1, // Subscription flag
+    };
+
+    // Generate signature
+    const signature = generatePayFastSignature(paymentData, PAYFAST_CONFIG.passphrase);
+    paymentData.signature = signature;
+
+    if (tracer) {
+        tracer.recordMetric('payment_created', { paymentId, plan, amount });
+    }
+
+    res.json({
+        success: true,
+        paymentId,
+        paymentData,
+        payfastUrl: PAYFAST_CONFIG.baseUrl,
+        sandbox: PAYFAST_CONFIG.sandbox
+    });
 });
 
-// Get session details
-app.get('/checkout-session', async (req, res) => {
-    const { sessionId } = req.query;
-
-    try {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        res.json(session);
-    } catch (error) {
-        console.error('Error retrieving session:', error);
-        res.status(500).json({ error: error.message });
+// PayFast ITN (Instant Transaction Notification) webhook
+app.post('/payfast/notify', express.urlencoded({ extended: true }), async (req, res) => {
+    console.log('📢 PayFast ITN received');
+    
+    const data = req.body;
+    
+    // Verify signature
+    if (!verifyPayFastSignature({ ...data }, PAYFAST_CONFIG.passphrase)) {
+        console.error('❌ Invalid PayFast signature');
+        return res.status(400).send('Invalid signature');
     }
-});
 
-// Webhook endpoint
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    let event;
-
+    // Verify with PayFast server (security best practice)
     try {
-        event = stripe.webhooks.constructEvent(
-            req.body,
-            sig,
-            process.env.STRIPE_WEBHOOK_SECRET
+        const axios = require('axios');
+        const verifyResponse = await axios.post(
+            PAYFAST_CONFIG.sandbox 
+                ? 'https://sandbox.payfast.co.za/eng/query/validate'
+                : 'https://www.payfast.co.za/eng/query/validate',
+            new URLSearchParams(data).toString(),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
-    } catch (err) {
-        console.error('Webhook signature verification failed:', err.message);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
+
+        if (verifyResponse.data !== 'VALID') {
+            console.error('❌ PayFast validation failed:', verifyResponse.data);
+            return res.status(400).send('Validation failed');
+        }
+    } catch (error) {
+        console.error('❌ PayFast verification error:', error.message);
+        // Continue anyway for sandbox testing
+        if (!PAYFAST_CONFIG.sandbox) {
+            return res.status(400).send('Verification failed');
+        }
     }
 
-    // Handle events
-    switch (event.type) {
-        case 'checkout.session.completed':
-            console.log('✅ Checkout completed:', event.data.object.id);
+    const paymentStatus = data.payment_status;
+    const paymentId = data.m_payment_id;
+    const amount = parseFloat(data.amount_gross);
+    const plan = data.custom_str1;
+
+    console.log(`💰 Payment ${paymentId}: ${paymentStatus} - R${amount}`);
+
+    // Handle payment status
+    switch (paymentStatus) {
+        case 'COMPLETE':
+            console.log(`✅ Payment completed: ${paymentId}`);
+            if (tracer) {
+                tracer.recordMetric('payment_complete', { paymentId, plan, amount });
+            }
+            // TODO: Update database, send email, activate subscription
             break;
-        case 'customer.subscription.created':
-            console.log('✅ Subscription created:', event.data.object.id);
+        case 'FAILED':
+            console.log(`❌ Payment failed: ${paymentId}`);
+            if (tracer) {
+                tracer.recordMetric('payment_failed', { paymentId, plan });
+            }
             break;
-        case 'customer.subscription.updated':
-            console.log('🔄 Subscription updated:', event.data.object.id);
-            break;
-        case 'customer.subscription.deleted':
-            console.log('❌ Subscription canceled:', event.data.object.id);
-            break;
-        case 'invoice.paid':
-            console.log('💰 Invoice paid:', event.data.object.id);
-            break;
-        case 'invoice.payment_failed':
-            console.log('⚠️ Payment failed:', event.data.object.id);
+        case 'PENDING':
+            console.log(`⏳ Payment pending: ${paymentId}`);
             break;
         default:
-            console.log(`Unhandled event type: ${event.type}`);
+            console.log(`ℹ️ Unknown status: ${paymentStatus}`);
     }
 
-    res.json({ received: true });
+    // Respond to PayFast
+    res.status(200).send('OK');
 });
 
-// Customer Portal
-app.post('/create-portal-session', async (req, res) => {
-    const { customerId } = req.body;
-
-    try {
-        const portalSession = await stripe.billingPortal.sessions.create({
-            customer: customerId,
-            return_url: `${process.env.DOMAIN}/account.html`
-        });
-        res.json({ url: portalSession.url });
-    } catch (error) {
-        console.error('Error creating portal session:', error);
-        res.status(500).json({ error: error.message });
-    }
+// Check payment status
+app.get('/payment-status/:paymentId', async (req, res) => {
+    const { paymentId } = req.params;
+    
+    // TODO: Check payment status from database
+    res.json({
+        paymentId,
+        status: 'pending', // Would come from database
+        message: 'Payment status check'
+    });
 });
 
 // =============================
@@ -321,6 +396,7 @@ const startServer = async () => {
             console.log('');
             console.log(`🚀 Running on: http://localhost:${port}`);
             console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`💳 Payments: PayFast (${PAYFAST_CONFIG.sandbox ? 'SANDBOX' : 'PRODUCTION'})`);
             console.log('');
             console.log('🇿🇦 Built in the Vaal. Built for Africa.');
         });
