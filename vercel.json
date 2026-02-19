@@ -1,18 +1,39 @@
 {
   "version": 2,
-  "builds": [
+  "buildCommand": "npm install",
+  "outputDirectory": ".",
+  "rewrites": [
     {
-      "src": "server/server.js",
-      "use": "@vercel/node"
+      "source": "/(.*)",
+      "destination": "/server/server.js"
     }
   ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/server/server.js"
+  "functions": {
+    "server/server.js": {
+      "memory": 1024,
+      "maxDuration": 10
     }
-  ],
+  },
   "env": {
     "NODE_ENV": "production"
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
 }
