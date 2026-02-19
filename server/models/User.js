@@ -113,6 +113,7 @@ const userSchema = new mongoose.Schema({
     },
     
     // POPIA Compliance (SA Data Protection)
+    // Note: Consent defaults to false - users must explicitly opt-in
     dataConsent: {
         marketing: {
             type: Boolean,
@@ -120,7 +121,7 @@ const userSchema = new mongoose.Schema({
         },
         analytics: {
             type: Boolean,
-            default: true
+            default: false
         },
         thirdParty: {
             type: Boolean,
@@ -128,7 +129,7 @@ const userSchema = new mongoose.Schema({
         },
         consentDate: {
             type: Date,
-            default: Date.now
+            default: null
         }
     },
     
@@ -247,11 +248,35 @@ userSchema.pre('save', async function(next) {
     }
 });
 
-// Generate verification token before saving new users
+// Generate verification token before saving new users (stores hashed token)
 userSchema.pre('save', function(next) {
     if (this.isNew && !this.verificationToken && !this.isVerified) {
-        this.verificationToken = crypto.randomBytes(32).toString('hex');
+        // Generate raw token
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        // Store hashed token (secure pattern)
+        this.verificationToken = crypto
+            .createHash('sha256')
+            .update(rawToken)
+            .digest('hex');
         this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+        // Store raw token temporarily for email sending (will be cleared after use)
+        this._rawVerificationToken = rawToken;
+    }
+    next();
+});
+
+// Update consentDate when consent is granted
+userSchema.pre('save', function(next) {
+    if (this.isModified('dataConsent')) {
+        const { marketing, analytics, thirdParty } = this.dataConsent;
+        const hasAnyConsent = marketing || analytics || thirdParty;
+        
+        if (hasAnyConsent && !this.dataConsent.consentDate) {
+            this.dataConsent.consentDate = new Date();
+        } else if (!hasAnyConsent) {
+            // Clear consent date if all consent is withdrawn
+            this.dataConsent.consentDate = null;
+        }
     }
     next();
 });
@@ -323,11 +348,18 @@ userSchema.methods.generatePasswordResetToken = function() {
     return resetToken;
 };
 
-// Generate email verification token
+// Generate email verification token (stores hashed token, returns raw token)
 userSchema.methods.generateVerificationToken = function() {
-    this.verificationToken = crypto.randomBytes(32).toString('hex');
+    // Generate raw token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    // Store hashed token (secure pattern - same as password reset)
+    this.verificationToken = crypto
+        .createHash('sha256')
+        .update(rawToken)
+        .digest('hex');
     this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    return this.verificationToken;
+    // Return raw token (to send via email)
+    return rawToken;
 };
 
 // Get safe user profile (excluding sensitive data)
@@ -366,8 +398,12 @@ userSchema.methods.addKYCDocument = function(documentData) {
 // STATIC METHODS
 // ============================================
 
-// Find user by email
+// Find user by email (handles nullish inputs defensively)
 userSchema.statics.findByEmail = function(email) {
+    // Return null immediately for nullish inputs
+    if (!email || typeof email !== 'string') {
+        return Promise.resolve(null);
+    }
     return this.findOne({ email: email.toLowerCase() });
 };
 
@@ -433,7 +469,8 @@ userSchema.statics.getStatistics = async function() {
 // INDEXES (For Query Performance)
 // ============================================
 
-userSchema.index({ email: 1 });
+// Note: email index is automatically created by unique: true in schema
+// Only add non-unique indexes here
 userSchema.index({ role: 1 });
 userSchema.index({ kycStatus: 1 });
 userSchema.index({ 'subscription.plan': 1, 'subscription.status': 1 });

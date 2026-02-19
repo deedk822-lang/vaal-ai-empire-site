@@ -1,8 +1,11 @@
 """
 Vaal AI Empire - Financial Sentinel Agent (AG2)
 
-Static SARS knowledge base - no external API calls.
-Agent can self-update when SARS changes laws.
+SARS tax expert with static knowledge base and optional Perplexity API integration.
+
+Primary knowledge source: Local SARS JSON files (no external API calls required).
+Optional: Perplexity API for real-time market data and financial metrics when configured.
+LLM calls: Required for natural language processing.
 """
 
 import os
@@ -21,9 +24,19 @@ class FinancialSentinelAgent:
     """
     Financial Sentinel - SARS tax expert with static knowledge base.
 
-    NO EXTERNAL API CALLS (except LLM).
-    Uses local SARS JSON files for all knowledge.
-    Can self-update when SARS publishes new regulations.
+    EXTERNAL CALLS:
+    - LLM: Required for natural language processing and response generation
+    - Perplexity API: Optional, for real-time market data and financial metrics
+      when perplexity_api_key is provided in constructor
+    
+    LOCAL KNOWLEDGE:
+    - Uses local SARS JSON files for all static tax regulations
+    - Can self-update when SARS publishes new regulations
+    - No external database dependencies
+    
+    SECURITY:
+    - No sensitive data transmitted except queries to LLM
+    - Perplexity integration is opt-in via constructor parameter
     """
 
     def __init__(self, llm_config: LLMConfig, perplexity_api_key: str = None):
