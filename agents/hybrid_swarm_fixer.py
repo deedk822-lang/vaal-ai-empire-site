@@ -14,44 +14,45 @@ Version: 1.0.0
 
 from __future__ import annotations
 
-import os
-import json
 import ast
 import asyncio
-import hashlib
 import difflib
+import hashlib
+import json
+import logging
+import os
+import re
+import sqlite3
 import subprocess
 import sys
 import time
-import logging
-import re
-import sqlite3
-from typing import List, Dict, Optional, Tuple, Any
-from dataclasses import dataclass, asdict, field
-from datetime import datetime, timezone
-from pathlib import Path
-from enum import Enum
 from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('swarm_fixer.log', mode='a')
-    ]
+        logging.FileHandler("swarm_fixer.log", mode="a"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 # OpenTelemetry integration (optional)
 TELEMETRY_AVAILABLE = False
 try:
-    from opentelemetry import trace, metrics
-    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry import metrics, trace
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.resources import Resource
-    from prometheus_client import start_http_server, Counter, Histogram, Gauge, Info
+    from opentelemetry.sdk.trace import TracerProvider
+    from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
+
     TELEMETRY_AVAILABLE = True
     logger.info("OpenTelemetry and Prometheus available")
 except ImportError:
@@ -61,45 +62,40 @@ except ImportError:
 if TELEMETRY_AVAILABLE:
     try:
         FIXES_ATTEMPTED = Counter(
-            'swarm_fixes_attempted_total',
-            'Total fixes attempted',
-            ['category', 'repository']
+            "swarm_fixes_attempted_total",
+            "Total fixes attempted",
+            ["category", "repository"],
         )
         FIXES_APPROVED = Counter(
-            'swarm_fixes_approved_total',
-            'Total fixes approved',
-            ['category', 'repository']
+            "swarm_fixes_approved_total",
+            "Total fixes approved",
+            ["category", "repository"],
         )
         FIXES_REJECTED = Counter(
-            'swarm_fixes_rejected_total',
-            'Total fixes rejected',
-            ['category', 'repository']
+            "swarm_fixes_rejected_total",
+            "Total fixes rejected",
+            ["category", "repository"],
         )
         FIX_DURATION = Histogram(
-            'swarm_fix_duration_seconds',
-            'Fix generation duration',
-            ['provider', 'category']
+            "swarm_fix_duration_seconds",
+            "Fix generation duration",
+            ["provider", "category"],
         )
         EVALUATION_SCORE = Gauge(
-            'swarm_evaluation_score',
-            'Current evaluation score',
-            ['category', 'fix_id']
+            "swarm_evaluation_score", "Current evaluation score", ["category", "fix_id"]
         )
         API_CALLS = Counter(
-            'swarm_api_calls_total',
-            'API calls by provider',
-            ['provider', 'status', 'repository']
+            "swarm_api_calls_total",
+            "API calls by provider",
+            ["provider", "status", "repository"],
         )
         PROVIDER_FALLBACK = Counter(
-            'swarm_provider_fallback_total',
-            'Provider fallback count',
-            ['from_provider', 'to_provider']
+            "swarm_provider_fallback_total",
+            "Provider fallback count",
+            ["from_provider", "to_provider"],
         )
-        SWARM_INFO = Info('swarm_fixer', 'Swarm fixer information')
-        SWARM_INFO.info({
-            'version': '1.0.0',
-            'providers': 'ollama,kimi,glm5,dashscope'
-        })
+        SWARM_INFO = Info("swarm_fixer", "Swarm fixer information")
+        SWARM_INFO.info({"version": "1.0.0", "providers": "ollama,kimi,glm5,dashscope"})
     except Exception as e:
         logger.warning(f"Prometheus metrics initialization failed: {e}")
         TELEMETRY_AVAILABLE = False
@@ -107,6 +103,7 @@ if TELEMETRY_AVAILABLE:
 
 class FixCategory(Enum):
     """Categories of code fixes"""
+
     SECURITY = "security"
     PERFORMANCE = "performance"
     BUG_FIX = "bug_fix"
@@ -119,6 +116,7 @@ class FixCategory(Enum):
 
 class ProviderStatus(Enum):
     """Status of AI providers"""
+
     AVAILABLE = "available"
     UNAVAILABLE = "unavailable"
     RATE_LIMITED = "rate_limited"
@@ -128,6 +126,7 @@ class ProviderStatus(Enum):
 @dataclass
 class CodeFix:
     """Represents a code fix"""
+
     fix_id: str
     file_path: str
     original_code: str
@@ -150,6 +149,7 @@ class CodeFix:
 @dataclass
 class EvaluationResult:
     """Evaluation result for a fix"""
+
     score: float
     reason: str
     tests_passed: int
@@ -165,6 +165,7 @@ class EvaluationResult:
 @dataclass
 class ProviderHealth:
     """Health status of an AI provider"""
+
     provider: str
     status: ProviderStatus
     latency_ms: float
@@ -187,13 +188,12 @@ class ASTCodePatcher:
 
     @staticmethod
     def apply_fix_with_ast_validation(
-        file_path: str,
-        fix: CodeFix
+        file_path: str, fix: CodeFix
     ) -> Tuple[bool, Optional[str]]:
         """Apply fix with full AST validation"""
         try:
             # Read original file
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 original_content = f.read()
 
             # Validate original file
@@ -212,13 +212,13 @@ class ASTCodePatcher:
 
             # Calculate new content
             new_lines = (
-                original_lines[:fix.line_start - 1] +
-                fixed_lines +
-                ['\n'] +
-                original_lines[fix.line_end:]
+                original_lines[: fix.line_start - 1]
+                + fixed_lines
+                + ["\n"]
+                + original_lines[fix.line_end :]
             )
 
-            new_content = ''.join(new_lines)
+            new_content = "".join(new_lines)
 
             # Final validation of patched content
             valid, error = ASTCodePatcher.validate_python_syntax(new_content)
@@ -226,7 +226,7 @@ class ASTCodePatcher:
                 return False, f"Patched code has syntax errors: {error}"
 
             # Write back
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
 
             logger.info(f"Successfully applied fix to {file_path}")
@@ -237,9 +237,7 @@ class ASTCodePatcher:
 
     @staticmethod
     def extract_function_context(
-        code: str,
-        line_number: int,
-        context_lines: int = 10
+        code: str, line_number: int, context_lines: int = 10
     ) -> Tuple[str, int, int]:
         """Extract complete function/class context using AST"""
         try:
@@ -248,18 +246,24 @@ class ASTCodePatcher:
 
             # Find the node containing the target line
             for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    if hasattr(node, 'lineno') and hasattr(node, 'end_lineno'):
-                        if node.lineno <= line_number <= (node.end_lineno or node.lineno):
+                if isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    if hasattr(node, "lineno") and hasattr(node, "end_lineno"):
+                        if (
+                            node.lineno
+                            <= line_number
+                            <= (node.end_lineno or node.lineno)
+                        ):
                             start = node.lineno - 1
                             end = node.end_lineno or node.lineno
-                            func_code = '\n'.join(lines[start:end])
+                            func_code = "\n".join(lines[start:end])
                             return func_code, start + 1, end
 
             # Fallback to context window
             start = max(0, line_number - context_lines)
             end = min(len(lines), line_number + context_lines)
-            context = '\n'.join(lines[start:end])
+            context = "\n".join(lines[start:end])
             return context, start + 1, end
 
         except Exception as e:
@@ -267,7 +271,7 @@ class ASTCodePatcher:
             lines = code.splitlines()
             start = max(0, line_number - context_lines)
             end = min(len(lines), line_number + context_lines)
-            context = '\n'.join(lines[start:end])
+            context = "\n".join(lines[start:end])
             return context, start + 1, end
 
     @staticmethod
@@ -281,9 +285,9 @@ class ASTCodePatcher:
             fixed_lines,
             fromfile=f"a/{file_path}",
             tofile=f"b/{file_path}",
-            lineterm=''
+            lineterm="",
         )
-        return ''.join(diff)
+        return "".join(diff)
 
 
 class HybridAIFixer:
@@ -296,9 +300,9 @@ class HybridAIFixer:
         self.repository = repository
 
         # API Keys
-        self.kimi_api_key = os.getenv('KIMI_API_KEY', '').strip() or None
-        self.glm5_api_key = os.getenv('GLM5_API_KEY', '').strip() or None
-        self.dashscope_api_key = os.getenv('DASHSCOPE_API_KEY', '').strip() or None
+        self.kimi_api_key = os.getenv("KIMI_API_KEY", "").strip() or None
+        self.glm5_api_key = os.getenv("GLM5_API_KEY", "").strip() or None
+        self.dashscope_api_key = os.getenv("DASHSCOPE_API_KEY", "").strip() or None
 
         # Provider health tracking
         self.provider_health: Dict[str, ProviderHealth] = {}
@@ -323,11 +327,7 @@ class HybridAIFixer:
     def _check_ollama(self) -> bool:
         """Check if OLLAMA is available"""
         try:
-            result = subprocess.run(
-                ['ollama', 'list'],
-                capture_output=True,
-                timeout=5
-            )
+            result = subprocess.run(["ollama", "list"], capture_output=True, timeout=5)
             return result.returncode == 0
         except FileNotFoundError:
             logger.info("OLLAMA not installed")
@@ -343,14 +343,11 @@ class HybridAIFixer:
         """Get list of available OLLAMA models"""
         try:
             result = subprocess.run(
-                ['ollama', 'list'],
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["ollama", "list"], capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
                 models = []
-                for line in result.stdout.strip().split('\n')[1:]:  # Skip header
+                for line in result.stdout.strip().split("\n")[1:]:  # Skip header
                     if line.strip():
                         model_name = line.split()[0]
                         models.append(model_name)
@@ -361,45 +358,57 @@ class HybridAIFixer:
 
     def _init_provider_health(self):
         """Initialize provider health tracking"""
-        self.provider_health['ollama'] = ProviderHealth(
-            provider='ollama',
-            status=ProviderStatus.AVAILABLE if self.ollama_available else ProviderStatus.UNAVAILABLE,
+        self.provider_health["ollama"] = ProviderHealth(
+            provider="ollama",
+            status=(
+                ProviderStatus.AVAILABLE
+                if self.ollama_available
+                else ProviderStatus.UNAVAILABLE
+            ),
             latency_ms=0,
             last_success=None,
             error_count=0,
-            success_count=0
+            success_count=0,
         )
-        self.provider_health['kimi'] = ProviderHealth(
-            provider='kimi',
-            status=ProviderStatus.AVAILABLE if self.kimi_api_key else ProviderStatus.UNAVAILABLE,
+        self.provider_health["kimi"] = ProviderHealth(
+            provider="kimi",
+            status=(
+                ProviderStatus.AVAILABLE
+                if self.kimi_api_key
+                else ProviderStatus.UNAVAILABLE
+            ),
             latency_ms=0,
             last_success=None,
             error_count=0,
-            success_count=0
+            success_count=0,
         )
-        self.provider_health['glm5'] = ProviderHealth(
-            provider='glm5',
-            status=ProviderStatus.AVAILABLE if self.glm5_api_key else ProviderStatus.UNAVAILABLE,
+        self.provider_health["glm5"] = ProviderHealth(
+            provider="glm5",
+            status=(
+                ProviderStatus.AVAILABLE
+                if self.glm5_api_key
+                else ProviderStatus.UNAVAILABLE
+            ),
             latency_ms=0,
             last_success=None,
             error_count=0,
-            success_count=0
+            success_count=0,
         )
-        self.provider_health['dashscope'] = ProviderHealth(
-            provider='dashscope',
-            status=ProviderStatus.AVAILABLE if self.dashscope_api_key else ProviderStatus.UNAVAILABLE,
+        self.provider_health["dashscope"] = ProviderHealth(
+            provider="dashscope",
+            status=(
+                ProviderStatus.AVAILABLE
+                if self.dashscope_api_key
+                else ProviderStatus.UNAVAILABLE
+            ),
             latency_ms=0,
             last_success=None,
             error_count=0,
-            success_count=0
+            success_count=0,
         )
 
     async def generate_fix(
-        self,
-        original_code: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, original_code: str, issue: str, category: str, file_path: str
     ) -> Tuple[Optional[str], str]:
         """
         Generate fix using hybrid cascade approach.
@@ -409,10 +418,10 @@ class HybridAIFixer:
 
         # Try providers in order
         providers_to_try = [
-            ('ollama', self._generate_with_ollama, self.ollama_available),
-            ('kimi', self._generate_with_kimi, bool(self.kimi_api_key)),
-            ('glm5', self._generate_with_glm5, bool(self.glm5_api_key)),
-            ('dashscope', self._generate_with_dashscope, bool(self.dashscope_api_key)),
+            ("ollama", self._generate_with_ollama, self.ollama_available),
+            ("kimi", self._generate_with_kimi, bool(self.kimi_api_key)),
+            ("glm5", self._generate_with_glm5, bool(self.glm5_api_key)),
+            ("dashscope", self._generate_with_dashscope, bool(self.dashscope_api_key)),
         ]
 
         last_provider = None
@@ -425,8 +434,7 @@ class HybridAIFixer:
                 logger.info(f"⏩ Falling back from {last_provider} to {provider_name}")
                 if TELEMETRY_AVAILABLE:
                     PROVIDER_FALLBACK.labels(
-                        from_provider=last_provider,
-                        to_provider=provider_name
+                        from_provider=last_provider, to_provider=provider_name
                     ).inc()
 
             logger.info(f"🤖 Trying {provider_name.upper()}...")
@@ -439,25 +447,30 @@ class HybridAIFixer:
 
                     # Update health
                     self.provider_health[provider_name].success_count += 1
-                    self.provider_health[provider_name].last_success = datetime.now(timezone.utc).isoformat()
+                    self.provider_health[provider_name].last_success = datetime.now(
+                        timezone.utc
+                    ).isoformat()
                     self.provider_health[provider_name].latency_ms = duration * 1000
 
                     # Prometheus metrics
                     if TELEMETRY_AVAILABLE:
                         FIX_DURATION.labels(
-                            provider=provider_name,
-                            category=category
+                            provider=provider_name, category=category
                         ).observe(duration)
                         API_CALLS.labels(
                             provider=provider_name,
-                            status='success',
-                            repository=self.repository
+                            status="success",
+                            repository=self.repository,
                         ).inc()
 
-                    logger.info(f"✅ {provider_name.upper()} succeeded ({duration:.2f}s)")
+                    logger.info(
+                        f"✅ {provider_name.upper()} succeeded ({duration:.2f}s)"
+                    )
                     return fixed, provider_name
                 else:
-                    logger.warning(f"⚠️ {provider_name.upper()} returned empty/unchanged code")
+                    logger.warning(
+                        f"⚠️ {provider_name.upper()} returned empty/unchanged code"
+                    )
 
             except Exception as e:
                 logger.error(f"❌ {provider_name.upper()} failed: {e}")
@@ -465,31 +478,27 @@ class HybridAIFixer:
                 if TELEMETRY_AVAILABLE:
                     API_CALLS.labels(
                         provider=provider_name,
-                        status='error',
-                        repository=self.repository
+                        status="error",
+                        repository=self.repository,
                     ).inc()
 
         logger.error("❌ All AI providers failed")
-        return None, 'none'
+        return None, "none"
 
     async def _generate_with_ollama(
-        self,
-        original: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, original: str, issue: str, category: str, file_path: str
     ) -> Optional[str]:
         """Generate fix using local OLLAMA"""
         prompt = self._create_fix_prompt(original, issue, category, file_path)
 
         # Try available models in priority order
         model_priority = [
-            'kimi-k2.5:cloud',
-            'glm5',
-            'qwen2.5-coder:14b',
-            'deepseek-coder:6.7b',
-            'llama3.2:latest',
-            'codellama:latest'
+            "kimi-k2.5:cloud",
+            "glm5",
+            "qwen2.5-coder:14b",
+            "deepseek-coder:6.7b",
+            "llama3.2:latest",
+            "codellama:latest",
         ]
 
         # Filter to available models
@@ -501,11 +510,11 @@ class HybridAIFixer:
             try:
                 logger.debug(f"Trying OLLAMA model: {model}")
                 result = subprocess.run(
-                    ['ollama', 'run', model],
+                    ["ollama", "run", model],
                     input=prompt,
                     capture_output=True,
                     text=True,
-                    timeout=60
+                    timeout=60,
                 )
 
                 if result.returncode == 0:
@@ -524,11 +533,7 @@ class HybridAIFixer:
         return None
 
     async def _generate_with_kimi(
-        self,
-        original: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, original: str, issue: str, category: str, file_path: str
     ) -> Optional[str]:
         """Generate fix using Kimi K2.5 API (Moonshot AI)"""
         if not self.kimi_api_key:
@@ -541,32 +546,32 @@ class HybridAIFixer:
 
             async with aiohttp.ClientSession() as session:
                 headers = {
-                    'Authorization': f'Bearer {self.kimi_api_key}',
-                    'Content-Type': 'application/json'
+                    "Authorization": f"Bearer {self.kimi_api_key}",
+                    "Content-Type": "application/json",
                 }
 
                 data = {
-                    'model': 'moonshot-v1-128k',
-                    'messages': [
+                    "model": "moonshot-v1-128k",
+                    "messages": [
                         {
-                            'role': 'system',
-                            'content': f'You are an expert {category} engineer. Fix code issues precisely.'
+                            "role": "system",
+                            "content": f"You are an expert {category} engineer. Fix code issues precisely.",
                         },
-                        {'role': 'user', 'content': prompt}
+                        {"role": "user", "content": prompt},
                     ],
-                    'temperature': 0.3,
-                    'max_tokens': 4000
+                    "temperature": 0.3,
+                    "max_tokens": 4000,
                 }
 
                 async with session.post(
-                    'https://api.moonshot.cn/v1/chat/completions',
+                    "https://api.moonshot.cn/v1/chat/completions",
                     headers=headers,
                     json=data,
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        content = result['choices'][0]['message']['content']
+                        content = result["choices"][0]["message"]["content"]
                         return self._extract_code(content)
                     else:
                         text = await response.text()
@@ -578,11 +583,7 @@ class HybridAIFixer:
             return None
 
     async def _generate_with_glm5(
-        self,
-        original: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, original: str, issue: str, category: str, file_path: str
     ) -> Optional[str]:
         """Generate fix using GLM-5 API (Zhipu AI)"""
         if not self.glm5_api_key:
@@ -595,32 +596,32 @@ class HybridAIFixer:
 
             async with aiohttp.ClientSession() as session:
                 headers = {
-                    'Authorization': f'Bearer {self.glm5_api_key}',
-                    'Content-Type': 'application/json'
+                    "Authorization": f"Bearer {self.glm5_api_key}",
+                    "Content-Type": "application/json",
                 }
 
                 data = {
-                    'model': 'glm-4-plus',
-                    'messages': [
+                    "model": "glm-4-plus",
+                    "messages": [
                         {
-                            'role': 'system',
-                            'content': f'You are an expert {category} engineer.'
+                            "role": "system",
+                            "content": f"You are an expert {category} engineer.",
                         },
-                        {'role': 'user', 'content': prompt}
+                        {"role": "user", "content": prompt},
                     ],
-                    'temperature': 0.3,
-                    'max_tokens': 4000
+                    "temperature": 0.3,
+                    "max_tokens": 4000,
                 }
 
                 async with session.post(
-                    'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                     headers=headers,
                     json=data,
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        content = result['choices'][0]['message']['content']
+                        content = result["choices"][0]["message"]["content"]
                         return self._extract_code(content)
                     else:
                         text = await response.text()
@@ -632,11 +633,7 @@ class HybridAIFixer:
             return None
 
     async def _generate_with_dashscope(
-        self,
-        original: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, original: str, issue: str, category: str, file_path: str
     ) -> Optional[str]:
         """Generate fix using DashScope API (Alibaba Qwen)"""
         if not self.dashscope_api_key:
@@ -649,40 +646,39 @@ class HybridAIFixer:
 
             async with aiohttp.ClientSession() as session:
                 headers = {
-                    'Authorization': f'Bearer {self.dashscope_api_key}',
-                    'Content-Type': 'application/json'
+                    "Authorization": f"Bearer {self.dashscope_api_key}",
+                    "Content-Type": "application/json",
                 }
 
                 data = {
-                    'model': 'qwen-coder-plus',
-                    'input': {
-                        'messages': [
+                    "model": "qwen-coder-plus",
+                    "input": {
+                        "messages": [
                             {
-                                'role': 'system',
-                                'content': f'You are an expert {category} engineer.'
+                                "role": "system",
+                                "content": f"You are an expert {category} engineer.",
                             },
-                            {'role': 'user', 'content': prompt}
+                            {"role": "user", "content": prompt},
                         ]
                     },
-                    'parameters': {
-                        'temperature': 0.3,
-                        'max_tokens': 4000
-                    }
+                    "parameters": {"temperature": 0.3, "max_tokens": 4000},
                 }
 
                 async with session.post(
-                    'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+                    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
                     headers=headers,
                     json=data,
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        content = result.get('output', {}).get('text', '')
+                        content = result.get("output", {}).get("text", "")
                         return self._extract_code(content)
                     else:
                         text = await response.text()
-                        logger.error(f"DashScope API error {response.status}: {text[:200]}")
+                        logger.error(
+                            f"DashScope API error {response.status}: {text[:200]}"
+                        )
                         return None
 
         except Exception as e:
@@ -690,11 +686,7 @@ class HybridAIFixer:
             return None
 
     def _create_fix_prompt(
-        self,
-        code: str,
-        issue: str,
-        category: str,
-        file_path: str
+        self, code: str, issue: str, category: str, file_path: str
     ) -> str:
         """Create optimized fix prompt"""
         return f"""Fix this {category} issue in {file_path}.
@@ -722,24 +714,30 @@ Return the complete fixed code:"""
             return None
 
         # Try Python code block
-        match = re.search(r'```python\s*\n(.*?)\n```', response, re.DOTALL)
+        match = re.search(r"```python\s*\n(.*?)\n```", response, re.DOTALL)
         if match:
             return match.group(1).strip()
 
         # Try generic code block
-        match = re.search(r'```\s*\n(.*?)\n```', response, re.DOTALL)
+        match = re.search(r"```\s*\n(.*?)\n```", response, re.DOTALL)
         if match:
             return match.group(1).strip()
 
         # Try indented code block
-        match = re.search(r'```python\n(.*?)```', response, re.DOTALL)
+        match = re.search(r"```python\n(.*?)```", response, re.DOTALL)
         if match:
             return match.group(1).strip()
 
         # If no code block, check if response looks like code
-        lines = response.strip().split('\n')
-        code_lines = [l for l in lines if l.strip() and not l.startswith('#') and not l.startswith('```')]
-        if code_lines and any(keyword in response for keyword in ['def ', 'class ', 'import ', 'return ']):
+        lines = response.strip().split("\n")
+        code_lines = [
+            l
+            for l in lines
+            if l.strip() and not l.startswith("#") and not l.startswith("```")
+        ]
+        if code_lines and any(
+            keyword in response for keyword in ["def ", "class ", "import ", "return "]
+        ):
             return response.strip()
 
         return None
@@ -753,26 +751,19 @@ class HybridEvaluator:
 
     def __init__(self, repository: str = "unknown"):
         self.repository = repository
-        self.glm5_api_key = os.getenv('GLM5_API_KEY', '').strip() or None
-        self.kimi_api_key = os.getenv('KIMI_API_KEY', '').strip() or None
+        self.glm5_api_key = os.getenv("GLM5_API_KEY", "").strip() or None
+        self.kimi_api_key = os.getenv("KIMI_API_KEY", "").strip() or None
         self.ollama_available = self._check_ollama()
 
     def _check_ollama(self) -> bool:
         try:
-            result = subprocess.run(
-                ['ollama', 'list'],
-                capture_output=True,
-                timeout=5
-            )
+            result = subprocess.run(["ollama", "list"], capture_output=True, timeout=5)
             return result.returncode == 0
         except:
             return False
 
     async def evaluate_fix(
-        self,
-        original: str,
-        fixed: str,
-        category: str
+        self, original: str, fixed: str, category: str
     ) -> EvaluationResult:
         """Evaluate fix with hybrid approach"""
 
@@ -798,35 +789,29 @@ class HybridEvaluator:
         return self._static_evaluation(original, fixed, category)
 
     async def _evaluate_with_ollama(
-        self,
-        original: str,
-        fixed: str,
-        category: str
+        self, original: str, fixed: str, category: str
     ) -> Optional[EvaluationResult]:
         """Evaluate with local OLLAMA"""
         prompt = self._create_eval_prompt(original, fixed, category)
 
         try:
             result = subprocess.run(
-                ['ollama', 'run', 'glm5'],
+                ["ollama", "run", "glm5"],
                 input=prompt,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             if result.returncode == 0:
-                return self._parse_evaluation(result.stdout, 'ollama')
+                return self._parse_evaluation(result.stdout, "ollama")
         except:
             pass
 
         return None
 
     async def _evaluate_with_glm5_api(
-        self,
-        original: str,
-        fixed: str,
-        category: str
+        self, original: str, fixed: str, category: str
     ) -> Optional[EvaluationResult]:
         """Evaluate with GLM-5 API"""
         if not self.glm5_api_key:
@@ -839,37 +824,34 @@ class HybridEvaluator:
 
             async with aiohttp.ClientSession() as session:
                 headers = {
-                    'Authorization': f'Bearer {self.glm5_api_key}',
-                    'Content-Type': 'application/json'
+                    "Authorization": f"Bearer {self.glm5_api_key}",
+                    "Content-Type": "application/json",
                 }
 
                 data = {
-                    'model': 'glm-4-flash',
-                    'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.3,
-                    'max_tokens': 500
+                    "model": "glm-4-flash",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
                 }
 
                 async with session.post(
-                    'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
                     headers=headers,
                     json=data,
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        content = result['choices'][0]['message']['content']
-                        return self._parse_evaluation(content, 'glm5-api')
+                        content = result["choices"][0]["message"]["content"]
+                        return self._parse_evaluation(content, "glm5-api")
         except:
             pass
 
         return None
 
     async def _evaluate_with_kimi(
-        self,
-        original: str,
-        fixed: str,
-        category: str
+        self, original: str, fixed: str, category: str
     ) -> Optional[EvaluationResult]:
         """Evaluate with Kimi API"""
         if not self.kimi_api_key:
@@ -882,37 +864,34 @@ class HybridEvaluator:
 
             async with aiohttp.ClientSession() as session:
                 headers = {
-                    'Authorization': f'Bearer {self.kimi_api_key}',
-                    'Content-Type': 'application/json'
+                    "Authorization": f"Bearer {self.kimi_api_key}",
+                    "Content-Type": "application/json",
                 }
 
                 data = {
-                    'model': 'moonshot-v1-32k',
-                    'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.3,
-                    'max_tokens': 500
+                    "model": "moonshot-v1-32k",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
                 }
 
                 async with session.post(
-                    'https://api.moonshot.cn/v1/chat/completions',
+                    "https://api.moonshot.cn/v1/chat/completions",
                     headers=headers,
                     json=data,
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        content = result['choices'][0]['message']['content']
-                        return self._parse_evaluation(content, 'kimi')
+                        content = result["choices"][0]["message"]["content"]
+                        return self._parse_evaluation(content, "kimi")
         except:
             pass
 
         return None
 
     def _static_evaluation(
-        self,
-        original: str,
-        fixed: str,
-        category: str
+        self, original: str, fixed: str, category: str
     ) -> EvaluationResult:
         """Static analysis fallback evaluation"""
         issues_found = []
@@ -926,10 +905,10 @@ class HybridEvaluator:
             issues_found.append(f"Syntax error: {e}")
 
         # Check for common issues
-        if 'TODO' in fixed or 'FIXME' in fixed:
+        if "TODO" in fixed or "FIXME" in fixed:
             issues_found.append("Contains TODO/FIXME markers")
 
-        if 'pass' in fixed and 'pass' not in original:
+        if "pass" in fixed and "pass" not in original:
             issues_found.append("Added pass statements")
 
         # Calculate change ratio
@@ -951,17 +930,12 @@ class HybridEvaluator:
             reason=f"Static analysis: {len(issues_found)} issues found",
             tests_passed=1 if execution_safe else 0,
             execution_safe=execution_safe,
-            evaluator='static',
+            evaluator="static",
             created_at=datetime.now(timezone.utc).isoformat(),
-            issues_found=issues_found
+            issues_found=issues_found,
         )
 
-    def _create_eval_prompt(
-        self,
-        original: str,
-        fixed: str,
-        category: str
-    ) -> str:
+    def _create_eval_prompt(self, original: str, fixed: str, category: str) -> str:
         return f"""Evaluate this {category} code fix.
 
 Original code:
@@ -982,9 +956,7 @@ Rate the fix 0.0-1.0 based on:
 Respond ONLY with JSON: {{"score": 0.85, "reason": "brief explanation", "safe": true}}"""
 
     def _parse_evaluation(
-        self,
-        response: str,
-        evaluator: str
+        self, response: str, evaluator: str
     ) -> Optional[EvaluationResult]:
         """Parse evaluation response"""
         try:
@@ -993,16 +965,16 @@ Respond ONLY with JSON: {{"score": 0.85, "reason": "brief explanation", "safe": 
             if json_match:
                 data = json.loads(json_match.group(0))
                 return EvaluationResult(
-                    score=float(data.get('score', 0)),
-                    reason=data.get('reason', 'Parsed from response'),
+                    score=float(data.get("score", 0)),
+                    reason=data.get("reason", "Parsed from response"),
                     tests_passed=1,
-                    execution_safe=data.get('safe', True),
+                    execution_safe=data.get("safe", True),
                     evaluator=evaluator,
-                    created_at=datetime.now(timezone.utc).isoformat()
+                    created_at=datetime.now(timezone.utc).isoformat(),
                 )
 
             # Try to extract score from text
-            score_match = re.search(r'score[:\s]+([0-9.]+)', response, re.IGNORECASE)
+            score_match = re.search(r"score[:\s]+([0-9.]+)", response, re.IGNORECASE)
             if score_match:
                 return EvaluationResult(
                     score=float(score_match.group(1)),
@@ -1010,7 +982,7 @@ Respond ONLY with JSON: {{"score": 0.85, "reason": "brief explanation", "safe": 
                     tests_passed=1,
                     execution_safe=True,
                     evaluator=evaluator,
-                    created_at=datetime.now(timezone.utc).isoformat()
+                    created_at=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
             logger.warning(f"Evaluation parsing failed: {e}")
@@ -1062,46 +1034,52 @@ class MetricsStore:
         approved: bool,
         evaluation_score: float,
         evaluator: str,
-        repository: str = "unknown"
+        repository: str = "unknown",
     ):
         """Record fix to database"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO fixes
             (fix_id, pr_number, file_path, category, confidence, agent_id,
              approved, evaluation_score, provider, evaluator, created_at, repository)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            fix.fix_id, pr_number, fix.file_path, fix.category,
-            fix.confidence, fix.agent_id, approved, evaluation_score,
-            fix.provider, evaluator, fix.created_at, repository
-        ))
+        """,
+            (
+                fix.fix_id,
+                pr_number,
+                fix.file_path,
+                fix.category,
+                fix.confidence,
+                fix.agent_id,
+                approved,
+                evaluation_score,
+                fix.provider,
+                evaluator,
+                fix.created_at,
+                repository,
+            ),
+        )
 
         conn.commit()
         conn.close()
 
         # Update Prometheus metrics
         if TELEMETRY_AVAILABLE:
-            FIXES_ATTEMPTED.labels(
-                category=fix.category,
-                repository=repository
-            ).inc()
+            FIXES_ATTEMPTED.labels(category=fix.category, repository=repository).inc()
             if approved:
                 FIXES_APPROVED.labels(
-                    category=fix.category,
-                    repository=repository
+                    category=fix.category, repository=repository
                 ).inc()
             else:
                 FIXES_REJECTED.labels(
-                    category=fix.category,
-                    repository=repository
+                    category=fix.category, repository=repository
                 ).inc()
-            EVALUATION_SCORE.labels(
-                category=fix.category,
-                fix_id=fix.fix_id[:8]
-            ).set(evaluation_score)
+            EVALUATION_SCORE.labels(category=fix.category, fix_id=fix.fix_id[:8]).set(
+                evaluation_score
+            )
 
     def get_stats(self) -> Dict:
         """Get statistics"""
@@ -1109,26 +1087,26 @@ class MetricsStore:
         cursor = conn.cursor()
 
         stats = {
-            'total_fixes': 0,
-            'approved': 0,
-            'by_provider': {},
-            'by_category': {},
-            'avg_score': 0.0
+            "total_fixes": 0,
+            "approved": 0,
+            "by_provider": {},
+            "by_category": {},
+            "avg_score": 0.0,
         }
 
         try:
             cursor.execute("SELECT COUNT(*) FROM fixes")
-            stats['total_fixes'] = cursor.fetchone()[0]
+            stats["total_fixes"] = cursor.fetchone()[0]
 
             cursor.execute("SELECT COUNT(*) FROM fixes WHERE approved = 1")
-            stats['approved'] = cursor.fetchone()[0]
+            stats["approved"] = cursor.fetchone()[0]
 
             cursor.execute("""
                 SELECT provider, COUNT(*)
                 FROM fixes
                 GROUP BY provider
             """)
-            stats['by_provider'] = dict(cursor.fetchall())
+            stats["by_provider"] = dict(cursor.fetchall())
 
             cursor.execute("""
                 SELECT category, COUNT(*), AVG(evaluation_score)
@@ -1136,13 +1114,13 @@ class MetricsStore:
                 GROUP BY category
             """)
             for row in cursor.fetchall():
-                stats['by_category'][row[0]] = {
-                    'count': row[1],
-                    'avg_score': row[2] or 0
+                stats["by_category"][row[0]] = {
+                    "count": row[1],
+                    "avg_score": row[2] or 0,
                 }
 
             cursor.execute("SELECT AVG(evaluation_score) FROM fixes")
-            stats['avg_score'] = cursor.fetchone()[0] or 0.0
+            stats["avg_score"] = cursor.fetchone()[0] or 0.0
 
         except Exception as e:
             logger.error(f"Stats query failed: {e}")
@@ -1156,12 +1134,7 @@ class MetricsStore:
 class ProductionSwarmFixer:
     """Production swarm using YOUR infrastructure"""
 
-    def __init__(
-        self,
-        github_token: str,
-        repo: str,
-        config: Optional[Dict] = None
-    ):
+    def __init__(self, github_token: str, repo: str, config: Optional[Dict] = None):
         self.github_token = github_token
         self.repo = repo
         self.config = config or {}
@@ -1190,11 +1163,7 @@ class ProductionSwarmFixer:
         logger.info(f"{'=' * 60}\n")
 
         if not issues:
-            return {
-                'status': 'no_issues',
-                'pr': pr_number,
-                'execution_time_ms': 0
-            }
+            return {"status": "no_issues", "pr": pr_number, "execution_time_ms": 0}
 
         # Generate fixes
         logger.info("🔧 Generating fixes...")
@@ -1203,9 +1172,9 @@ class ProductionSwarmFixer:
 
         if not fixes:
             return {
-                'status': 'no_fixes_generated',
-                'pr': pr_number,
-                'execution_time_ms': (time.time() - start_time) * 1000
+                "status": "no_fixes_generated",
+                "pr": pr_number,
+                "execution_time_ms": (time.time() - start_time) * 1000,
             }
 
         # Evaluate fixes
@@ -1213,7 +1182,7 @@ class ProductionSwarmFixer:
         evaluated = await self._evaluate_fixes(fixes)
 
         # Apply approved fixes
-        approved = [f for f in evaluated if f['approved']]
+        approved = [f for f in evaluated if f["approved"]]
         logger.info(f"\n✅ {len(approved)}/{len(evaluated)} fixes approved")
 
         applied = await self._apply_fixes_atomically(approved, pr_number)
@@ -1224,13 +1193,13 @@ class ProductionSwarmFixer:
         stats = self.metrics.get_stats()
 
         return {
-            'status': 'completed',
-            'pr': pr_number,
-            'fixes_total': len(fixes),
-            'fixes_approved': len(approved),
-            'fixes_applied': applied['count'],
-            'execution_time_ms': round(execution_time, 2),
-            'stats': stats
+            "status": "completed",
+            "pr": pr_number,
+            "fixes_total": len(fixes),
+            "fixes_approved": len(approved),
+            "fixes_applied": applied["count"],
+            "execution_time_ms": round(execution_time, 2),
+            "stats": stats,
         }
 
     async def _generate_fixes(self, issues: List[Dict]) -> List[Dict]:
@@ -1239,26 +1208,28 @@ class ProductionSwarmFixer:
 
         for i, issue in enumerate(issues):
             try:
-                logger.info(f"\n[{i+1}/{len(issues)}] Processing: {issue.get('path', 'unknown')}")
+                logger.info(
+                    f"\n[{i+1}/{len(issues)}] Processing: {issue.get('path', 'unknown')}"
+                )
 
-                file_path = issue.get('path')
+                file_path = issue.get("path")
                 if not file_path or not os.path.exists(file_path):
                     logger.warning(f"File not found: {file_path}")
                     continue
 
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
-                line_number = issue.get('line', 1)
+                line_number = issue.get("line", 1)
                 original_code, start, end = self.patcher.extract_function_context(
                     content, line_number
                 )
 
                 fixed_code, provider = await self.ai_fixer.generate_fix(
                     original_code,
-                    issue.get('body', issue.get('description', '')),
-                    issue.get('category', 'code_quality'),
-                    file_path
+                    issue.get("body", issue.get("description", "")),
+                    issue.get("category", "code_quality"),
+                    file_path,
                 )
 
                 if fixed_code and fixed_code.strip() != original_code.strip():
@@ -1266,25 +1237,27 @@ class ProductionSwarmFixer:
                         f"{file_path}:{line_number}:{time.time()}".encode()
                     ).hexdigest()[:12]
 
-                    diff = self.patcher.generate_diff(original_code, fixed_code, file_path)
+                    diff = self.patcher.generate_diff(
+                        original_code, fixed_code, file_path
+                    )
 
                     fix = CodeFix(
                         fix_id=fix_id,
                         file_path=file_path,
                         original_code=original_code,
                         fixed_code=fixed_code,
-                        issue_description=issue.get('body', ''),
-                        category=issue.get('category', 'code_quality'),
+                        issue_description=issue.get("body", ""),
+                        category=issue.get("category", "code_quality"),
                         confidence=0.8,
                         agent_id=f"agent-{issue.get('category', 'general')}",
                         line_start=start,
                         line_end=end,
                         diff=diff,
                         provider=provider,
-                        created_at=datetime.now(timezone.utc).isoformat()
+                        created_at=datetime.now(timezone.utc).isoformat(),
                     )
 
-                    fixes.append({'fix': fix, 'issue': issue})
+                    fixes.append({"fix": fix, "issue": issue})
                     logger.info(f"  ✅ Fix generated via {provider}")
                 else:
                     logger.warning(f"  ⚠️ No fix generated or code unchanged")
@@ -1299,19 +1272,17 @@ class ProductionSwarmFixer:
         evaluated = []
 
         for item in fixes:
-            fix = item['fix']
+            fix = item["fix"]
 
             evaluation = await self.evaluator.evaluate_fix(
-                fix.original_code,
-                fix.fixed_code,
-                fix.category
+                fix.original_code, fix.fixed_code, fix.category
             )
 
-            min_score = self.config.get('min_approval_score', 0.7)
+            min_score = self.config.get("min_approval_score", 0.7)
             approved = evaluation.score >= min_score and evaluation.execution_safe
 
-            item['evaluation'] = evaluation
-            item['approved'] = approved
+            item["evaluation"] = evaluation
+            item["approved"] = approved
 
             # Record to metrics
             self.metrics.record_fix(
@@ -1320,10 +1291,10 @@ class ProductionSwarmFixer:
                 approved,
                 evaluation.score,
                 evaluation.evaluator,
-                self.repo
+                self.repo,
             )
 
-            status = '✅ APPROVED' if approved else '❌ REJECTED'
+            status = "✅ APPROVED" if approved else "❌ REJECTED"
             logger.info(
                 f"  {status}: {fix.fix_id[:8]}... "
                 f"(score: {evaluation.score:.2f}, provider: {fix.provider}, evaluator: {evaluation.evaluator})"
@@ -1333,25 +1304,21 @@ class ProductionSwarmFixer:
 
         return evaluated
 
-    async def _apply_fixes_atomically(
-        self,
-        fixes: List[Dict],
-        pr_number: int
-    ) -> Dict:
+    async def _apply_fixes_atomically(self, fixes: List[Dict], pr_number: int) -> Dict:
         """Apply fixes atomically with rollback support"""
         if not fixes:
-            return {'count': 0}
+            return {"count": 0}
 
         # Create backup
         backup_ref = f"backup-pr-{pr_number}-{int(time.time())}"
-        subprocess.run(['git', 'branch', backup_ref], capture_output=True)
+        subprocess.run(["git", "branch", backup_ref], capture_output=True)
 
         applied_count = 0
         applied_fixes = []
 
         try:
             for item in fixes:
-                fix = item['fix']
+                fix = item["fix"]
                 success, error = self.patcher.apply_fix_with_ast_validation(
                     fix.file_path, fix
                 )
@@ -1366,31 +1333,39 @@ class ProductionSwarmFixer:
             # Validate all changes
             if not await self._validate_changes():
                 logger.error("Validation failed, rolling back...")
-                subprocess.run(['git', 'reset', '--hard', backup_ref], capture_output=True)
-                return {'count': 0, 'rolled_back': True}
+                subprocess.run(
+                    ["git", "reset", "--hard", backup_ref], capture_output=True
+                )
+                return {"count": 0, "rolled_back": True}
 
             # Commit if fixes were applied
             if applied_count > 0:
                 await self._create_commit(applied_fixes, pr_number)
 
-            return {'count': applied_count, 'success': True}
+            return {"count": applied_count, "success": True}
 
         finally:
             # Cleanup backup
             subprocess.run(
-                ['git', 'branch', '-D', backup_ref],
+                ["git", "branch", "-D", backup_ref],
                 capture_output=True,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
             )
 
     async def _validate_changes(self) -> bool:
         """Validate all Python files after changes"""
         try:
             result = subprocess.run(
-                ['python3', '-m', 'py_compile'] +
-                [f for f in subprocess.getoutput('find . -name "*.py" -type f').split('\n') if f],
+                ["python3", "-m", "py_compile"]
+                + [
+                    f
+                    for f in subprocess.getoutput('find . -name "*.py" -type f').split(
+                        "\n"
+                    )
+                    if f
+                ],
                 capture_output=True,
-                timeout=60
+                timeout=60,
             )
             return result.returncode == 0
         except Exception as e:
@@ -1413,8 +1388,8 @@ Generated by Hybrid Swarm Auto-Fixer
 - Fallbacks: Kimi K2.5, GLM-5, DashScope
 """
 
-        subprocess.run(['git', 'add', '.'], capture_output=True)
-        subprocess.run(['git', 'commit', '-m', message], capture_output=True)
+        subprocess.run(["git", "add", "."], capture_output=True)
+        subprocess.run(["git", "commit", "-m", message], capture_output=True)
         logger.info("📝 Created commit for applied fixes")
 
 
@@ -1422,15 +1397,19 @@ async def main():
     """Main entry point"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Hybrid Swarm Auto-Fixer')
-    parser.add_argument('--pr', type=int, required=True, help='PR number')
-    parser.add_argument('--repo', type=str, required=True, help='Repository (owner/repo)')
-    parser.add_argument('--issues', type=str, help='JSON file with issues')
-    parser.add_argument('--min-score', type=float, default=0.7, help='Minimum approval score')
+    parser = argparse.ArgumentParser(description="Hybrid Swarm Auto-Fixer")
+    parser.add_argument("--pr", type=int, required=True, help="PR number")
+    parser.add_argument(
+        "--repo", type=str, required=True, help="Repository (owner/repo)"
+    )
+    parser.add_argument("--issues", type=str, help="JSON file with issues")
+    parser.add_argument(
+        "--min-score", type=float, default=0.7, help="Minimum approval score"
+    )
     args = parser.parse_args()
 
     # Check for GitHub token
-    token = os.getenv('GITHUB_TOKEN')
+    token = os.getenv("GITHUB_TOKEN")
     if not token:
         print("❌ GITHUB_TOKEN environment variable required")
         sys.exit(1)
@@ -1438,20 +1417,20 @@ async def main():
     # Load issues
     issues = []
     if args.issues and os.path.exists(args.issues):
-        with open(args.issues, 'r') as f:
+        with open(args.issues, "r") as f:
             issues = json.load(f)
     else:
         # Demo issues for testing
         issues = [
             {
-                'path': 'agents/benchmark_executor.py',
-                'line': 100,
-                'body': 'Consider adding type hints for better code clarity',
-                'category': 'code_quality'
+                "path": "agents/benchmark_executor.py",
+                "line": 100,
+                "body": "Consider adding type hints for better code clarity",
+                "category": "code_quality",
             }
         ]
 
-    config = {'min_approval_score': args.min_score}
+    config = {"min_approval_score": args.min_score}
 
     fixer = ProductionSwarmFixer(token, args.repo, config)
     result = await fixer.process_pr(args.pr, issues)

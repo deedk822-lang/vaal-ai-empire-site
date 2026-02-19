@@ -19,61 +19,61 @@ Features:
 - One-click deployment
 """
 
-__version__ = '2026.2.0-enterprise'
+__version__ = "2026.2.0-enterprise"
 
-from .swarm_orchestrator import SwarmOrchestrator, SwarmConfig
 from .agents import (
-    SentientUIAgent,
-    MXAgent,
-    EmpathyAgent,
-    PerformanceAgent,
     AmbientAgent,
     CodeReviewAgent,
+    EmpathyAgent,
+    MXAgent,
+    PerformanceAgent,
+    SentientUIAgent,
 )
 from .api_clients import (
-    UnifiedLLMClient,
-    LLMProvider,
     GrafanaClient,
-    PrometheusClient,
+    LLMProvider,
     OpenTelemetryClient,
+    PrometheusClient,
+    UnifiedLLMClient,
     VercelClient,
 )
 from .observability import (
-    EnterpriseMetrics,
     DistributedTracer,
+    EnterpriseMetrics,
     StructuredLogger,
 )
 from .resilience import (
+    Bulkhead,
     CircuitBreaker,
     CircuitState,
     FallbackChain,
     FallbackStrategy,
-    Bulkhead,
     RetryPolicy,
 )
+from .swarm_orchestrator import SwarmConfig, SwarmOrchestrator
 
 __all__ = [
-    'SwarmOrchestrator',
-    'SwarmConfig',
-    'SentientUIAgent',
-    'MXAgent',
-    'EmpathyAgent',
-    'PerformanceAgent',
-    'AmbientAgent',
-    'CodeReviewAgent',
-    'UnifiedLLMClient',
-    'LLMProvider',
-    'GrafanaClient',
-    'PrometheusClient',
-    'OpenTelemetryClient',
-    'VercelClient',
-    'EnterpriseMetrics',
-    'DistributedTracer',
-    'StructuredLogger',
-    'CircuitBreaker',
-    'CircuitState',
-    'FallbackChain',
-    'FallbackStrategy',
-    'Bulkhead',
-    'RetryPolicy',
+    "SwarmOrchestrator",
+    "SwarmConfig",
+    "SentientUIAgent",
+    "MXAgent",
+    "EmpathyAgent",
+    "PerformanceAgent",
+    "AmbientAgent",
+    "CodeReviewAgent",
+    "UnifiedLLMClient",
+    "LLMProvider",
+    "GrafanaClient",
+    "PrometheusClient",
+    "OpenTelemetryClient",
+    "VercelClient",
+    "EnterpriseMetrics",
+    "DistributedTracer",
+    "StructuredLogger",
+    "CircuitBreaker",
+    "CircuitState",
+    "FallbackChain",
+    "FallbackStrategy",
+    "Bulkhead",
+    "RetryPolicy",
 ]

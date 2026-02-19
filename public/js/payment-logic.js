@@ -1,19 +1,15 @@
 /**
- * PAYMENT INFRASTRUCTURE - PRODUCTION LOGIC
- * Real Stripe integration with backend API
+ * PAYMENT INFRASTRUCTURE - PAYFAST INTEGRATION
+ * South Africa's premier payment gateway - ZAR native
+ * 🇿🇦 Built for Africa
  */
 
-// Initialize Stripe (will be loaded from environment)
-let stripe;
-let elements;
-let cardElement;
-
-// Payment configuration
-const PAYMENT_CONFIG = {
+// PayFast Configuration
+const PAYFAST_CONFIG = {
     apiUrl: window.location.hostname === 'localhost' 
         ? 'http://localhost:4242' 
-        : 'https://api.vaalai.co.za',
-    stripePublicKey: null // Will be loaded from server
+        : '',
+    sandbox: true // Will be updated from server
 };
 
 // Transaction log system
@@ -53,230 +49,193 @@ const transactionLog = {
     }
 };
 
-// Initialize payment system
+// Initialize PayFast
 async function initializePayments() {
     try {
-        // Fetch Stripe public key from server
-        const response = await fetch(`${PAYMENT_CONFIG.apiUrl}/api/config/stripe`);
+        const response = await fetch(`${PAYFAST_CONFIG.apiUrl}/config`);
         if (!response.ok) throw new Error('Failed to load payment configuration');
         
         const config = await response.json();
-        PAYMENT_CONFIG.stripePublicKey = config.publishableKey;
+        PAYFAST_CONFIG.merchantId = config.merchantId;
+        PAYFAST_CONFIG.merchantKey = config.merchantKey;
+        PAYFAST_CONFIG.sandbox = config.sandbox;
+        PAYFAST_CONFIG.prices = config.prices;
         
-        // Initialize Stripe
-        stripe = Stripe(PAYMENT_CONFIG.stripePublicKey);
-        elements = stripe.elements();
-        
-        // Create card element
-        cardElement = elements.create('card', {
-            style: {
-                base: {
-                    color: '#ffffff',
-                    fontFamily: '"Inter", sans-serif',
-                    fontSize: '16px',
-                    '::placeholder': {
-                        color: '#6b7280'
-                    }
-                },
-                invalid: {
-                    color: '#ff4444'
-                }
-            }
-        });
-        
-        // Mount card element
-        const cardElementContainer = document.getElementById('cardElement');
-        if (cardElementContainer) {
-            const mountPoint = cardElementContainer.querySelector('.card-mount-point') || 
-                              cardElementContainer.querySelector('.bg-gray-800');
-            if (mountPoint) {
-                mountPoint.innerHTML = '';
-                cardElement.mount(mountPoint);
-            }
-        }
-        
-        console.log('Payment system initialized successfully');
+        console.log('✅ PayFast initialized', config.sandbox ? '(SANDBOX)' : '(PRODUCTION)');
     } catch (error) {
         console.error('Payment initialization error:', error);
         showNotification('Payment system unavailable. Please try again later.', 'error');
     }
 }
 
-// Form validation
-function validatePaymentForm(formData) {
-    const errors = [];
-    
-    // First name
-    if (!formData.firstName || formData.firstName.length < 2) {
-        errors.push('First name must be at least 2 characters');
-    }
-    
-    // Last name
-    if (!formData.lastName || formData.lastName.length < 2) {
-        errors.push('Last name must be at least 2 characters');
-    }
-    
-    // Email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-        errors.push('Please enter a valid email address');
-    }
-    
-    // Amount
-    const amount = parseFloat(formData.amount);
-    if (isNaN(amount) || amount < 1) {
-        errors.push('Amount must be at least R1.00');
-    }
-    
-    if (amount > 1000000) {
-        errors.push('Amount cannot exceed R1,000,000');
-    }
-    
-    // Payment method
-    if (!formData.paymentMethod) {
-        errors.push('Please select a payment method');
-    }
-    
-    // Consent
-    if (!formData.consent) {
-        errors.push('You must accept the data processing consent');
-    }
-    
-    return errors;
-}
-
-// Process payment
-async function processPayment(formData) {
+// Initiate PayFast payment
+async function initiatePayFastPayment(plan, email, name) {
     try {
-        // Show loading state
-        const submitButton = document.querySelector('button[type="submit"]');
-        const originalText = submitButton.textContent;
-        submitButton.textContent = 'Processing...';
-        submitButton.disabled = true;
+        const submitButton = document.querySelector('button[type="submit"]') || 
+                            document.querySelector('.btn-primary');
+        const originalText = submitButton?.textContent;
+        if (submitButton) {
+            submitButton.textContent = 'Processing...';
+            submitButton.disabled = true;
+        }
         
-        // Log transaction start
-        transactionLog.add(
-            formData.paymentMethod,
-            formData.amount,
-            'ZAR',
-            'PENDING',
-            { email: formData.email }
-        );
-        
-        // Create payment intent
-        const intentResponse = await fetch(`${PAYMENT_CONFIG.apiUrl}/api/payments/create-intent`, {
+        // Create payment on server
+        const response = await fetch(`${PAYFAST_CONFIG.apiUrl}/create-payment`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                amount: parseFloat(formData.amount) * 100, // Convert to cents
-                currency: 'zar',
-                paymentMethod: formData.paymentMethod,
-                customerEmail: formData.email,
-                customerName: `${formData.firstName} ${formData.lastName}`,
-                metadata: {
-                    source: 'payment-infrastructure-page'
-                }
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan, email, name })
         });
         
-        if (!intentResponse.ok) {
-            throw new Error('Payment intent creation failed');
-        }
+        if (!response.ok) throw new Error('Failed to create payment');
         
-        const { clientSecret, paymentIntentId } = await intentResponse.json();
+        const { paymentData, payfastUrl, paymentId } = await response.json();
         
-        // Confirm payment with Stripe (if card payment)
-        if (formData.paymentMethod === 'card' && cardElement) {
-            const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-                payment_method: {
-                    card: cardElement,
-                    billing_details: {
-                        name: `${formData.firstName} ${formData.lastName}`,
-                        email: formData.email
-                    }
-                }
-            });
-            
-            if (error) {
-                throw new Error(error.message);
-            }
-            
-            // Success
-            transactionLog.add(
-                formData.paymentMethod,
-                formData.amount,
-                'ZAR',
-                'SUCCESS',
-                { paymentIntentId: paymentIntent.id }
-            );
-            
-            showPaymentSuccess(formData, paymentIntent.id);
-            
-        } else {
-            // Simulate success for non-card payments
-            setTimeout(() => {
-                transactionLog.add(
-                    formData.paymentMethod,
-                    formData.amount,
-                    'ZAR',
-                    'SUCCESS',
-                    { paymentIntentId }
-                );
-                showPaymentSuccess(formData, paymentIntentId);
-            }, 2000);
-        }
-        
-    } catch (error) {
-        console.error('Payment error:', error);
-        
-        // Log failed transaction
+        // Log transaction
         transactionLog.add(
-            formData.paymentMethod,
-            formData.amount,
+            'PayFast',
+            paymentData.amount,
             'ZAR',
-            'FAILED',
-            { error: error.message }
+            'PENDING',
+            { paymentId }
         );
         
+        // Create and submit form to PayFast
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = payfastUrl;
+        form.acceptCharset = 'UTF-8';
+        
+        // Add all payment data as hidden inputs
+        Object.entries(paymentData).forEach(([key, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+        });
+        
+        document.body.appendChild(form);
+        form.submit();
+        
+    } catch (error) {
+        console.error('PayFast payment error:', error);
         showNotification(`Payment failed: ${error.message}`, 'error');
         
-    } finally {
-        // Reset button
-        const submitButton = document.querySelector('button[type="submit"]');
+        const submitButton = document.querySelector('button[type="submit"]') || 
+                            document.querySelector('.btn-primary');
         if (submitButton) {
-            submitButton.textContent = 'Process Secure Payment';
+            submitButton.textContent = 'Pay Now';
             submitButton.disabled = false;
         }
     }
 }
 
-// Show payment success modal
-function showPaymentSuccess(formData, transactionId) {
+// Plan selection and payment
+async function selectPlan(plan) {
+    const plans = {
+        starter: {
+            name: 'Vaal Starter',
+            price: 999, // R999
+            priceDisplay: 'R999/month',
+            features: [
+                '✅ Financial Sentinel engine',
+                '✅ Guardian Engine alerts',
+                '✅ Email support',
+                '✅ SARS compliance monitoring',
+                '✅ 7-day free trial'
+            ]
+        },
+        empire: {
+            name: 'Vaal Empire',
+            price: 2999, // R2,999
+            priceDisplay: 'R2,999/month',
+            features: [
+                '✅ All Starter features',
+                '✅ Talent Accelerator engine',
+                '✅ Priority support',
+                '✅ Custom integrations',
+                '✅ Advanced analytics',
+                '✅ 7-day free trial'
+            ]
+        }
+    };
+    
+    const selectedPlan = plans[plan];
+    if (!selectedPlan) return;
+    
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center';
+    modal.id = 'plan-modal';
     modal.innerHTML = `
-        <div class="bg-gray-900 rounded-lg p-8 max-w-md mx-4 border border-gray-700 text-center">
-            <div class="text-6xl mb-4">✅</div>
-            <h3 class="text-2xl font-bold text-white mb-4">Payment Successful!</h3>
-            <p class="text-gray-300 mb-4">
-                Your payment of <span class="text-green-400 font-bold">R${parseFloat(formData.amount).toFixed(2)}</span> has been processed securely.
-            </p>
-            <div class="bg-gray-800 rounded-lg p-4 mb-6 text-left">
-                <div class="text-sm text-gray-400">Transaction ID:</div>
-                <div class="text-white font-mono text-xs break-all">${transactionId}</div>
+        <div class="bg-gray-900 rounded-lg p-8 max-w-md mx-4 border border-gray-700">
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold text-white mb-2">${selectedPlan.name}</h3>
+                <div class="text-3xl font-bold text-green-400">${selectedPlan.priceDisplay}</div>
+                <div class="text-sm text-gray-400 mt-1">🇿🇦 ZAR - South African Rand</div>
             </div>
-            <p class="text-gray-400 text-sm mb-6">
-                A confirmation email has been sent to <span class="text-blue-400">${formData.email}</span>
-            </p>
-            <button onclick="this.parentElement.parentElement.remove(); resetPaymentForm()" class="btn-primary px-8 py-3 rounded-lg text-white font-semibold w-full">
-                Continue
-            </button>
+            
+            <ul class="space-y-2 mb-6">
+                ${selectedPlan.features.map(feature => `
+                    <li class="text-gray-300">${feature}</li>
+                `).join('')}
+            </ul>
+            
+            <!-- Payment Form -->
+            <form id="payfast-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Full Name</label>
+                    <input type="text" name="name" required 
+                        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+                        placeholder="Your full name">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Email</label>
+                    <input type="email" name="email" required 
+                        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+                        placeholder="your@email.com">
+                </div>
+                <div class="flex items-start space-x-2">
+                    <input type="checkbox" id="consent" required class="mt-1">
+                    <label for="consent" class="text-sm text-gray-400">
+                        I agree to the <a href="/legal-compliance.html" class="text-blue-400 hover:underline">Terms & Conditions</a>
+                    </label>
+                </div>
+                <div class="flex gap-4">
+                    <button type="submit" class="btn-primary px-6 py-3 rounded-lg text-white font-semibold flex-1">
+                        Pay with PayFast
+                    </button>
+                    <button type="button" onclick="document.getElementById('plan-modal').remove()" 
+                        class="border border-gray-600 px-6 py-3 rounded-lg text-gray-300 hover:bg-gray-800">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+            
+            <div class="mt-4 text-center">
+                <img src="https://www.payfast.co.za/images/payfast-logo.png" alt="PayFast" class="h-8 mx-auto opacity-70">
+                <p class="text-xs text-gray-500 mt-2">Secure payment powered by PayFast</p>
+            </div>
         </div>
     `;
     
     document.body.appendChild(modal);
+    
+    // Handle form submission
+    const form = document.getElementById('payfast-form');
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const name = form.querySelector('input[name="name"]').value;
+        const email = form.querySelector('input[name="email"]').value;
+        const consent = form.querySelector('#consent').checked;
+        
+        if (!consent) {
+            showNotification('Please accept the Terms & Conditions', 'error');
+            return;
+        }
+        
+        await initiatePayFastPayment(plan, email, name);
+    });
     
     // Animate
     if (typeof anime !== 'undefined') {
@@ -287,18 +246,6 @@ function showPaymentSuccess(formData, transactionId) {
             duration: 300,
             easing: 'easeOutCubic'
         });
-    }
-}
-
-// Reset payment form
-function resetPaymentForm() {
-    const form = document.getElementById('paymentForm');
-    if (form) {
-        form.reset();
-        const cardElement = document.getElementById('cardElement');
-        if (cardElement) {
-            cardElement.classList.add('hidden');
-        }
     }
 }
 
@@ -345,186 +292,30 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// Plan selection
-function selectPlan(plan) {
-    const plans = {
-        starter: {
-            name: 'Starter Plan',
-            price: '2.9% + R2.50',
-            priceId: 'price_starter_123',
-            features: [
-                'Credit & debit cards',
-                'Mobile payments',
-                'Local bank transfers',
-                'Basic fraud protection',
-                'Email support'
-            ]
-        },
-        professional: {
-            name: 'Professional Plan',
-            price: '2.4% + R1.50',
-            priceId: 'price_professional_456',
-            features: [
-                'International payments',
-                'Cryptocurrency support',
-                'Advanced fraud protection',
-                'Priority support',
-                'Custom integrations',
-                'API access'
-            ]
-        },
-        enterprise: {
-            name: 'Enterprise Plan',
-            price: 'Custom pricing',
-            priceId: null,
-            features: [
-                'Volume discounts',
-                'Dedicated account manager',
-                'Custom compliance solutions',
-                'White-label options',
-                '24/7 phone support',
-                'SLA guarantee'
-            ]
-        }
-    };
+// Check for payment return
+function checkPaymentReturn() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentId = urlParams.get('payment_id');
     
-    const selectedPlan = plans[plan];
-    if (!selectedPlan) return;
-    
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center';
-    modal.innerHTML = `
-        <div class="bg-gray-900 rounded-lg p-8 max-w-md mx-4 border border-gray-700">
-            <h3 class="text-2xl font-bold text-white mb-4">${selectedPlan.name}</h3>
-            <div class="text-3xl font-bold text-blue-400 mb-6">${selectedPlan.price}</div>
-            <ul class="space-y-2 mb-6">
-                ${selectedPlan.features.map(feature => `
-                    <li class="flex items-center space-x-2">
-                        <span class="text-green-400">✓</span>
-                        <span class="text-gray-300">${feature}</span>
-                    </li>
-                `).join('')}
-            </ul>
-            <div class="flex gap-4">
-                <button onclick="subscribeToPlan('${plan}', '${selectedPlan.priceId}')" class="btn-primary px-6 py-3 rounded-lg text-white font-semibold flex-1">
-                    ${plan === 'enterprise' ? 'Contact Sales' : 'Subscribe Now'}
-                </button>
-                <button onclick="this.parentElement.parentElement.parentElement.remove()" class="border border-gray-600 px-6 py-3 rounded-lg text-gray-300 hover:bg-gray-800">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Animate
-    if (typeof anime !== 'undefined') {
-        anime({
-            targets: modal.querySelector('div'),
-            scale: [0.8, 1],
-            opacity: [0, 1],
-            duration: 300,
-            easing: 'easeOutCubic'
-        });
-    }
-}
-
-// Subscribe to plan
-async function subscribeToPlan(planType, priceId) {
-    if (planType === 'enterprise' || !priceId) {
-        // Redirect to contact sales
-        window.location.href = 'mailto:sales@vaalai.co.za?subject=Enterprise Plan Inquiry';
-        return;
-    }
-    
-    try {
-        // Create checkout session
-        const response = await fetch(`${PAYMENT_CONFIG.apiUrl}/api/subscriptions/create-checkout`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                priceId,
-                planType
-            })
-        });
-        
-        if (!response.ok) throw new Error('Failed to create checkout session');
-        
-        const { sessionId } = await response.json();
-        
-        // Redirect to Stripe Checkout
-        if (stripe) {
-            const { error } = await stripe.redirectToCheckout({ sessionId });
-            if (error) throw error;
-        }
-        
-    } catch (error) {
-        console.error('Subscription error:', error);
-        showNotification('Subscription failed. Please try again.', 'error');
+    if (paymentId && window.location.pathname.includes('success')) {
+        // Show success message
+        transactionLog.add('PayFast', '0.00', 'ZAR', 'SUCCESS', { paymentId });
     }
 }
 
 // DOM Ready
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize payments
     initializePayments();
-    
-    // Payment form handling
-    const paymentForm = document.getElementById('paymentForm');
-    if (paymentForm) {
-        // Show/hide card element based on payment method
-        const paymentMethodSelect = paymentForm.querySelector('select');
-        const cardElement = document.getElementById('cardElement');
-        
-        if (paymentMethodSelect && cardElement) {
-            paymentMethodSelect.addEventListener('change', function() {
-                if (this.value === 'card') {
-                    cardElement.classList.remove('hidden');
-                } else {
-                    cardElement.classList.add('hidden');
-                }
-            });
-        }
-        
-        // Form submission
-        paymentForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            // Get form data
-            const formData = {
-                firstName: paymentForm.querySelector('input[type="text"]').value,
-                lastName: paymentForm.querySelectorAll('input[type="text"]')[1].value,
-                email: paymentForm.querySelector('input[type="email"]').value,
-                amount: paymentForm.querySelector('input[type="number"]').value,
-                paymentMethod: paymentForm.querySelector('select').value,
-                consent: paymentForm.querySelector('#consent').checked
-            };
-            
-            // Validate
-            const errors = validatePaymentForm(formData);
-            if (errors.length > 0) {
-                showNotification(errors[0], 'error');
-                return;
-            }
-            
-            // Process payment
-            await processPayment(formData);
-        });
-    }
+    checkPaymentReturn();
     
     // Initialize transaction log with demo data
     setTimeout(() => {
-        transactionLog.add('card', '5000.00', 'ZAR', 'SUCCESS');
-        transactionLog.add('bank_transfer', '2500.00', 'EUR', 'SUCCESS');
-        transactionLog.add('mobile_pay', '1200.00', 'GBP', 'PENDING');
-        transactionLog.add('card', '10000.00', 'ZAR', 'SUCCESS');
+        transactionLog.add('PayFast', '999.00', 'ZAR', 'SUCCESS');
+        transactionLog.add('EFT', '2999.00', 'ZAR', 'SUCCESS');
+        transactionLog.add('Card', '500.00', 'ZAR', 'PENDING');
     }, 1000);
 });
 
 // Export for global access
 window.selectPlan = selectPlan;
-window.subscribeToPlan = subscribeToPlan;
-window.resetPaymentForm = resetPaymentForm;
+window.initiatePayFastPayment = initiatePayFastPayment;

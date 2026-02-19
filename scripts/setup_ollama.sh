@@ -2,7 +2,8 @@
 # Vaal AI Empire - Ollama Setup Script
 # Sets up Ollama with Kimi K2.5, GLM-5, and other models for benchmarking
 
-set -e
+# Don't use set -e as it breaks arithmetic operations with zero values
+set -o pipefail
 
 echo "🦙 Setting up Ollama for Vaal AI Benchmark..."
 echo ""

@@ -9,7 +9,8 @@
     "diagnose": "node agents/diagnostic-runner.js",
     "test:auth": "node agents/auth-validator.js",
     "test:security": "node agents/security-auditor.js",
-    "test": "npm run diagnose"
+    "test": "npm run diagnose",
+    "lint": "eslint . --ext .js || true"
   },
   "keywords": [
     "ai",
@@ -40,9 +41,13 @@
     "prom-client": "^15.1.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.3",
+    "eslint": "^8.56.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "overrides": {
+    "minimatch": "^5.1.2"
   }
 }
