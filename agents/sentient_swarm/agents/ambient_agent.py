@@ -3,10 +3,12 @@ Ambient Agent - Zero UI / Voice / Gesture APIs.
 """
 
 from typing import Any, Dict
+
 from .base_agent import BaseAgent
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
@@ -15,24 +17,27 @@ except ImportError:
 
 class AmbientAgent(BaseAgent):
     """Builds headless, ambient computing interfaces."""
-    
+
     def __init__(self, llm_client=None, metrics=None, tracer=None):
         super().__init__("Ambient", llm_client, metrics, tracer)
-    
+
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate ambient API specifications."""
         self.log("👻 Building ambient interfaces...")
-        
+
         # OpenAPI spec for voice/gesture APIs
         api_spec = {
             "openapi": "3.0.0",
             "info": {
                 "title": "Ambient Interface API",
                 "version": "2026.1.0",
-                "description": "Voice and gesture control API for South African SMEs"
+                "description": "Voice and gesture control API for South African SMEs",
             },
             "servers": [
-                {"url": "https://api.vaalaiempire.co.za/v1", "description": "Production"}
+                {
+                    "url": "https://api.vaalaiempire.co.za/v1",
+                    "description": "Production",
+                }
             ],
             "paths": {
                 "/voice/intent": {
@@ -45,12 +50,19 @@ class AmbientAgent(BaseAgent):
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "audio": {"type": "string", "format": "base64"},
-                                            "language": {"type": "string", "enum": ["en-ZA", "af", "zu"], "default": "en-ZA"}
-                                        }
+                                            "audio": {
+                                                "type": "string",
+                                                "format": "base64",
+                                            },
+                                            "language": {
+                                                "type": "string",
+                                                "enum": ["en-ZA", "af", "zu"],
+                                                "default": "en-ZA",
+                                            },
+                                        },
                                     }
                                 }
-                            }
+                            },
                         },
                         "responses": {
                             "200": {
@@ -62,13 +74,13 @@ class AmbientAgent(BaseAgent):
                                             "properties": {
                                                 "intent": {"type": "string"},
                                                 "confidence": {"type": "number"},
-                                                "entities": {"type": "object"}
-                                            }
+                                                "entities": {"type": "object"},
+                                            },
                                         }
                                     }
-                                }
+                                },
                             }
-                        }
+                        },
                     }
                 },
                 "/gesture/recognize": {
@@ -81,12 +93,18 @@ class AmbientAgent(BaseAgent):
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "frames": {"type": "array", "items": {"type": "string", "format": "base64"}}
-                                        }
+                                            "frames": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "format": "base64",
+                                                },
+                                            }
+                                        },
                                     }
                                 }
-                            }
-                        }
+                            },
+                        },
                     }
                 },
                 "/context/awareness": {
@@ -103,55 +121,66 @@ class AmbientAgent(BaseAgent):
                                                 "location": {"type": "string"},
                                                 "time": {"type": "string"},
                                                 "device": {"type": "string"},
-                                                "preferences": {"type": "object"}
-                                            }
+                                                "preferences": {"type": "object"},
+                                            },
                                         }
                                     }
-                                }
+                                },
                             }
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
-        
+
         if HAS_YAML:
-            spec_file = self.write_file("ambient-api.yaml", yaml.dump(api_spec, default_flow_style=False))
+            spec_file = self.write_file(
+                "ambient-api.yaml", yaml.dump(api_spec, default_flow_style=False)
+            )
         else:
             import json
-            spec_file = self.write_file("ambient-api.json", json.dumps(api_spec, indent=2))
-        
+
+            spec_file = self.write_file(
+                "ambient-api.json", json.dumps(api_spec, indent=2)
+            )
+
         # Generate WebSocket event schema
         websocket_spec = {
             "protocol": "WebSocket",
             "events": {
                 "voice.command": {
                     "description": "Real-time voice command stream",
-                    "payload": {"text": "string", "confidence": "number"}
+                    "payload": {"text": "string", "confidence": "number"},
                 },
                 "gesture.detected": {
                     "description": "Gesture recognition result",
-                    "payload": {"gesture": "string", "confidence": "number"}
+                    "payload": {"gesture": "string", "confidence": "number"},
                 },
                 "presence.update": {
                     "description": "User presence detection",
-                    "payload": {"present": "boolean", "distance": "number"}
-                }
-            }
+                    "payload": {"present": "boolean", "distance": "number"},
+                },
+            },
         }
-        
+
         if HAS_YAML:
-            ws_file = self.write_file("websocket-events.yaml", yaml.dump(websocket_spec, default_flow_style=False))
+            ws_file = self.write_file(
+                "websocket-events.yaml",
+                yaml.dump(websocket_spec, default_flow_style=False),
+            )
         else:
             import json
-            ws_file = self.write_file("websocket-events.json", json.dumps(websocket_spec, indent=2))
-        
+
+            ws_file = self.write_file(
+                "websocket-events.json", json.dumps(websocket_spec, indent=2)
+            )
+
         return {
-            'agent': self.name,
-            'status': 'success',
-            'files': [spec_file, ws_file],
-            'metrics': {
-                'api_endpoints': len(api_spec['paths']),
-                'websocket_events': len(websocket_spec['events'])
-            }
+            "agent": self.name,
+            "status": "success",
+            "files": [spec_file, ws_file],
+            "metrics": {
+                "api_endpoints": len(api_spec["paths"]),
+                "websocket_events": len(websocket_spec["events"]),
+            },
         }

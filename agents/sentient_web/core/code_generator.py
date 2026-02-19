@@ -5,19 +5,23 @@ Generates actual CSS, JavaScript, and HTML files - not just dictionaries.
 Implements +AAA standards for code quality and security.
 """
 
+import hashlib
 import os
 import re
-import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+
+# Import the unified CodeValidator from validator.py
+from .validator import CodeValidator, ValidationIssue, ValidationResult
 
 
 @dataclass
 class GeneratedFile:
     """Represents a generated file with metadata."""
+
     path: str
     content: str
     language: str
@@ -26,186 +30,100 @@ class GeneratedFile:
     generated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     validation_status: str = "pending"
     validation_errors: List[str] = field(default_factory=list)
-    
+
     def __post_init__(self):
         self.checksum = hashlib.sha256(self.content.encode()).hexdigest()[:16]
-        self.size_bytes = len(self.content.encode('utf-8'))
+        self.size_bytes = len(self.content.encode("utf-8"))
 
 
 @dataclass
 class GenerationResult:
     """Result of code generation."""
+
     success: bool
     files: List[GeneratedFile] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     metrics: Dict[str, Any] = field(default_factory=dict)
 
 
-class CodeValidator:
-    """Validates generated code for syntax and security issues."""
-    
-    # Security patterns to detect
-    DANGEROUS_PATTERNS = {
-        'eval': re.compile(r'\beval\s*\(', re.IGNORECASE),
-        'innerHTML': re.compile(r'\.innerHTML\s*=', re.IGNORECASE),
-        'document_write': re.compile(r'document\.write\s*\(', re.IGNORECASE),
-        'exec': re.compile(r'\bexec\s*\(', re.IGNORECASE),
-        'os_system': re.compile(r'os\.system\s*\(', re.IGNORECASE),
-        'subprocess': re.compile(r'subprocess\.call', re.IGNORECASE),
-    }
-    
-    def validate_javascript(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate JavaScript code."""
-        errors = []
-        
-        # Check for dangerous patterns
-        for pattern_name, pattern in self.DANGEROUS_PATTERNS.items():
-            if pattern.search(code):
-                errors.append(f"Security: Found dangerous pattern '{pattern_name}'")
-        
-        # Basic syntax checks
-        open_braces = code.count('{') - code.count('}')
-        open_parens = code.count('(') - code.count(')')
-        open_brackets = code.count('[') - code.count(']')
-        
-        if open_braces != 0:
-            errors.append(f"Syntax: Unmatched braces ({open_braces})")
-        if open_parens != 0:
-            errors.append(f"Syntax: Unmatched parentheses ({open_parens})")
-        if open_brackets != 0:
-            errors.append(f"Syntax: Unmatched brackets ({open_brackets})")
-        
-        # Check for basic structure
-        if 'function' in code and '()' not in code:
-            # Not necessarily an error, but worth noting
-            pass
-        
-        return len(errors) == 0, errors
-    
-    def validate_css(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate CSS code."""
-        errors = []
-        
-        # Check for unmatched braces
-        open_braces = code.count('{') - code.count('}')
-        if open_braces != 0:
-            errors.append(f"Syntax: Unmatched braces ({open_braces})")
-        
-        # Check for common CSS issues
-        if 'px' in code and not re.search(r'\d+px', code):
-            errors.append("Warning: 'px' mentioned but no pixel values found")
-        
-        # Check for potentially dangerous CSS
-        dangerous_css = ['expression(', 'javascript:', 'behavior:']
-        for danger in dangerous_css:
-            if danger in code.lower():
-                errors.append(f"Security: Potentially dangerous CSS '{danger}'")
-        
-        return len(errors) == 0, errors
-    
-    def validate_html(self, code: str) -> Tuple[bool, List[str]]:
-        """Validate HTML code."""
-        errors = []
-        
-        # Check for unmatched tags (basic)
-        # This is simplified - real HTML validation would use a parser
-        open_tags = len(re.findall(r'<[a-zA-Z][^>]*[^/]>', code))
-        close_tags = len(re.findall(r'</[a-zA-Z][^>]*>', code))
-        self_closing = len(re.findall(r'<[a-zA-Z][^>]*/\s*>', code))
-        
-        # Very rough check
-        if open_tags > close_tags + self_closing:
-            missing = open_tags - close_tags - self_closing
-            errors.append(f"Warning: Potentially {missing} unclosed tags")
-        
-        # Check for inline event handlers (security concern)
-        inline_events = re.findall(r'\s(on\w+)\s*=', code, re.IGNORECASE)
-        if inline_events:
-            errors.append(
-                f"Security: Inline event handlers found: {set(inline_events)}"
-            )
-        
-        return len(errors) == 0, errors
-
-
 class CodeGenerator(ABC):
     """Abstract base class for code generators."""
-    
+
     def __init__(self, output_dir: str, validator: Optional[CodeValidator] = None):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.validator = validator or CodeValidator()
         self.generated_files: List[GeneratedFile] = []
-    
+
     @abstractmethod
     async def generate(self, spec: Dict[str, Any]) -> GenerationResult:
         """Generate code based on specification."""
         pass
-    
+
     def write_file(self, filename: str, content: str, language: str) -> GeneratedFile:
         """Write file to disk and return metadata."""
         filepath = self.output_dir / filename
-        
+
         # Ensure parent directory exists
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Write file
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         # Create metadata
         gen_file = GeneratedFile(
             path=str(filepath.relative_to(self.output_dir)),
             content=content,
-            language=language
+            language=language,
         )
-        
-        # Validate
-        if language == 'javascript':
-            valid, errors = self.validator.validate_javascript(content)
-        elif language == 'css':
-            valid, errors = self.validator.validate_css(content)
-        elif language == 'html':
-            valid, errors = self.validator.validate_html(content)
+
+        # Validate using the unified CodeValidator
+        if language == "javascript":
+            result = self.validator.validate_javascript(content)
+        elif language == "css":
+            result = self.validator.validate_css(content)
+        elif language == "html":
+            result = self.validator.validate_html(content)
         else:
-            valid, errors = True, []
-        
-        gen_file.validation_status = 'valid' if valid else 'invalid'
-        gen_file.validation_errors = errors
-        
+            result = ValidationResult(valid=True, language=language, issues=[])
+
+        gen_file.validation_status = "valid" if result.valid else "invalid"
+        gen_file.validation_errors = [i.message for i in result.issues]
+
         self.generated_files.append(gen_file)
         return gen_file
-    
+
     def get_generation_report(self) -> Dict[str, Any]:
         """Get report of all generated files."""
         total = len(self.generated_files)
-        valid = sum(1 for f in self.generated_files if f.validation_status == 'valid')
+        valid = sum(1 for f in self.generated_files if f.validation_status == "valid")
         invalid = total - valid
         total_size = sum(f.size_bytes for f in self.generated_files)
-        
+
         return {
-            'total_files': total,
-            'valid_files': valid,
-            'invalid_files': invalid,
-            'total_size_bytes': total_size,
-            'files': [
+            "total_files": total,
+            "valid_files": valid,
+            "invalid_files": invalid,
+            "total_size_bytes": total_size,
+            "files": [
                 {
-                    'path': f.path,
-                    'language': f.language,
-                    'size': f.size_bytes,
-                    'checksum': f.checksum,
-                    'validation': f.validation_status,
-                    'errors': f.validation_errors
+                    "path": f.path,
+                    "language": f.language,
+                    "size": f.size_bytes,
+                    "checksum": f.checksum,
+                    "validation": f.validation_status,
+                    "errors": f.validation_errors,
                 }
                 for f in self.generated_files
-            ]
+            ],
         }
 
 
 class CSSGenerator(CodeGenerator):
     """Generates production-ready CSS files."""
-    
-    LIQUID_GLASS_TEMPLATE = '''/* 
+
+    LIQUID_GLASS_TEMPLATE = """/* 
  * Liquid Glass Design System
  * Generated: {timestamp}
  * Version: 2026.1.0
@@ -307,63 +225,63 @@ class CSSGenerator(CodeGenerator):
     border-color: currentColor;
   }}
 }}
-'''
-    
+"""
+
     async def generate(self, spec: Dict[str, Any]) -> GenerationResult:
         """Generate CSS files based on specification."""
         files = []
         errors = []
-        
+
         try:
             # Generate main liquid glass CSS
             timestamp = datetime.now().isoformat()
             css_content = self.LIQUID_GLASS_TEMPLATE.format(timestamp=timestamp)
-            
+
             # Add custom components from spec
-            components = spec.get('components', [])
+            components = spec.get("components", [])
             for component in components:
                 css_content += self._generate_component_css(component)
-            
+
             # Write file
-            file = self.write_file('liquid-glass.css', css_content, 'css')
+            file = self.write_file("liquid-glass.css", css_content, "css")
             files.append(file)
-            
+
             # Generate responsive variants
             responsive_css = self._generate_responsive_css()
-            file = self.write_file('liquid-glass.responsive.css', responsive_css, 'css')
+            file = self.write_file("liquid-glass.responsive.css", responsive_css, "css")
             files.append(file)
-            
+
             # Generate dark mode
             dark_css = self._generate_dark_mode_css()
-            file = self.write_file('liquid-glass.dark.css', dark_css, 'css')
+            file = self.write_file("liquid-glass.dark.css", dark_css, "css")
             files.append(file)
-            
+
         except Exception as e:
             errors.append(f"CSS generation failed: {e}")
-        
+
         return GenerationResult(
             success=len(errors) == 0,
             files=files,
             errors=errors,
-            metrics=self.get_generation_report()
+            metrics=self.get_generation_report(),
         )
-    
+
     def _generate_component_css(self, component: Dict[str, Any]) -> str:
         """Generate CSS for a specific component."""
-        name = component.get('name', 'component')
+        name = component.get("name", "component")
         selector = f".glass-{name.lower()}"
-        props = component.get('css_props', {})
-        
+        props = component.get("css_props", {})
+
         css_lines = [f"\n/* Component: {name} */", f"{selector} {{"]
         for prop, value in props.items():
             css_lines.append(f"  {prop}: {value};")
         css_lines.append("}")
-        
-        return '\n'.join(css_lines)
-    
+
+        return "\n".join(css_lines)
+
     def _generate_responsive_css(self) -> str:
         """Generate responsive breakpoints."""
-        return '''
+        return """
 /* Responsive Breakpoints */
 @media (max-width: 768px) {
   .glass-card {
@@ -377,11 +295,11 @@ class CSSGenerator(CodeGenerator):
     backdrop-filter: blur(10px) saturate(150%);
   }
 }
-'''
-    
+"""
+
     def _generate_dark_mode_css(self) -> str:
         """Generate dark mode overrides."""
-        return '''
+        return """
 /* Dark Mode */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -389,13 +307,13 @@ class CSSGenerator(CodeGenerator):
     --glass-border: rgba(255, 255, 255, 0.1);
   }
 }
-'''
+"""
 
 
 class JSGenerator(CodeGenerator):
     """Generates production-ready JavaScript files."""
-    
-    HAPTIC_FEEDBACK_TEMPLATE = '''/**
+
+    HAPTIC_FEEDBACK_TEMPLATE = """/**
  * Haptic Feedback System
  * Generated: {{timestamp}}
  * @class HapticFeedback
@@ -482,8 +400,8 @@ if (typeof module === 'undefined' && typeof window !== 'undefined') {{
 if (typeof module !== 'undefined' && module.exports) {{
   module.exports = {{ HapticFeedback }};
 }}
-'''
-    
+"""
+
     def _generate_haptic_feedback(self) -> str:
         """Generate haptic feedback module."""
         timestamp = datetime.now().isoformat()
@@ -575,41 +493,41 @@ if (typeof module !== 'undefined' && module.exports) {{
   module.exports = {{ HapticFeedback }};
 }}
 """
-    
+
     async def generate(self, spec: Dict[str, Any]) -> GenerationResult:
         """Generate JavaScript files based on specification."""
         files = []
         errors = []
-        
+
         try:
             # Generate haptic feedback module
             haptic_js = self._generate_haptic_feedback()
-            file = self.write_file('haptic-feedback.js', haptic_js, 'javascript')
+            file = self.write_file("haptic-feedback.js", haptic_js, "javascript")
             files.append(file)
-            
+
             # Generate glass interaction module
             glass_js = self._generate_glass_interactions()
-            file = self.write_file('glass-interactions.js', glass_js, 'javascript')
+            file = self.write_file("glass-interactions.js", glass_js, "javascript")
             files.append(file)
-            
+
             # Generate performance observer
             perf_js = self._generate_performance_observer()
-            file = self.write_file('performance-monitor.js', perf_js, 'javascript')
+            file = self.write_file("performance-monitor.js", perf_js, "javascript")
             files.append(file)
-            
+
         except Exception as e:
             errors.append(f"JavaScript generation failed: {e}")
-        
+
         return GenerationResult(
             success=len(errors) == 0,
             files=files,
             errors=errors,
-            metrics=self.get_generation_report()
+            metrics=self.get_generation_report(),
         )
-    
+
     def _generate_glass_interactions(self) -> str:
         """Generate glass card interaction handlers."""
-        return '''/**
+        return """/**
  * Glass Card Interactions
  * Handles mouse/tilt effects for glassmorphism components
  */
@@ -679,11 +597,11 @@ if (typeof window !== 'undefined') {
     new GlassInteractions();
   }
 }
-'''
-    
+"""
+
     def _generate_performance_observer(self) -> str:
         """Generate Core Web Vitals monitoring."""
-        return '''/**
+        return """/**
  * Core Web Vitals Monitor
  * Tracks LCP, INP, CLS for Digital Preeminence 2026 standards
  */
@@ -789,4 +707,4 @@ class CWMonitor {
 if (typeof window !== 'undefined') {
   window.cwvMonitor = new CWMonitor();
 }
-'''
+"""

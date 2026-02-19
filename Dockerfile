@@ -9,9 +9,13 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Install root dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install --omit=dev
+
+# Install server dependencies
+COPY server/package*.json ./server/
+RUN cd server && npm install --omit=dev
 
 # Copy application code
 COPY . .
@@ -19,5 +23,6 @@ COPY . .
 # Expose the application port
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application from server directory
+WORKDIR /app/server
+CMD ["node", "server.js"]

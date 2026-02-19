@@ -5,10 +5,9 @@
 # Run: docker run -v $(pwd)/benchmark_results:/app/benchmark_results vaal-benchmark
 
 ARG PYTHON_VERSION=3.11
-ARG NODE_VERSION=20
 
 # ============================================
-# Stage 1: Base Python Dependencies
+# Stage 1: Python Dependencies
 # ============================================
 FROM python:${PYTHON_VERSION}-slim AS python-base
 
@@ -26,26 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (with fallback to core packages)
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt || \
-    pip install --no-cache-dir pytest pytest-asyncio requests prometheus-client aiohttp
+RUN pip install --no-cache-dir -r /tmp/requirements.txt 2>/dev/null || \
+    pip install --no-cache-dir pytest pytest-asyncio requests prometheus-client aiohttp pyyaml
 
 # ============================================
-# Stage 2: Node.js Dependencies (Optional)
-# ============================================
-FROM node:${NODE_VERSION}-slim AS node-base
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./ 2>/dev/null || true
-
-# Install dependencies (continue on error)
-RUN npm ci --only=production 2>/dev/null || npm install --production 2>/dev/null || true
-
-# ============================================
-# Stage 3: Final Runtime Image
+# Stage 2: Final Runtime Image
 # ============================================
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
@@ -85,9 +71,6 @@ WORKDIR /app
 # Copy benchmark files with proper ownership
 COPY --chown=$USERNAME:$USERNAME agents/ ./agents/
 COPY --chown=$USERNAME:$USERNAME benchmark_data/ ./benchmark_data/
-
-# Copy server if it exists
-COPY --chown=$USERNAME:$USERNAME server/ ./server/ 2>/dev/null || true
 
 # Create benchmark results directory
 RUN mkdir -p /app/benchmark_results && chown -R $USERNAME:$USERNAME /app/benchmark_results

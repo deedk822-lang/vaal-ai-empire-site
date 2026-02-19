@@ -1,14 +1,42 @@
+# ─────────────────────────────────────────────────────────
+# Dependabot Configuration - TEMPORARILY DISABLED
+# Will re-enable once CI/CD is stable
+# ─────────────────────────────────────────────────────────
 version: 2
+
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+
+  # ── Python pip ──────────────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+
+  # ── npm (server) ────────────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/server"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
+
+  # ── Docker ──────────────────────────────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    labels:
+      - "dependencies"
