@@ -276,6 +276,7 @@ jobs:
         with:
           name: swarm-output
           path: swarm-output
+        continue-on-error: true
 
       - name: Export to Prometheus (if configured)
         run: |

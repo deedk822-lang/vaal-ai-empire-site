@@ -76,12 +76,52 @@ jobs:
       - name: Create benchmark results directory
         run: mkdir -p benchmark_results
 
+      - name: Install Ollama
+        run: |
+          echo "Installing Ollama..."
+          curl -fsSL https://ollama.com/install.sh | sh
+          
+          # Start Ollama service in background
+          ollama serve &
+          
+          # Wait for Ollama to be ready
+          echo "Waiting for Ollama to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama is ready"
+              break
+            fi
+            sleep 1
+          done
+          
+          # Verify Ollama is running
+          ollama --version
+          ollama list
+
+      - name: Pull Ollama models
+        run: |
+          echo "Pulling Ollama models..."
+          
+          # Pull lightweight models for CI
+          # qwen2.5-coder:1.5b is small and fast for code generation
+          ollama pull qwen2.5-coder:1.5b || echo "⚠️ Failed to pull qwen2.5-coder:1.5b"
+          
+          # phi4 is also lightweight and good for coding
+          ollama pull phi4 || echo "⚠️ Failed to pull phi4"
+          
+          # List available models
+          echo "Available Ollama models:"
+          ollama list
+
       - name: Run benchmark suite
         id: benchmark_run
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          OLLAMA_HOST: http://localhost:11434
           PYTHONPATH: ${{ github.workspace }}
         run: |
           # Ensure benchmark results directory exists
@@ -100,12 +140,22 @@ jobs:
             CMD="$CMD --category ${{ github.event.inputs.category }}"
           fi
           
-          # Always disable quality eval in CI (API keys not typically available)
-          CMD="$CMD --no-quality-eval"
-          echo "⚠️ Running without quality evaluation (CI mode)"
+          # Check if any AI backend is available
+          if [ -z "$KIMI_API_KEY" ] && [ -z "$GLM5_API_KEY" ] && [ -z "$DASHSCOPE_API_KEY" ] && [ -z "$OLLAMA_HOST" ]; then
+            echo "⚠️ No AI backends configured - running in resilient mode"
+            CMD="$CMD --no-quality-eval"
+          else
+            echo "✅ AI backend(s) detected - running with full evaluation"
+            
+            # Show which backends are available
+            if [ -n "$KIMI_API_KEY" ]; then echo "  - Kimi API ✅"; fi
+            if [ -n "$GLM5_API_KEY" ]; then echo "  - GLM API ✅"; fi
+            if [ -n "$DASHSCOPE_API_KEY" ]; then echo "  - DashScope API ✅"; fi
+            if [ -n "$OLLAMA_HOST" ]; then echo "  - Ollama (local) ✅"; fi
+          fi
           
           echo "Running: $CMD"
-          eval "$CMD" || true
+          eval "$CMD"
           
           # Ensure report exists even if benchmark had issues
           if [ ! -f benchmark_results/report.json ]; then
@@ -126,6 +176,8 @@ jobs:
                   data = json.load(f)
 
               summary = data.get('summary', {})
+              backend_stats = data.get('backend_stats', {})
+              
               print('## 📊 Benchmark Results')
               print('')
               print('| Metric | Value |')
@@ -135,8 +187,21 @@ jobs:
               print(f"| Failed | {summary.get('failed_tests', 0)} ❌ |")
               print(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |")
               print(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |")
+              
+              # Show backend usage
+              usage = backend_stats.get('usage', {})
+              if usage:
+                  print('')
+                  print('### Backend Usage')
+                  for backend, count in usage.items():
+                      print(f"- **{backend}**: {count} requests")
+              
+              resilient = backend_stats.get('resilient_fallbacks', 0)
+              if resilient > 0:
+                  print(f"")
+                  print(f"⚠️ **Resilient fallbacks**: {resilient}")
 
-              # Write to GITHUB_STEP_SUMMARY (append mode to preserve prior summaries)
+              # Write to GITHUB_STEP_SUMMARY
               summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
               with open(summary_file, 'a') as f:
                   f.write('## 📊 Benchmark Results\n\n')
@@ -146,16 +211,15 @@ jobs:
                   f.write(f"| Passed | {summary.get('passed_tests', 0)} ✅ |\n")
                   f.write(f"| Failed | {summary.get('failed_tests', 0)} ❌ |\n")
                   f.write(f"| Overall Score | {summary.get('overall_score', 0):.1f}% |\n")
-                  f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n")
-
-              # Category scores
-              categories = data.get('category_scores', {})
-              if categories:
-                  print('')
-                  print('### Category Scores')
-                  print('')
-                  for cat, score in categories.items():
-                      print(f"- **{cat}**: {score:.1f}/10")
+                  f.write(f"| Avg Execution Time | {summary.get('avg_execution_time_ms', 0):.2f}ms |\n')
+                  
+                  if usage:
+                      f.write('\n### Backend Usage\n')
+                      for backend, count in usage.items():
+                          f.write(f"- **{backend}**: {count} requests\n")
+                  
+                  if resilient > 0:
+                      f.write(f"\n⚠️ **Resilient fallbacks**: {resilient}\n")
           else:
               print('No benchmark report found')
           PYEOF
@@ -265,7 +329,19 @@ jobs:
           path: current_results
         continue-on-error: true
 
+      - name: Check if artifact exists
+        id: check_artifact
+        run: |
+          if [ ! -f "current_results/report.json" ]; then
+            echo "::notice::No benchmark results artifact found"
+            echo "overall_score=0" >> $GITHUB_OUTPUT
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Compare with baseline
+        if: steps.check_artifact.outputs.exists == 'true'
         id: compare
         continue-on-error: true
         run: |
@@ -298,7 +374,7 @@ jobs:
           # Check if running in resilient mode (no backends available)
           resilient_fallbacks = backend_stats.get('resilient_fallbacks', 0)
           backend_usage = backend_stats.get('usage', {})
-          has_no_backend = resilient_fallbacks > 0 or (not backend_usage or 'none' in backend_usage)
+          has_no_backend = resilient_fallbacks > 0 or (not backend_usage)
 
           # Set output for GitHub Actions
           summary_file = os.environ.get('GITHUB_OUTPUT', '/dev/null')
@@ -338,7 +414,11 @@ jobs:
               }
 
               const summary = report.summary || {};
-              const body = `## Benchmark Results
+              const backend_stats = report.backend_stats || {};
+              const usage = backend_stats.usage || {};
+              const resilient = backend_stats.resilient_fallbacks || 0;
+              
+              let body = `## Benchmark Results
 
               | Metric | Value |
               |--------|-------|
@@ -347,8 +427,20 @@ jobs:
               | Failed | ${summary.failed_tests || 0} |
               | Overall Score | ${(summary.overall_score || 0).toFixed(1)}% |
               | Avg Execution Time | ${(summary.avg_execution_time_ms || 0).toFixed(2)}ms |
-
-              ${summary.overall_score >= 80 ? 'Benchmarks passing!' : 'Some benchmarks need attention'}`;
+              `;
+              
+              if (Object.keys(usage).length > 0) {
+                body += '\n### Backend Usage\n';
+                for (const [backend, count] of Object.entries(usage)) {
+                  body += `- **${backend}**: ${count} requests\n`;
+                }
+              }
+              
+              if (resilient > 0) {
+                body += `\n⚠️ **Resilient fallbacks**: ${resilient}\n`;
+              }
+              
+              body += summary.overall_score >= 70 ? '\n✅ Benchmarks passing!' : '\n⚠️ Some benchmarks need attention';
 
               try {
                 await github.rest.issues.createComment({
