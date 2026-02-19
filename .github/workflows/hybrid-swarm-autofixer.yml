@@ -18,7 +18,8 @@ env:
   PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
   OPENTELEMETRY_API_KEY: ${{ secrets.OPENTELEMETRY_API_KEY }}
   OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_TOKEN || secrets.VERCEL_API_KEY }}
 
 jobs:
   swarm-execution:
@@ -50,10 +51,36 @@ jobs:
           # Verify aiohttp is installed
           python -c "import aiohttp; print(f'aiohttp {aiohttp.__version__} installed')"
 
+      - name: Install Ollama
+        run: |
+          echo "Installing Ollama..."
+          curl -fsSL https://ollama.com/install.sh | sh
+          
+          # Start Ollama service in background
+          ollama serve &
+          
+          # Wait for Ollama to be ready
+          echo "Waiting for Ollama to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama is ready"
+              break
+            fi
+            sleep 1
+          done
+          
+          # Pull lightweight models
+          ollama pull qwen2.5-coder:1.5b || echo "⚠️ Failed to pull qwen2.5-coder:1.5b"
+          ollama pull phi4 || echo "⚠️ Failed to pull phi4"
+          
+          # List available models
+          ollama list
+
       - name: Execute Enterprise Swarm
         id: swarm
         env:
           PR_HEAD_REF: ${{ github.head_ref }}
+          OLLAMA_HOST: http://localhost:11434
         run: |
           python -c "
           import asyncio
@@ -67,17 +94,31 @@ jobs:
           
           async def main():
               # Check which APIs are configured
+              import subprocess
+              
+              # Check Ollama availability
+              ollama_available = False
+              try:
+                  result = subprocess.run(['ollama', 'list'], capture_output=True, timeout=5)
+                  ollama_available = result.returncode == 0
+              except:
+                  pass
+              
               apis = {
                   'GLM5': os.getenv('GLM5_API_KEY'),
                   'KIMI': os.getenv('KIMI_API_KEY'),
                   'DASHSCOPE': os.getenv('DASHSCOPE_API_KEY'),
+                  'OLLAMA': 'Available' if ollama_available else 'Not available',
                   'VERCEL': os.getenv('VERCEL_TOKEN'),
                   'CODERABBIT': os.getenv('CODERABBIT_API_KEY'),
               }
               
               print('API Configuration:')
               for name, key in apis.items():
-                  status = '✅' if key else '❌'
+                  if name == 'OLLAMA':
+                      status = '✅' if ollama_available else '❌'
+                  else:
+                      status = '✅' if key else '❌'
                   print(f'  {status} {name}')
               
               # Configure swarm

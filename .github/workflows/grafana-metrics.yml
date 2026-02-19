@@ -12,8 +12,9 @@ jobs:
 
       - name: Create .env file
         run: |
-          echo "PROMETHEUS_URL=https://prometheus-prod-37-prod-ap-southeast-1.grafana.net/api/prom" >> .env
-          echo "PROMETHEUS_USER=2718767" >> .env
+          echo "PROMETHEUS_URL=${{ secrets.PROMETHEUS_URL }}" >> .env
+          echo "PROMETHEUS_USER=${{ secrets.PROMETHEUS_USER }}" >> .env
           echo "PROMETHEUS_PASSWORD=${{ secrets.PROMETHEUS_API_KEY }}" >> .env
-          echo "GRAFANA_DATASOURCE_NAME=grafanacloud-dimakatsomoleli-prom" >> .env
+          echo "GRAFANA_DATASOURCE_NAME=${{ secrets.GRAFANA_DATASOURCE_NAME }}" >> .env
+          echo "GRAFANA_API_KEY=${{ secrets.GRAFANA_API_KEY }}" >> .env
           echo ".env file generated for local use or container environment."

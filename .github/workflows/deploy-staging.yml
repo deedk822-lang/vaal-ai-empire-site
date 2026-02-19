@@ -2,11 +2,17 @@ name: Staging Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, merge/develop-to-main ]
+
+env:
+  DOMAIN: ${{ secrets.DOMAIN }}
+  STAGING_URL: ${{ secrets.STAGING_URL }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Skip if Alibaba Cloud secrets are not configured
+    if: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID != '' }}
     steps:
     - uses: actions/checkout@v4
 
@@ -26,6 +32,8 @@ jobs:
         context: .
         push: true
         tags: ghcr.io/${{ github.repository }}/site:staging
+        build-args: |
+          DOMAIN=${{ secrets.DOMAIN }}
 
     - name: Deploy to Alibaba Cloud
       uses: aliyun/ack-set-context@v1
@@ -38,3 +46,4 @@ jobs:
       run: |
         kubectl set image deployment/vaal-ai-site site=ghcr.io/${{ github.repository }}/site:staging
         kubectl rollout status deployment/vaal-ai-site
+        echo "Deployed to ${{ secrets.STAGING_URL }}"

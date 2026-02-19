@@ -1,46 +1,3 @@
- feature/stripe-checkout
-// Vaal AI Empire - Stripe Checkout Server
-// Handles subscription checkout for SA SMEs
-
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const path = require('path');
-
-// Initialize Stripe with your secret key
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-const app = express();
-const port = process.env.PORT || 4242;
-
-// Middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(process.env.STATIC_DIR || '../client'));
-
-// CORS for development
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-});
-
-// Routes
-app.get('/', (req, res) => {
-  const indexPath = path.resolve(process.env.STATIC_DIR || '../client', 'index.html');
-  res.sendFile(indexPath);
-});
-
-// Get pricing configuration
-app.get('/config', (req, res) => {
-  res.send({
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-    prices: {
-      starter: process.env.STARTER_PRICE_ID,
-      empire: process.env.EMPIRE_PRICE_ID
-    }
-  });
-
 // Vaal AI Empire - Main Server
 // Enterprise-grade Stripe + Auth + Observability Platform
 // Built in the Vaal. Built for Africa.
@@ -53,26 +10,16 @@ const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
-const cookieParser = require('cookie-parser');
 const path = require('path');
-
-// Database connection
-const connectDB = require('./config/database');
-
-// Initialize Stripe
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Import middleware
 const { globalErrorHandler, notFound } = require('./middleware/errorHandler');
 
 // Import routes
 const authRoutes = require('./routes/auth');
- feat/auth-error-handling-5447018483623698560
 const paymentRoutes = require('./routes/paymentRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
-
- main
 
 // Import observability (if exists)
 let observabilityRoutes, tracer;
@@ -93,52 +40,6 @@ const port = process.env.PORT || 4242;
 // =============================
 // SECURITY MIDDLEWARE
 // =============================
- feat/auth-error-handling-5447018483623698560
-
-// Set security HTTP headers
-app.use(helmet());
-
-// Rate limiting
-const limiter = rateLimit({
-    max: 100, // 100 requests per windowMs
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api', limiter);
-
-// Auth-specific rate limiter (stricter)
-const authLimiter = rateLimit({
-    max: 5, // 5 login attempts per windowMs
-    windowMs: 15 * 60 * 1000,
-    message: 'Too many login attempts, please try again later.',
-    skipSuccessfulRequests: true
-});
-app.use('/api/auth/login', authLimiter);
-
-// CORS
-const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
-    credentials: true,
-    optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
-
-// =============================
-// BODY PARSING & SANITIZATION
-// =============================
-
-// Body parser (limit payload size)
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-app.use(cookieParser());
-
-// Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
-
-// Data sanitization against XSS
-app.use(xss());
-
-
 
 // Set security HTTP headers
 app.use(helmet());
@@ -169,112 +70,39 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// =============================
-// BODY PARSING & SANITIZATION
-// =============================
+// Body parser with size limits
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Body parser (limit payload size)
-app.use(bodyParser.json({ limit: '10kb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
-app.use(cookieParser());
-
-// Data sanitization against NoSQL query injection
+// Data sanitization against NoSQL injection
 app.use(mongoSanitize());
 
 // Data sanitization against XSS
 app.use(xss());
 
- main
 // Prevent parameter pollution
-app.use(hpp({
-    whitelist: ['price', 'plan', 'status'] // Allow these params to be duplicated
-}));
-
-// Static files
-app.use(express.static(path.join(__dirname, '..')));
+app.use(hpp());
 
 // =============================
-// REQUEST LOGGING MIDDLEWARE
+// STATIC FILES
 // =============================
 
-app.use((req, res, next) => {
-    if (tracer) {
-        const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
-            method: req.method,
-            path: req.path,
-            ip: req.ip
-        });
- feat/auth-error-handling-5447018483623698560
-
-        req.traceId = traceId;
-
-
-        
-        req.traceId = traceId;
-        
- main
-        res.on('finish', () => {
-            tracer.endTrace(traceId, {
-                statusCode: res.statusCode,
-                duration: Date.now() - req.timestamp
-            });
-        });
-    }
- feat/auth-error-handling-5447018483623698560
-
-
-    
- main
-    req.timestamp = Date.now();
-    next();
-});
+app.use(express.static(path.join(__dirname, '../')));
 
 // =============================
-// ROUTES
+// API ROUTES
 // =============================
 
-// Health check (before authentication)
+// Health check
 app.get('/health', (req, res) => {
-    const stats = tracer ? tracer.getStats() : {};
- feat/auth-error-handling-5447018483623698560
-
-
-    
- main
     res.json({
-        status: 'ok',
-        service: 'vaal-ai-empire',
+        status: 'healthy',
         timestamp: new Date().toISOString(),
-        node: process.version,
-        uptime: process.uptime(),
-        database: 'connected', // Will be updated by connectDB
-        stats
+        version: process.env.npm_package_version || '1.0.0'
     });
 });
 
-// Home page
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
-});
-
-// API Routes
-app.use('/api/auth', authRoutes);
- feat/auth-error-handling-5447018483623698560
-app.use('/api/payments', paymentRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/analytics', analyticsRoutes);
-
- main
-
-if (observabilityRoutes) {
-    app.use('/api/observability', observabilityRoutes);
-}
-
-// =============================
-// STRIPE ROUTES
-// =============================
-
-// Get configuration
+// Config endpoint for Stripe
 app.get('/config', (req, res) => {
     res.json({
         publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
@@ -283,171 +111,40 @@ app.get('/config', (req, res) => {
             empire: process.env.EMPIRE_PRICE_ID
         }
     });
- main
 });
+
+// Auth routes
+app.use('/api/auth', authRoutes);
+
+// Payment routes
+app.use('/api/payments', paymentRoutes);
+
+// Subscription routes
+app.use('/api/subscriptions', subscriptionRoutes);
+
+// Analytics routes
+app.use('/api/analytics', analyticsRoutes);
+
+// Observability routes (if available)
+if (observabilityRoutes) {
+    app.use('/observability', observabilityRoutes);
+}
+
+// =============================
+// CHECKOUT SESSION ENDPOINTS
+// =============================
 
 // Create Checkout Session
 app.post('/create-checkout-session', async (req, res) => {
- feature/stripe-checkout
-  const { priceId } = req.body;
-  
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      // Success and cancel URLs
-      success_url: `${process.env.DOMAIN}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.DOMAIN}/canceled`,
-      // Automatically create customer
-      customer_creation: 'always',
-      // Collect billing address
-      billing_address_collection: 'required',
-      // Allow promotion codes
-      allow_promotion_codes: true,
-      // Payment method types
-      payment_method_types: ['card'],
-      // Metadata for tracking
-      metadata: {
-        product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire',
-        source: 'vaalai_website'
-      },
-      // Subscription data
-      subscription_data: {
-        metadata: {
-          product: priceId === process.env.STARTER_PRICE_ID ? 'Vaal Starter' : 'Vaal Empire'
-        },
-        // Optional: Add trial period
-        // trial_period_days: 7,
-      },
-    });
-    
-    res.json({ sessionId: session.id });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get session details for success page
-app.get('/checkout-session', async (req, res) => {
-  const { sessionId } = req.query;
-  
-  try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    res.json(session);
-  } catch (error) {
-    console.error('Error retrieving session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Webhook endpoint for Stripe events
-app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-  
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-  
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      const session = event.data.object;
-      console.log('✅ Checkout completed:', session.id);
-      console.log('Customer:', session.customer);
-      console.log('Subscription:', session.subscription);
-      // TODO: Send welcome email, provision access, etc.
-      break;
-      
-    case 'customer.subscription.created':
-      const subscription = event.data.object;
-      console.log('✅ Subscription created:', subscription.id);
-      break;
-      
-    case 'customer.subscription.updated':
-      const updatedSub = event.data.object;
-      console.log('🔄 Subscription updated:', updatedSub.id);
-      break;
-      
-    case 'customer.subscription.deleted':
-      const deletedSub = event.data.object;
-      console.log('❌ Subscription canceled:', deletedSub.id);
-      // TODO: Revoke access
-      break;
-      
-    case 'invoice.paid':
-      const invoice = event.data.object;
-      console.log('💰 Invoice paid:', invoice.id);
-      break;
-      
-    case 'invoice.payment_failed':
-      const failedInvoice = event.data.object;
-      console.log('⚠️ Payment failed:', failedInvoice.id);
-      // TODO: Send payment failure email
-      break;
-      
-    default:
-      console.log(`Unhandled event type: ${event.type}`);
-  }
-  
-  res.json({ received: true });
-});
-
-// Customer Portal - Allow customers to manage subscription
-app.post('/create-portal-session', async (req, res) => {
-  const { customerId } = req.body;
-  
-  try {
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${process.env.DOMAIN}/account`,
-    });
-    
-    res.json({ url: portalSession.url });
-  } catch (error) {
-    console.error('Error creating portal session:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    service: 'vaal-ai-empire-checkout',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Start server
-app.listen(port, () => {
-  console.log('⚡ Vaal AI Empire Checkout Server');
-  console.log(`🚀 Running on http://localhost:${port}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
-module.exports = app;
-=======
     const { priceId } = req.body;
- feat/auth-error-handling-5447018483623698560
-
-
     
- main
+    if (!priceId) {
+        return res.status(400).json({ error: 'Price ID is required' });
+    }
+
     try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        
         const session = await stripe.checkout.sessions.create({
             mode: 'subscription',
             line_items: [
@@ -481,77 +178,69 @@ module.exports = app;
         res.json({ sessionId: session.id });
     } catch (error) {
         console.error('Error creating checkout session:', error);
-        res.status(500).json({ error: error.message });
+        if (tracer) {
+            tracer.recordError(error, { context: 'create_checkout_session' });
+        }
+        res.status(500).json({ 
+            error: 'Failed to create checkout session',
+            message: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
-// Get session details
-app.get('/checkout-session', async (req, res) => {
-    const { sessionId } = req.query;
+// Session status endpoint
+app.get('/session-status', async (req, res) => {
+    const { session_id } = req.query;
+    
+    if (!session_id) {
+        return res.status(400).json({ error: 'Session ID is required' });
+    }
 
     try {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        res.json(session);
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        const session = await stripe.checkout.sessions.retrieve(session_id);
+        
+        res.json({
+            status: session.status,
+            customer_email: session.customer_details?.email,
+            subscription: session.subscription
+        });
     } catch (error) {
         console.error('Error retrieving session:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: 'Failed to retrieve session status' });
     }
 });
 
-// Webhook endpoint (must use raw body)
- feat/auth-error-handling-5447018483623698560
-app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-
-app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res) => {
- main
+// Webhook endpoint for Stripe events
+app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    
     let event;
-
+    
     try {
-        event = stripe.webhooks.constructEvent(
-            req.body,
-            sig,
-            process.env.STRIPE_WEBHOOK_SECRET
-        );
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
         console.error('Webhook signature verification failed:', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle events
+    // Handle the event
     switch (event.type) {
         case 'checkout.session.completed':
-            const session = event.data.object;
-            console.log('✅ Checkout completed:', session.id);
-            // TODO: Create user subscription in database
+            console.log('✅ Checkout session completed:', event.data.object.id);
+            // TODO: Provision account, send welcome email, etc.
             break;
-
-        case 'customer.subscription.created':
-            const subscription = event.data.object;
-            console.log('✅ Subscription created:', subscription.id);
-            break;
-
-        case 'customer.subscription.updated':
-            const updatedSub = event.data.object;
-            console.log('🔄 Subscription updated:', updatedSub.id);
-            break;
-
-        case 'customer.subscription.deleted':
-            const deletedSub = event.data.object;
-            console.log('❌ Subscription canceled:', deletedSub.id);
-            break;
-
         case 'invoice.paid':
-            const invoice = event.data.object;
-            console.log('💰 Invoice paid:', invoice.id);
+            console.log('💰 Invoice paid:', event.data.object.id);
             break;
-
         case 'invoice.payment_failed':
-            const failedInvoice = event.data.object;
-            console.log('⚠️ Payment failed:', failedInvoice.id);
-            // TODO: Send email to customer
+            console.log('❌ Payment failed:', event.data.object.id);
             break;
-
+        case 'customer.subscription.deleted':
+            console.log('🚫 Subscription cancelled:', event.data.object.id);
+            break;
         default:
             console.log(`Unhandled event type: ${event.type}`);
     }
@@ -559,100 +248,25 @@ app.post('/webhook', bodyParser.raw({type: 'application/json'}), async (req, res
     res.json({ received: true });
 });
 
-// Customer Portal
-app.post('/create-portal-session', async (req, res) => {
-    const { customerId } = req.body;
-
-    try {
-        const portalSession = await stripe.billingPortal.sessions.create({
-            customer: customerId,
-            return_url: `${process.env.DOMAIN}/account.html`,
-        });
-
-        res.json({ url: portalSession.url });
-    } catch (error) {
-        console.error('Error creating portal session:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // =============================
 // ERROR HANDLING
 // =============================
 
-// Handle 404 - must be after all other routes
+// 404 handler
 app.use(notFound);
 
-// Global error handler - must be last
+// Global error handler
 app.use(globalErrorHandler);
 
 // =============================
-// DATABASE & SERVER STARTUP
+// START SERVER
 // =============================
 
-const startServer = async () => {
-    try {
-        // Connect to MongoDB
-        await connectDB();
- feat/auth-error-handling-5447018483623698560
-
-
-        
- main
-        // Cleanup old traces every hour (if tracer exists)
-        if (tracer) {
-            setInterval(() => {
-                tracer.cleanup(24 * 60 * 60 * 1000); // 24 hours
-            }, 60 * 60 * 1000);
-        }
- feat/auth-error-handling-5447018483623698560
-
-
-        
- main
-        // Start server
-        app.listen(port, () => {
-            console.log('');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('   VAAL AI EMPIRE - SERVER');
-            console.log('   10X Enterprise Platform');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('');
-            console.log(`🚀 Running on: http://localhost:${port}`);
-            console.log(`🔐 Auth API: http://localhost:${port}/api/auth`);
-            console.log(`💳 Stripe API: http://localhost:${port}/create-checkout-session`);
-            console.log(`📊 Dashboard: http://localhost:${port}/dashboard.html`);
-            if (tracer) {
-                console.log(`🔍 Observability: http://localhost:${port}/api/observability`);
-            }
-            console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`🌍 Domain: ${process.env.DOMAIN}`);
-            console.log('');
-            console.log('🇿🇦 Built in the Vaal. Built for Africa.');
-            console.log('');
-        });
-    } catch (error) {
-        console.error('❌ Failed to start server:', error);
-        process.exit(1);
-    }
-};
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
-    process.exit(1);
+app.listen(port, () => {
+    console.log('⚡ Vaal AI Empire Server');
+    console.log(`🚀 Running on http://localhost:${port}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log('═══════════════════════════════════════');
 });
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
-    process.exit(1);
-});
-
-// Start the server
-startServer();
 
 module.exports = app;
- main
