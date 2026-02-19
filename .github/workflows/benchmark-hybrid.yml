@@ -94,6 +94,12 @@ jobs:
         run: mkdir -p benchmark_results
 
       - name: Run Ollama benchmarks
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_HOST: "127.0.0.1:11434"
         run: |
           CATEGORY_ARG=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
