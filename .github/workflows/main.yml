@@ -1,66 +1,122 @@
 name: CI/CD Pipeline
 
+# ─────────────────────────────────────────────────────────
+# FIX #1  (was): ALL lint/test steps used continue-on-error:true
+#          → CI always passed regardless of code quality.
+# FIX #19 (was): No permissions block → overly-permissive GITHUB_TOKEN.
+# FIX #18 (was): Third-party actions used floating version tags.
+# ─────────────────────────────────────────────────────────
+
 on:
   push:
-    branches: [ main, master, merge/develop-to-main ]
+    branches: [main, master, merge/develop-to-main]
   pull_request:
-    branches: [ main, master, merge/develop-to-main ]
+    branches: [main, master, merge/develop-to-main]
+
+# Least-privilege token — only read access needed for CI checks
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
 
 jobs:
+  # ── Node.js lint & tests ────────────────────────────────────────────────────
   lint-and-test-node:
+    name: Node ${{ matrix.node-version }} — Lint & Test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false          # surface ALL failures, not just the first
       matrix:
-        node-version: [18.x, 20.x]
-    steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: 'server/package-lock.json'
-    - name: Install dependencies
-      working-directory: ./server
-      run: npm ci || npm install
-      continue-on-error: true
-    - name: Run ESLint
-      working-directory: ./server
-      run: npm run lint --if-present
-      continue-on-error: true
-    - name: Run tests
-      working-directory: ./server
-      run: npm test --if-present
-      continue-on-error: true
+        node-version: ['18.x', '20.x']
 
+    steps:
+      - name: Checkout
+        # SHA-pinned: actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        # SHA-pinned: actions/setup-node v4.1.0
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./server
+        # Prefer ci for reproducible installs; fall back to install only when
+        # lock file is genuinely missing (e.g. a fresh scaffold branch).
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::No package-lock.json — using npm install (non-reproducible)"
+            npm install
+          fi
+
+      - name: Run ESLint                    # ENFORCED — no continue-on-error
+        working-directory: ./server
+        run: npm run lint --if-present
+
+      - name: Run tests                     # ENFORCED — no continue-on-error
+        working-directory: ./server
+        run: npm test --if-present
+
+  # ── Python lint & tests ─────────────────────────────────────────────────────
   lint-and-test-python:
+    name: Python ${{ matrix.python-version }} — Lint & Test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ['3.10', '3.11', '3.12']
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pytest pytest-asyncio flake8 black isort
-    - name: Run Black
-      run: black --check --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' .
-      continue-on-error: true
-    - name: Run isort
-      run: isort --check-only --skip .venv --skip node_modules --skip __pycache__ .
-      continue-on-error: true
-    - name: Run flake8
-      run: flake8 . --exclude=.venv,node_modules,__pycache__,.git,build,dist --max-line-length=100
-      continue-on-error: true
-    - name: Run pytest
-      run: pytest agents/tests/ -v --tb=short || echo "No tests found or tests passed"
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python ${{ matrix.python-version }}
+        # SHA-pinned: actions/setup-python v5.3.0
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio flake8 black isort
+
+      # ── Formatting checks (enforced) ───────────────────────────────────────
+      - name: Black — format check
+        # ENFORCED: removed continue-on-error
+        run: |
+          black --check \
+            --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' \
+            .
+
+      - name: isort — import order check
+        # ENFORCED: removed continue-on-error
+        run: |
+          isort --check-only \
+            --skip .venv --skip node_modules --skip __pycache__ \
+            .
+
+      - name: flake8 — style & complexity
+        # ENFORCED: removed continue-on-error
+        run: |
+          flake8 . \
+            --exclude=.venv,node_modules,__pycache__,.git,build,dist \
+            --max-line-length=100 \
+            --max-complexity=12       # AAA: complexity gate
+
+      # ── Unit tests (enforced) ──────────────────────────────────────────────
+      - name: pytest
+        # ENFORCED: removed the fallback `|| echo "..."` which swallowed failures
+        run: pytest agents/tests/ -v --tb=short

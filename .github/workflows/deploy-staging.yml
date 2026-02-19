@@ -1,56 +1,186 @@
 name: Staging Deploy
 
+# ─────────────────────────────────────────────────────────
+# FIX #15 (was): No post-deploy health check.
+# FIX #16 (was): No rollback on failure.
+# FIX #17 (was): No smoke test gate before declaring success.
+# FIX #18 (was): Floating action version tags.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   contents: read
   packages: write
+  id-token: write       # For OIDC cloud auth
+
+# Prevent concurrent deploys — only the latest commit deploys
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false   # Let in-flight deploy finish; queue next
 
 jobs:
   deploy:
+    name: Build, Push & Deploy to Staging
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # FIX #16: Track previous image tag for rollback
+    env:
+      IMAGE_REGISTRY: ghcr.io
+      IMAGE_NAME:     ${{ github.repository }}/site
+      STAGING_URL:    ${{ vars.STAGING_URL || 'http://localhost' }}   # Set in repo variables
+
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
 
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image
-      id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ghcr.io/${{ github.repository }}/site:staging
-      continue-on-error: true
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=staging
 
-    - name: Check build status
-      run: |
-        if [ "${{ steps.build.outcome }}" == "failure" ]; then
-          echo "::warning::Docker push failed - this may be due to organization package permissions"
-          echo "The Docker image was built successfully but could not be pushed to GHCR."
-          echo "Organization admin needs to enable 'Write' permissions for packages."
-        fi
+      # FIX #16: Record the previous staging tag for rollback
+      - name: Record previous image digest (for rollback)
+        id: previous
+        run: |
+          PREV_DIGEST=$(docker manifest inspect \
+            "ghcr.io/${{ env.IMAGE_NAME }}:staging" \
+            --verbose 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Descriptor',{}).get('digest','none'))" \
+            || echo "none")
+          echo "digest=${PREV_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Previous staging digest: ${PREV_DIGEST}"
 
-    - name: Deploy to Alibaba Cloud
-      uses: aliyun/ack-set-context@v1
-      with:
-        access-key-id: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
-        access-key-secret: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
-        cluster-id: ${{ secrets.ALIBABA_CLOUD_CLUSTER_ID }}
-      continue-on-error: true
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09
+        with:
+          context:     .
+          push:        true
+          tags:        ${{ steps.meta.outputs.tags }}
+          labels:      ${{ steps.meta.outputs.labels }}
+          cache-from:  type=gha
+          cache-to:    type=gha,mode=max
+          provenance:  false
 
-    - name: Update Deployment
-      run: |
-        kubectl set image deployment/vaal-ai-site site=ghcr.io/${{ github.repository }}/site:staging
-        kubectl rollout status deployment/vaal-ai-site
-      continue-on-error: true
+      # ── Optional: Alibaba Cloud / Kubernetes deploy ──────────────────────
+      - name: Deploy to Alibaba Cloud
+        id: k8s_deploy
+        if: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID != '' }}
+        uses: aliyun/ack-set-context@v1
+        with:
+          access-key-id:     ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+          cluster-id:        ${{ secrets.ALIBABA_CLOUD_CLUSTER_ID }}
+        continue-on-error: true
+
+      - name: Update Kubernetes deployment
+        id: k8s_rollout
+        if: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID != '' }}
+        run: |
+          kubectl set image deployment/vaal-ai-site \
+            site=ghcr.io/${{ env.IMAGE_NAME }}:staging
+          # FIX #15: Wait for rollout to complete before proceeding to health checks
+          kubectl rollout status deployment/vaal-ai-site --timeout=5m
+        continue-on-error: true
+
+      # ── FIX #17: Smoke test — verify the deployment actually works ───────
+      - name: Smoke test — HTTP health check
+        id: health_check
+        run: |
+          STAGING_URL="${{ env.STAGING_URL }}"
+
+          if [ "$STAGING_URL" = "http://localhost" ]; then
+            echo "::notice::STAGING_URL not configured — skipping HTTP smoke test"
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Running smoke test against: ${STAGING_URL}"
+          MAX_ATTEMPTS=6
+          SLEEP_SECONDS=10
+
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt ${attempt}/${MAX_ATTEMPTS}..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --connect-timeout 5 --max-time 15 \
+              "${STAGING_URL}/health" 2>/dev/null || echo "000")
+
+            if [[ "$HTTP_CODE" =~ ^2 ]]; then
+              echo "✅ Health check passed (HTTP ${HTTP_CODE})"
+              echo "result=passed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "  HTTP ${HTTP_CODE} — retrying in ${SLEEP_SECONDS}s..."
+            sleep "$SLEEP_SECONDS"
+          done
+
+          echo "::error::Smoke test failed after ${MAX_ATTEMPTS} attempts — triggering rollback"
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      # ── FIX #16: Rollback if health check fails ──────────────────────────
+      - name: Rollback on smoke test failure
+        if: failure() && steps.health_check.outputs.result == 'failed'
+        run: |
+          PREV="${{ steps.previous.outputs.digest }}"
+
+          if [ "$PREV" = "none" ] || [ -z "$PREV" ]; then
+            echo "::warning::No previous image digest recorded — cannot perform image rollback"
+            echo "Manual intervention required."
+            exit 1
+          fi
+
+          echo "🔄 Rolling back to previous image: ghcr.io/${{ env.IMAGE_NAME }}@${PREV}"
+
+          if kubectl get deployment vaal-ai-site 2>/dev/null; then
+            # Kubernetes rollback
+            kubectl rollout undo deployment/vaal-ai-site
+            kubectl rollout status deployment/vaal-ai-site --timeout=5m
+            echo "✅ Kubernetes rollback complete"
+          else
+            echo "::notice::Kubernetes not available — image tag rollback only"
+            # Re-tag the previous image as staging using the manifest digest
+            docker buildx imagetools create \
+              --tag "ghcr.io/${{ env.IMAGE_NAME }}:staging" \
+              "ghcr.io/${{ env.IMAGE_NAME }}@${PREV}"
+            echo "✅ Image tag rolled back to ${PREV}"
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          BUILD_STATUS="${{ steps.build.outcome }}"
+          HEALTH_STATUS="${{ steps.health_check.outputs.result || 'not_run' }}"
+
+          {
+            echo "## 🚀 Staging Deployment Summary"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Docker Build & Push | $([ "$BUILD_STATUS"   = 'success' ] && echo '✅ Success' || echo '❌ Failed') |"
+            echo "| Smoke Test          | $(case "$HEALTH_STATUS" in passed) echo '✅ Passed' ;; failed) echo '❌ Failed (rolled back)' ;; skipped) echo '⚠️ Skipped (STAGING_URL not set)' ;; *) echo '⏭️ Not run' ;; esac) |"
+            echo ""
+            echo "**Image:** \`ghcr.io/${{ env.IMAGE_NAME }}:staging\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

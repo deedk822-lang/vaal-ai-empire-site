@@ -1,5 +1,12 @@
 name: Hybrid Benchmark
 
+# ─────────────────────────────────────────────────────────
+# FIX #12 (was): Summary step used open(file, 'w') → overwrote any prior
+#          content in GITHUB_STEP_SUMMARY. Fixed: use append mode 'a'.
+# FIX #18 (was): Floating action version tags.
+# FIX #19 (was): No permissions block.
+# ─────────────────────────────────────────────────────────
+
 on:
   push:
     branches: [main, develop]
@@ -12,26 +19,20 @@ on:
         required: false
         default: 'auto'
         type: choice
-        options:
-          - auto
-          - ollama
-          - direct
+        options: [auto, ollama, direct]
       category:
-        description: 'Test category (leave empty for all)'
+        description: 'Test category (empty = all)'
         required: false
         default: ''
         type: choice
-        options:
-          - ''
-          - security
-          - efficiency
-          - code_generation
-          - debugging
-          - financial
+        options: ['', security, efficiency, code_generation, debugging, financial]
       models:
         description: 'Models to test (comma-separated)'
         required: false
         default: 'kimi-k2.5,glm-5'
+
+permissions:
+  contents: read
 
 concurrency:
   group: hybrid-benchmark-${{ github.ref }}
@@ -41,7 +42,7 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  # Job 1: Ollama Backend (Development/Local Testing)
+  # ── Ollama backend ──────────────────────────────────────────────────────────
   ollama-benchmark:
     name: Ollama Backend Tests
     runs-on: ubuntu-latest
@@ -49,92 +50,100 @@ jobs:
     if: ${{ github.event.inputs.backend != 'direct' }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio requests
 
-      - name: Install Ollama
+      - name: Install and start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-
-      - name: Start Ollama daemon
-        run: |
           ollama serve &
           sleep 5
 
-      - name: Authenticate Ollama Cloud (optional)
+      - name: Authenticate Ollama Cloud
         env:
           OLLAMA_TOKEN: ${{ secrets.OLLAMA_TOKEN }}
         run: |
           if [ -n "$OLLAMA_TOKEN" ]; then
-            echo "$OLLAMA_TOKEN" | ollama signin || echo "Ollama Cloud auth skipped"
+            echo "$OLLAMA_TOKEN" | ollama signin \
+              || echo "::warning::Ollama Cloud auth failed — continuing without cloud models"
           else
-            echo "Ollama token not configured, skipping authentication"
+            echo "::notice::OLLAMA_TOKEN not configured — skipping Cloud auth"
           fi
 
       - name: Pull available models
         run: |
-          # Try to pull models (resilient - continue on failure)
-          ollama pull kimi-k2.5:cloud || echo "⚠️ kimi-k2.5:cloud not available (may need Ollama Cloud)"
-          ollama pull glm5 || echo "⚠️ glm5 not available"
-          ollama pull llama3.2:latest || echo "⚠️ llama3.2 not available"
+          ollama pull kimi-k2.5:cloud \
+            || echo "::warning::kimi-k2.5:cloud unavailable (requires Ollama Cloud)"
+          ollama pull glm5           || echo "::warning::glm5 unavailable"
+          ollama pull llama3.2:latest || echo "::warning::llama3.2 unavailable"
           ollama list
 
       - name: Create results directory
         run: mkdir -p benchmark_results
 
       - name: Run Ollama benchmarks
+        env:
+          KIMI_API_KEY:      ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY:      ${{ secrets.GLM5_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          OLLAMA_API_KEY:    ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_HOST:       "127.0.0.1:11434"
         run: |
           CATEGORY_ARG=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
             CATEGORY_ARG="--category ${{ github.event.inputs.category }}"
           fi
-          
+
           python agents/benchmark_executor.py \
-            --run-all \
-            --report \
+            --run-all --report \
             --backend ollama \
             --output benchmark_results/ollama_report.json \
             $CATEGORY_ARG
-        continue-on-error: true  # Resilient: continue even if Ollama fails
+        continue-on-error: true   # Resilient: Ollama model pull may fail in CI
 
       - name: Upload Ollama results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: ollama-benchmark-results
           path: benchmark_results/
           retention-days: 30
 
-  # Job 2: Direct API Backend (Production CI)
+  # ── Direct API backend ──────────────────────────────────────────────────────
   direct-api-benchmark:
     name: Direct API Backend Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: ollama-benchmark
-    if: always() && (github.event.inputs.backend == 'direct' || github.event.inputs.backend == 'auto' || github.event.inputs.backend == '')
+    if: >-
+      always() && (
+        github.event.inputs.backend == 'direct' ||
+        github.event.inputs.backend == 'auto'   ||
+        github.event.inputs.backend == ''
+      )
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio requests
@@ -144,32 +153,31 @@ jobs:
 
       - name: Run Direct API benchmarks
         env:
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          KIMI_API_KEY:      ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY:      ${{ secrets.GLM5_API_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
           CATEGORY_ARG=""
           if [ -n "${{ github.event.inputs.category }}" ]; then
             CATEGORY_ARG="--category ${{ github.event.inputs.category }}"
           fi
-          
+
           python agents/benchmark_executor.py \
-            --run-all \
-            --report \
+            --run-all --report \
             --backend direct \
             --output benchmark_results/direct_report.json \
             $CATEGORY_ARG
-        continue-on-error: true  # Resilient: handles missing secrets gracefully
+        continue-on-error: true   # Graceful when no API keys are configured
 
       - name: Upload Direct API results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: direct-api-benchmark-results
           path: benchmark_results/
           retention-days: 30
 
-  # Job 3: Generate Combined Summary
+  # ── Combined summary ────────────────────────────────────────────────────────
   summary:
     name: Generate Benchmark Summary
     runs-on: ubuntu-latest
@@ -178,14 +186,14 @@ jobs:
 
     steps:
       - name: Download Ollama results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
         with:
           name: ollama-benchmark-results
           path: results/ollama
         continue-on-error: true
 
       - name: Download Direct API results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
         with:
           name: direct-api-benchmark-results
           path: results/direct
@@ -193,62 +201,53 @@ jobs:
 
       - name: Generate combined summary
         run: |
-          python -c "
-          import json
-          import os
+          python3 << 'PYEOF'
+          import json, os
           from pathlib import Path
 
-          summary_lines = ['## Hybrid Benchmark Results\n']
+          lines = ["## Hybrid Benchmark Results\n"]
 
-          # Check Ollama results
-          ollama_path = Path('results/ollama/ollama_report.json')
-          if ollama_path.exists():
-              with open(ollama_path) as f:
-                  data = json.load(f)
-              summary = data.get('summary', {})
-              backend_stats = data.get('backend_stats', {})
-              
-              summary_lines.append('### Ollama Backend\n')
-              summary_lines.append('| Metric | Value |')
-              summary_lines.append('|--------|-------|')
-              summary_lines.append(f'| Total Tests | {summary.get(\"total_tests\", 0)} |')
-              summary_lines.append(f'| Passed | {summary.get(\"passed_tests\", 0)} |')
-              summary_lines.append(f'| Overall Score | {summary.get(\"overall_score\", 0):.1f}% |')
-              summary_lines.append(f'| Resilient Fallbacks | {backend_stats.get(\"resilient_fallbacks\", 0)} |')
-              summary_lines.append('')
-          else:
-              summary_lines.append('### Ollama Backend\n')
-              summary_lines.append('⚠️ Ollama benchmark not run or failed\n')
+          def render_backend(label, path_obj):
+              if not path_obj.exists():
+                  lines.append(f"### {label}\n")
+                  lines.append(f"⚠️ {label} benchmark not run or results unavailable\n")
+                  return
+              try:
+                  data    = json.loads(path_obj.read_text())
+              except Exception as e:
+                  lines.append(f"### {label}\n⚠️ Could not parse results: {e}\n")
+                  return
+              summary       = data.get("summary", {})
+              backend_stats = data.get("backend_stats", {})
+              provider_stats = data.get("provider_stats", {})
 
-          # Check Direct API results
-          direct_path = Path('results/direct/direct_report.json')
-          if direct_path.exists():
-              with open(direct_path) as f:
-                  data = json.load(f)
-              summary = data.get('summary', {})
-              provider_stats = data.get('provider_stats', {})
-              
-              summary_lines.append('### Direct API Backend\n')
-              summary_lines.append('| Metric | Value |')
-              summary_lines.append('|--------|-------|')
-              summary_lines.append(f'| Total Tests | {summary.get(\"total_tests\", 0)} |')
-              summary_lines.append(f'| Passed | {summary.get(\"passed_tests\", 0)} |')
-              summary_lines.append(f'| Overall Score | {summary.get(\"overall_score\", 0):.1f}% |')
-              summary_lines.append(f'| Tokens Used | {summary.get(\"total_tokens_used\", 0)} |')
-              summary_lines.append('')
-              
-              if provider_stats.get('usage'):
-                  summary_lines.append('**Providers Used:**')
-                  for provider, count in provider_stats['usage'].items():
-                      summary_lines.append(f'- {provider}: {count} requests')
-          else:
-              summary_lines.append('### Direct API Backend\n')
-              summary_lines.append('⚠️ Direct API benchmark not run or no API keys configured\n')
+              lines.append(f"### {label}\n")
+              lines.append("| Metric | Value |")
+              lines.append("|--------|-------|")
+              lines.append(f"| Total Tests    | {summary.get('total_tests', 0)} |")
+              lines.append(f"| Passed         | {summary.get('passed_tests', 0)} |")
+              lines.append(f"| Overall Score  | {summary.get('overall_score', 0):.1f}% |")
+              if "resilient_fallbacks" in backend_stats:
+                  lines.append(f"| Resilient Fallbacks | {backend_stats['resilient_fallbacks']} |")
+              if "total_tokens_used" in summary:
+                  lines.append(f"| Tokens Used    | {summary['total_tokens_used']} |")
+              lines.append("")
 
-          # Write summary
-          print('\\n'.join(summary_lines))
-          
-          summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-          with open(summary_file, 'w') as f:
-              f.write('\\n'.join(summary_lines))
-          "
+              if provider_stats.get("usage"):
+                  lines.append("**Providers Used:**")
+                  for provider, count in provider_stats["usage"].items():
+                      lines.append(f"- {provider}: {count} requests")
+                  lines.append("")
+
+          render_backend("Ollama Backend",     Path("results/ollama/ollama_report.json"))
+          render_backend("Direct API Backend", Path("results/direct/direct_report.json"))
+
+          output = "\n".join(lines)
+          print(output)
+
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          # FIX #12: Use append mode 'a' — was using write mode 'w'
+          #          which silently erased any prior summary content.
+          with open(sf, "a") as f:
+              f.write(output + "\n")
+          PYEOF
