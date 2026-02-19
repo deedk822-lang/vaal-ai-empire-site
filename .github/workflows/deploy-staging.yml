@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write  # For OIDC token for cloud deployments
 
 jobs:
   deploy:
@@ -24,24 +25,30 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}/site
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix=
+          type=raw,value=staging
+
+    - name: Build and push Docker image
       id: build
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository }}/site:staging
-      continue-on-error: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        provenance: false
 
-    - name: Check build status
-      run: |
-        if [ "${{ steps.build.outcome }}" == "failure" ]; then
-          echo "::warning::Docker push failed - this may be due to organization package permissions"
-          echo "The Docker image was built successfully but could not be pushed to GHCR."
-          echo "Organization admin needs to enable 'Write' permissions for packages."
-        fi
-
-    - name: Deploy to Alibaba Cloud
+    - name: Deploy to Alibaba Cloud (Optional)
+      if: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID != '' }}
       uses: aliyun/ack-set-context@v1
       with:
         access-key-id: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
@@ -49,8 +56,20 @@ jobs:
         cluster-id: ${{ secrets.ALIBABA_CLOUD_CLUSTER_ID }}
       continue-on-error: true
 
-    - name: Update Deployment
+    - name: Update Kubernetes Deployment (Optional)
+      if: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID != '' }}
       run: |
         kubectl set image deployment/vaal-ai-site site=ghcr.io/${{ github.repository }}/site:staging
         kubectl rollout status deployment/vaal-ai-site
       continue-on-error: true
+
+    - name: Deployment Summary
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Build | ${{ steps.build.outcome == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Image Push | ${{ steps.build.outcome == 'success' && '✅ Pushed to GHCR' || '❌ Not Pushed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Image:** \`ghcr.io/${{ github.repository }}/site:staging\`" >> $GITHUB_STEP_SUMMARY

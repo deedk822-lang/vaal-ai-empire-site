@@ -272,6 +272,11 @@ jobs:
             echo '<?xml version="1.0" ?><coverage version="5.5" placeholder="true" timestamp="'$(date -Iseconds)'" line-rate="0.0"><packages><package name="agents" line-rate="0.0"><classes/></package></packages></coverage>' > coverage.xml
           fi
 
+          # Create placeholder index.html in htmlcov if empty
+          if [ ! -f htmlcov/index.html ]; then
+            echo '<!DOCTYPE html><html><head><title>Coverage Report</title></head><body><h1>Coverage Report</h1><p>No coverage data available. Run tests to generate coverage report.</p></body></html>' > htmlcov/index.html
+          fi
+
       - name: Check coverage threshold
         if: always()
         run: |
