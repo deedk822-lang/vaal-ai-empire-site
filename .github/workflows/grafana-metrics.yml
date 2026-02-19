@@ -86,7 +86,7 @@ jobs:
       - name: Upload .env as artifact (for local use only)
         # NOTE: This artifact is only accessible to repo members with Actions access.
         # Do not use this .env file in other workflow jobs — re-read from secrets instead.
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: grafana-env
           path: .env

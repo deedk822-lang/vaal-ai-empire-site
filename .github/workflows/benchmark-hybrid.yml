@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload Ollama results
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: ollama-benchmark-results
           path: benchmark_results/
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload Direct API results
         if: always()
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: direct-api-benchmark-results
           path: benchmark_results/
