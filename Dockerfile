@@ -1,5 +1,5 @@
 # Use Node.js for the frontend/server
-FROM node:20-slim AS base
+FROM node:25-slim AS base
 WORKDIR /app
 
 # Install system dependencies for native modules
