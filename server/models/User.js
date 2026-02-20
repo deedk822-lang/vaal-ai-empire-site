@@ -114,6 +114,7 @@ const userSchema = new mongoose.Schema({
     
     // POPIA Compliance (SA Data Protection)
     // Note: Consent defaults to false - users must explicitly opt-in
+    // consentDate is immutable (first grant), consentWithdrawnAt tracks withdrawal for audit trail
     dataConsent: {
         marketing: {
             type: Boolean,
@@ -128,6 +129,10 @@ const userSchema = new mongoose.Schema({
             default: false
         },
         consentDate: {
+            type: Date,
+            default: null
+        },
+        consentWithdrawnAt: {
             type: Date,
             default: null
         }
@@ -259,23 +264,27 @@ userSchema.pre('save', function(next) {
             .update(rawToken)
             .digest('hex');
         this.verificationTokenExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-        // Store raw token temporarily for email sending (will be cleared after use)
+        // Store raw token transiently for email sending within this request cycle.
+        // This is a non-schema property: never persisted to MongoDB.
+        // Caller should consume user._rawVerificationToken immediately after save.
         this._rawVerificationToken = rawToken;
     }
     next();
 });
 
-// Update consentDate when consent is granted
+// Update consentDate when consent is granted/withdrawn (POPIA compliance)
 userSchema.pre('save', function(next) {
     if (this.isModified('dataConsent')) {
         const { marketing, analytics, thirdParty } = this.dataConsent;
         const hasAnyConsent = marketing || analytics || thirdParty;
         
         if (hasAnyConsent && !this.dataConsent.consentDate) {
+            // First-time consent grant - record immutable timestamp
             this.dataConsent.consentDate = new Date();
-        } else if (!hasAnyConsent) {
-            // Clear consent date if all consent is withdrawn
-            this.dataConsent.consentDate = null;
+            this.dataConsent.consentWithdrawnAt = null; // Clear any prior withdrawal
+        } else if (!hasAnyConsent && this.dataConsent.consentDate) {
+            // All consent withdrawn - record withdrawal date but preserve original grant date
+            this.dataConsent.consentWithdrawnAt = new Date();
         }
     }
     next();

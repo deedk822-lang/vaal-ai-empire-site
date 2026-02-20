@@ -219,12 +219,16 @@ class MultilingualDataBuilder:
                 
                 mix_scores = self.detect_language_mix(text)
                 
+                # Only mark as code-switched if there's actual detection and no dominant language
+                max_score = max(mix_scores.values()) if mix_scores else 0
+                is_code_switched = (max_score > 0) and (max_score < 0.8)
+                
                 manifest.append({
                     "audio_path": clip.get("path"),
                     "text": text,
                     "primary_language": lang_code,
                     "language_mix": mix_scores,
-                    "is_code_switched": max(mix_scores.values()) < 0.8,
+                    "is_code_switched": is_code_switched,
                 })
         
         # Add synthetic code-switched data
@@ -251,7 +255,10 @@ class MultilingualDataBuilder:
         
         # Stats
         codeswitch_count = sum(1 for m in manifest if m["is_code_switched"])
-        print(f"  - Total code-switched: {codeswitch_count} ({100*codeswitch_count/len(manifest):.1f}%)")
+        if len(manifest) > 0:
+            print(f"  - Total code-switched: {codeswitch_count} ({100*codeswitch_count/len(manifest):.1f}%)")
+        else:
+            print("  - No samples in manifest")
         
         return manifest
     

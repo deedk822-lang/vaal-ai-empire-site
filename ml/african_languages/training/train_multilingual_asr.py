@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 
-logging.basicConfig(level=logging.INFO)
+# Module-level logger (avoid global basicConfig to respect parent config)
 logger = logging.getLogger(__name__)
 
 
@@ -246,7 +246,7 @@ class MultilingualASRTrainer:
         Fine-tune the model.
         
         Training strategy:
-        - Use LoRA for parameter-efficient fine-tuning
+        - Full-model fine-tuning (all parameters updated)
         - Mixed precision (fp16) for speed
         - Gradient accumulation for larger effective batch size
         - Early stopping based on WER

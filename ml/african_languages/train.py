@@ -32,13 +32,18 @@ def run_download(cv_dir: Path):
     
     from data.download_common_voice import main as download_main
     
+    # Preserve original sys.argv and restore after call
+    original_argv = sys.argv
     sys.argv = [
         "download_common_voice",
-        "--cv-dir", str(cv_dir),
+        "--output-dir", str(cv_dir),  # Correct argument name
         "--languages", "all",
         "--verify"
     ]
-    download_main()
+    try:
+        download_main()
+    finally:
+        sys.argv = original_argv
 
 
 def run_prepare(cv_dir: Path):

@@ -353,9 +353,14 @@ class MultilingualVoiceAgent(BaseAgent):
         }
         
         # Count markers for each language
+        # Use hybrid matching: word-boundary for single tokens, substring for phrases
         scores = {}
         for lang, markers in language_markers.items():
-            matches = sum(1 for marker in markers if marker in text_lower)
+            matches = sum(
+                1 for marker in markers
+                if (' ' in marker and marker in text_lower)  # phrase: substring OK
+                or (' ' not in marker and marker in words)   # single word: exact match
+            )
             # Normalize by number of markers to avoid bias
             scores[lang] = matches / max(len(markers), 1)
         
