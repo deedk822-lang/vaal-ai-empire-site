@@ -2,12 +2,15 @@
 financial_sentinel_agent.py — Vaal AI Empire
 Production-grade AG2 financial sentinel agent.
 
-Updated to use the Perplexity Search API correctly:
- • batch_market_news exposes domain/country/language/exclude controls
- • max_results clamped to [1, 20] (Search API limit)
- • perplexity_api_key: Optional[str]
- • Ellipsis only on actual truncation
- • {e!s} in exception f-strings
+Updated to use the PerplexityFinancialClient with:
+ • Circuit breaker resilience
+ • Rate limiting
+ • OpenTelemetry tracing
+ • Prometheus metrics
+ • SEC EDGAR XBRL structured facts
+
+The agent degrades gracefully when PERPLEXITY_API_KEY is absent:
+ all EDGAR operations still work (no key required).
 """
 
 from __future__ import annotations
@@ -24,7 +27,11 @@ except ImportError:
     _HAS_AUTOGEN = False
     logger.warning("autogen not installed — FinancialSentinelAgent will be limited.")
 
-from agents.lib.perplexity_financial_client import PerplexityFinancialClient
+from agents.lib.perplexity_financial_client import (
+    PerplexityFinancialClient,
+    MarketNewsResult,
+    SECFilingResult,
+)
 
 
 class FinancialSentinelAgent:
@@ -34,6 +41,9 @@ class FinancialSentinelAgent:
     Registers Perplexity Search API tools conditionally when an API key is supplied.
     The PERPLEXITY_API_KEY environment variable is used automatically when
     perplexity_api_key is not passed explicitly.
+
+    When no API key is available, EDGAR operations still work (no key required)
+    but news search will be disabled.
     """
 
     def __init__(
@@ -52,10 +62,14 @@ class FinancialSentinelAgent:
             self.perplexity: Optional[PerplexityFinancialClient] = (
                 PerplexityFinancialClient(api_key=perplexity_api_key)
             )
-            logger.info("[%s] Perplexity Search client initialised.", self.name)
+            logger.info("[%s] PerplexityFinancialClient initialised.", self.name)
         except ImportError as exc:
             self.perplexity = None
             logger.warning("[%s] %s — tools disabled.", self.name, exc)
+        except ValueError as exc:
+            # No API key provided and not in environment
+            self.perplexity = None
+            logger.info("[%s] No Perplexity API key — EDGAR-only mode.", self.name)
 
         if _HAS_AUTOGEN:
             self._agent = autogen.AssistantAgent(
@@ -93,7 +107,11 @@ class FinancialSentinelAgent:
             max_results: int = 3,
             country: Optional[str] = None,
         ) -> str:
-            return self.fetch_market_news(topics, max_results, country=country)
+            # Handle single ticker or list of topics
+            if isinstance(topics, str):
+                topics = [topics]
+            ticker = topics[0] if topics else "UNKNOWN"
+            return self.fetch_market_news(ticker, max_results, country=country)
 
         @self._agent.register_for_execution()
         @self._agent.register_for_llm(
@@ -114,13 +132,13 @@ class FinancialSentinelAgent:
 
     def fetch_market_news(
         self,
-        topics: List[str],
+        ticker: str,
         max_results: int = 3,
         country: Optional[str] = None,
-        exclude_sources: Optional[List[str]] = None,
+        company_name: Optional[str] = None,
     ) -> str:
         """
-        Search real-time financial news for `topics`.
+        Search real-time financial news for `ticker`.
 
         max_results is clamped to [1, 20] (Search API hard limit).
         Defaults to the agent's `default_country` when country is not specified.
@@ -128,39 +146,35 @@ class FinancialSentinelAgent:
         if self.perplexity is None:
             return "❌ Market news unavailable: Perplexity Search client not initialised."
 
-        max_results = max(1, min(20, max_results))
-        country     = country or self.default_country
+        country = country or self.default_country or "US"
 
         try:
-            results = self.perplexity.batch_market_news(
-                topics,
-                max_per_topic=max_results,
+            result: MarketNewsResult = self.perplexity.fetch_market_news(
+                ticker=ticker,
+                company_name=company_name,
+                max_results=max_results,
                 country=country,
-                exclude_sources=exclude_sources,
             )
         except Exception as e:
             return f"❌ Error fetching market news: {e!s}"
 
+        if result.error:
+            return f"❌ {result.error}"
+
         parts: List[str] = []
-        for topic, articles in results.items():
-            if isinstance(articles, dict) and "error" in articles:
-                parts.append(f"**{topic}**: ⚠ {articles['error']}")
-                continue
+        for article in result.articles:
+            title   = article.title or "Untitled"
+            snippet = article.snippet or ""
+            url     = article.url or ""
+            date    = article.date or ""
 
-            parts.append(f"### {topic}")
-            for art in articles:
-                title   = art.get("title",   "Untitled")
-                snippet = art.get("snippet", "")
-                url     = art.get("url",     "")
-                date    = art.get("date",    "")
+            # Ellipsis only when actually truncated
+            snippet_display = snippet[:120] + "…" if len(snippet) > 120 else snippet
+            url_display     = url[:70]     + "…" if len(url) > 70         else url
 
-                # Ellipsis only when actually truncated
-                snippet_display = snippet[:120] + "…" if len(snippet) > 120 else snippet
-                url_display     = url[:70]     + "…" if len(url) > 70         else url
-
-                parts.append(f"  • **{title}**")
-                parts.append(f"    {snippet_display}")
-                parts.append(f"    🔗 {url_display}" + (f"  _(published: {date})_" if date else ""))
+            parts.append(f"• **{title}**")
+            parts.append(f"  {snippet_display}")
+            parts.append(f"  🔗 {url_display}" + (f"  _(published: {date})_" if date else ""))
 
         return "\n".join(parts) if parts else "No results found."
 
@@ -174,50 +188,46 @@ class FinancialSentinelAgent:
             return "❌ Financials unavailable: Perplexity Search client not initialised."
 
         try:
-            data = self.perplexity.fetch_sec_filing(ticker, filing_type)
+            result: SECFilingResult = self.perplexity.fetch_sec_filings(
+                ticker=ticker,
+                filing_type=filing_type,
+                max_results=3,
+            )
         except Exception as e:
             return f"❌ Error fetching financials for {ticker}: {e!s}"
 
-        if "error" in data:
-            return f"❌ {data['error']}"
+        if result.error:
+            return f"❌ {result.error}"
 
-        m     = data.get("metrics", {})
         lines = [
-            f"## {m.get('entity_name', ticker)} — {filing_type} ({data.get('year', 'N/A')})",
-            f"CIK: {data.get('cik', 'N/A')}",
+            f"## {ticker} — {filing_type}",
+            f"CIK: {result.cik or 'N/A'}",
             "",
             "### Key Metrics",
         ]
 
-        metric_labels = {
-            "revenues":            "Revenue",
-            "net_income":          "Net Income",
-            "eps_basic":           "EPS (Basic)",
-            "total_assets":        "Total Assets",
-            "total_liabilities":   "Total Liabilities",
-            "operating_cash_flow": "Operating Cash Flow",
-        }
-        for key, label in metric_labels.items():
-            val = m.get(key)
-            if val is not None:
-                # Format large numbers with commas
-                try:
-                    lines.append(f"  {label}: {float(val):,.2f}")
-                except (ValueError, TypeError):
-                    lines.append(f"  {label}: {val}")
+        for fact in result.facts[:10]:  # Limit to 10 facts for readability
+            value_str = f"{fact.value:,.2f}" if abs(fact.value) >= 1000 else f"{fact.value:.4f}"
+            lines.append(f"  {fact.label}: {value_str} {fact.unit}")
+            lines.append(f"    Period: {fact.period_end} (FY {fact.fiscal_year or 'N/A'})")
 
-        ctx = data.get("search_context", [])
-        if ctx:
-            lines += ["", "### Recent Coverage"]
-            for item in ctx[:3]:
-                lines.append(f"  • {item.get('title', '')}")
-                lines.append(f"    {item.get('url', '')}")
+        if result.filings:
+            lines += ["", "### Recent Filings"]
+            for filing in result.filings[:3]:
+                lines.append(f"  • [{filing.title}]({filing.url})")
 
-        lines.append(f"\n_Retrieved: {data.get('retrieved_at', 'unknown')}_")
+        lines.append(f"\n_Retrieved in {result.latency_ms:.0f}ms_")
         return "\n".join(lines)
 
     def get_health(self) -> Dict[str, Any]:
         """Return Perplexity client health metrics."""
         if self.perplexity is None:
             return {"status": "disabled", "reason": "Client not initialised."}
-        return self.perplexity.get_health_metrics()
+        report = self.perplexity.health_check()
+        return {
+            "status":        "healthy" if report.healthy else "degraded",
+            "latency_ms":    report.latency_ms,
+            "perplexity_ok": report.perplexity_ok,
+            "edgar_ok":      report.edgar_ok,
+            "error":         report.error,
+        }
