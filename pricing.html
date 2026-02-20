@@ -1,234 +1,379 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pricing - Vaal AI Empire</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <script src="https://js.stripe.com/v3/"></script>
-    <style>
-        .pricing-hero {
-            text-align: center;
-            padding: 4rem 2rem 2rem;
-            background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
-        }
-        .pricing-hero h1 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            color: #f7b731;
-        }
-        .pricing-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
-            max-width: 1200px;
-            margin: 3rem auto;
-            padding: 0 2rem;
-        }
-        .pricing-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 2.5rem;
-            text-align: center;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-        .pricing-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        }
-        .pricing-card.featured {
-            border: 2px solid #f7b731;
-            position: relative;
-        }
-        .pricing-card.featured::before {
-            content: 'MOST POPULAR';
-            position: absolute;
-            top: -12px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #f7b731;
-            color: #0a0a0a;
-            padding: 0.25rem 1rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-        .pricing-card h3 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-            color: #fff;
-        }
-        .pricing-card .price {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #f7b731;
-            margin: 1rem 0;
-        }
-        .pricing-card .price span {
-            font-size: 1rem;
-            color: #888;
-        }
-        .pricing-card ul {
-            list-style: none;
-            padding: 0;
-            margin: 2rem 0;
-            text-align: left;
-        }
-        .pricing-card ul li {
-            padding: 0.5rem 0;
-            padding-left: 1.5rem;
-            position: relative;
-            color: #ccc;
-        }
-        .pricing-card ul li::before {
-            content: '✓';
-            position: absolute;
-            left: 0;
-            color: #f7b731;
-            font-weight: bold;
-        }
-        .btn-pricing {
-            display: inline-block;
-            width: 100%;
-            padding: 1rem;
-            background: linear-gradient(135deg, #f7b731 0%, #e58e26 100%);
-            color: #0a0a0a;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: bold;
-            border: none;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .btn-pricing:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 15px rgba(247, 183, 49, 0.4);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing — Vaal AI Empire</title>
+  <meta name="description" content="Choose a Vaal AI Empire plan and start your free trial today." />
+
+  <!-- Stripe.js (loaded first so it's available before any interaction) -->
+  <script src="https://js.stripe.com/v3/" async></script>
+
+  <style>
+    :root {
+      --color-bg:       #0a0a0f;
+      --color-surface:  #12121a;
+      --color-border:   #1e1e2e;
+      --color-accent:   #7c5dfa;
+      --color-accent-h: #6b4fe0;
+      --color-text:     #e2e2f0;
+      --color-muted:    #8888a8;
+      --color-success:  #22c55e;
+      --radius:         12px;
+      --transition:     0.2s ease;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ─────────────────────────────── */
+    .pricing-page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 4rem 1.5rem 6rem;
+    }
+
+    .pricing-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .pricing-header h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff 0%, var(--color-accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.75rem;
+    }
+
+    .pricing-header p {
+      color: var(--color-muted);
+      font-size: 1.125rem;
+    }
+
+    /* ── Cards ──────────────────────────────── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .pricing-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      transition: border-color var(--transition), transform var(--transition);
+    }
+
+    .pricing-card:hover {
+      border-color: var(--color-accent);
+      transform: translateY(-2px);
+    }
+
+    .pricing-card.featured {
+      border-color: var(--color-accent);
+      position: relative;
+    }
+
+    .pricing-card.featured::before {
+      content: "Most Popular";
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.875rem;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    .plan-name {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .plan-price {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .plan-price span {
+      font-size: 1rem;
+      font-weight: 400;
+      color: var(--color-muted);
+    }
+
+    .plan-description {
+      color: var(--color-muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .plan-features {
+      list-style: none;
+      margin-bottom: 2rem;
+      flex: 1;
+    }
+
+    .plan-features li {
+      padding: 0.4rem 0;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .plan-features li::before {
+      content: "✓";
+      color: var(--color-success);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ── CTA Buttons ─────────────────────────── */
+    .btn-pricing {
+      display: block;
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: background var(--transition), opacity var(--transition);
+      text-align: center;
+    }
+
+    .btn-pricing.primary {
+      background: var(--color-accent);
+      color: #fff;
+    }
+
+    .btn-pricing.primary:hover { background: var(--color-accent-h); }
+
+    .btn-pricing.secondary {
+      background: transparent;
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-pricing.secondary:hover { border-color: var(--color-accent); }
+
+    .btn-pricing:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    /* ── Error / Loading states ──────────────── */
+    .checkout-error {
+      display: none;
+      margin-top: 0.75rem;
+      padding: 0.625rem 1rem;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 8px;
+      font-size: 0.875rem;
+      color: #f87171;
+    }
+
+    /* ── Footer ──────────────────────────────── */
+    footer {
+      text-align: center;
+      margin-top: 4rem;
+      color: var(--color-muted);
+      font-size: 0.875rem;
+    }
+  </style>
 </head>
+
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="logo">⚡ Vaal AI Empire</div>
-            <ul class="nav-menu">
-                <li><a href="index.html">Home</a></li>
-                <li><a href="index.html#engines">Engines</a></li>
-                <li><a href="index.html#features">Features</a></li>
-                <li><a href="pricing.html">Pricing</a></li>
-            </ul>
-        </div>
-    </nav>
+  <main class="pricing-page">
+    <header class="pricing-header">
+      <h1>Simple, Transparent Pricing</h1>
+      <p>Start free. Scale as you grow. Cancel anytime.</p>
+    </header>
 
-    <section class="pricing-hero">
-        <h1>Choose Your Empire</h1>
-        <p style="font-size: 1.2rem; color: #ccc;">7-day free trial. No credit card required. Cancel anytime.</p>
-    </section>
+    <div class="pricing-grid">
 
-    <section style="padding: 2rem 0 6rem;">
-        <div class="pricing-grid">
-            <!-- Vaal Starter -->
-            <div class="pricing-card">
-                <h3>Vaal Starter</h3>
-                <div class="price">R749<span>/month</span></div>
-                <p style="color: #888; margin-bottom: 1.5rem;">Perfect for small businesses getting started with AI</p>
-                <ul>
-                    <li>1 AI Agent</li>
-                    <li>1,000 API calls/month</li>
-                    <li>Email support</li>
-                    <li>Basic analytics</li>
-                    <li>Community access</li>
-                </ul>
-                <button class="btn-pricing subscribe-btn" data-price="starter" aria-label="Start Free Trial — Vaal Starter plan">Start Free Trial</button>
-            </div>
+      <!-- ── Starter plan ─────────────────── -->
+      <article class="pricing-card" aria-labelledby="plan-starter-name">
+        <p class="plan-name" id="plan-starter-name">Starter</p>
+        <p class="plan-price">R199 <span>/ month</span></p>
+        <p class="plan-description">Perfect for individuals exploring AI for the first time.</p>
+        <ul class="plan-features" aria-label="Starter plan features">
+          <li>50 AI requests per day</li>
+          <li>Access to base language models</li>
+          <li>Email support</li>
+          <li>Community access</li>
+        </ul>
+        <!--
+          aria-label explicitly names the plan so screen-reader users can
+          distinguish the two "Start Free Trial" buttons.
+        -->
+        <button
+          class="btn-pricing secondary subscribe-btn"
+          data-price="price_starter"
+          aria-label="Start Free Trial for Starter plan"
+        >
+          Start Free Trial
+        </button>
+        <div class="checkout-error" role="alert" aria-live="polite"></div>
+      </article>
 
-            <!-- Vaal Empire -->
-            <div class="pricing-card featured">
-                <h3>Vaal Empire</h3>
-                <div class="price">R1,999<span>/month</span></div>
-                <p style="color: #888; margin-bottom: 1.5rem;">For growing businesses that need the full power</p>
-                <ul>
-                    <li>5 AI Agents</li>
-                    <li>10,000 API calls/month</li>
-                    <li>Priority support</li>
-                    <li>Advanced analytics</li>
-                    <li>API access</li>
-                    <li>Custom integrations</li>
-                </ul>
-                <button class="btn-pricing subscribe-btn" data-price="empire" aria-label="Start Free Trial — Vaal Empire plan">Start Free Trial</button>
-            </div>
-        </div>
-    </section>
+      <!-- ── Pro plan ──────────────────────── -->
+      <article class="pricing-card featured" aria-labelledby="plan-pro-name">
+        <p class="plan-name" id="plan-pro-name">Pro</p>
+        <p class="plan-price">R599 <span>/ month</span></p>
+        <p class="plan-description">For professionals and small teams building real products.</p>
+        <ul class="plan-features" aria-label="Pro plan features">
+          <li>Unlimited AI requests</li>
+          <li>Multilingual voice models (11 languages)</li>
+          <li>Financial Sentinel Agent</li>
+          <li>Priority support</li>
+          <li>API access</li>
+        </ul>
+        <button
+          class="btn-pricing primary subscribe-btn"
+          data-price="price_pro"
+          aria-label="Start Free Trial for Pro plan"
+        >
+          Start Free Trial
+        </button>
+        <div class="checkout-error" role="alert" aria-live="polite"></div>
+      </article>
 
-    <footer style="text-align: center; padding: 3rem 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
-        <p style="color: #666;">&copy; 2026 Vaal AI Empire. Built in the Vaal. Built for Africa.</p>
-    </footer>
+    </div><!-- /pricing-grid -->
+  </main>
 
-    <script>
-        // Initialize Stripe
-        let stripe;
-        let priceIds = {};
+  <footer>
+    <p>
+      &copy; <span id="copyright-year"></span> Vaal AI Empire.
+      Built in the Vaal. Built for Africa.
+    </p>
+  </footer>
 
-        // Fetch config and initialize
-        fetch('/config')
-            .then(res => {
-                if (!res.ok) throw new Error(`Failed to load config (HTTP ${res.status})`);
-                return res.json();
-            })
-            .then(config => {
-                stripe = Stripe(config.publishableKey);
-                priceIds = {
-                    starter: config.prices.starter,
-                    empire: config.prices.empire
-                };
-            })
-            .catch(err => {
-                console.error('Config error:', err);
-                alert('Error loading payment system. Please refresh.');
-            });
+  <script>
+    'use strict';
 
-        // Handle checkout
-        document.querySelectorAll('.subscribe-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const plan = e.target.dataset.price;
-                const priceId = priceIds[plan];
+    // ── Dynamic copyright year (was hardcoded © 2024) ──────────────
+    document.getElementById('copyright-year').textContent = new Date().getFullYear();
 
-                if (!priceId) {
-                    alert('Configuration error. Contact support.');
-                    return;
-                }
+    // ── Stripe initialisation ───────────────────────────────────────
+    let stripe = null;
 
-                e.target.disabled = true;
-                e.target.textContent = 'Loading...';
+    /**
+     * Fetch /config, validate HTTP status before parsing JSON.
+     * Returns publishable key or throws a descriptive Error.
+     */
+    async function loadStripe() {
+      let res;
+      try {
+        res = await fetch('/config');
+      } catch (networkErr) {
+        throw new Error(`Network error fetching /config: ${networkErr.message}`);
+      }
 
-                try {
-                    const response = await fetch('/create-checkout-session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ priceId }),
-                    });
+      if (!res.ok) {
+        // Read error body for actionable diagnostics
+        const body = await res.text().catch(() => '(no body)');
+        throw new Error(
+          `Failed to load Stripe config: HTTP ${res.status} — ${body}`
+        );
+      }
 
-                    const session = await response.json();
+      const data = await res.json();
 
-                    if (session.error) {
-                        throw new Error(session.error);
-                    }
+      if (!data.publishableKey) {
+        throw new Error('Stripe publishableKey missing from /config response.');
+      }
 
-                    const result = await stripe.redirectToCheckout({ 
-                        sessionId: session.sessionId 
-                    });
+      return window.Stripe(data.publishableKey);
+    }
 
-                    if (result.error) {
-                        throw new Error(result.error.message);
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert('Payment error: ' + error.message);
-                    e.target.disabled = false;
-                    e.target.textContent = 'Start Free Trial';
-                }
-            });
-        });
-    </script>
+    /**
+     * Create a Checkout session on the server, validate the response,
+     * then redirect via window.location.href (stripe.redirectToCheckout is
+     * deprecated and has been removed from the Stripe.js API).
+     */
+    async function startCheckout(priceId, button, errorEl) {
+      button.disabled   = true;
+      button.textContent = 'Loading…';
+      errorEl.style.display = 'none';
+
+      try {
+        // Lazy-init Stripe
+        if (!stripe) {
+          stripe = await loadStripe();
+        }
+
+        let res;
+        try {
+          res = await fetch('/create-checkout-session', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ priceId }),
+          });
+        } catch (networkErr) {
+          throw new Error(`Network error creating checkout session: ${networkErr.message}`);
+        }
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '(no body)');
+          throw new Error(
+            `Checkout session creation failed: HTTP ${res.status} — ${body}`
+          );
+        }
+
+        const session = await res.json();
+
+        if (!session.url) {
+          throw new Error(
+            session.error || 'Server did not return a checkout URL.'
+          );
+        }
+
+        // Direct redirect (replaces deprecated stripe.redirectToCheckout)
+        window.location.href = session.url;
+
+      } catch (err) {
+        console.error('[checkout]', err);
+        errorEl.textContent   = err.message || 'Something went wrong. Please try again.';
+        errorEl.style.display = 'block';
+        button.disabled       = false;
+        button.textContent    = 'Start Free Trial';
+      }
+    }
+
+    // ── Event delegation for all subscribe buttons ──────────────────
+    document.querySelectorAll('.subscribe-btn').forEach(function (btn) {
+      const errorEl = btn.nextElementSibling; // .checkout-error
+      btn.addEventListener('click', function () {
+        const priceId = btn.dataset.price;
+        if (!priceId) {
+          console.error('Button is missing data-price attribute:', btn);
+          return;
+        }
+        startCheckout(priceId, btn, errorEl);
+      });
+    });
+  </script>
 </body>
 </html>
