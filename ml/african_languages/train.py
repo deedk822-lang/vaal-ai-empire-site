@@ -175,6 +175,22 @@ def main() -> None:
     parser = build_parser()
     args   = parser.parse_args()
 
+    # Validate output directory is writable before starting any long operation
+    output_path = getattr(args, 'output_dir', None)
+    if output_path:
+        output_path.mkdir(parents=True, exist_ok=True)
+        if not output_path.exists() or not output_path.is_dir():
+            logger.error("Output path is not a valid directory: %s", output_path)
+            sys.exit(1)
+        # Test write permission
+        test_file = output_path / ".write_test"
+        try:
+            test_file.touch()
+            test_file.unlink()
+        except PermissionError:
+            logger.error("Output directory is not writable: %s", output_path)
+            sys.exit(1)
+
     dispatch = {
         "download":  run_download,
         "prepare":   run_prepare,

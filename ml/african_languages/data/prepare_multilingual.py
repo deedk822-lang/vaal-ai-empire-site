@@ -105,12 +105,18 @@ class MultilingualDataBuilder:
         - "Ngiyabonga" + "very much" -> "Ngiyabonga very much"
         """
         patterns = [
-            # Pattern 1: Insert word/phrase from lang2 into lang1
+            # Pattern 1: Insert first word of lang2 into lang1
             lambda t1, t2: f"{t1} {t2.split()[0] if t2 else ''}",
-            # Pattern 2: Start with lang2, finish with lang1
+            # Pattern 2: Start with lang2 particle, finish with lang1
             lambda t1, t2: f"{t2.split()[0] if t2 else ''}, {t1}",
-            # Pattern 3: Lang1 with lang2 particle at end
-            lambda t1, t2: f"{t1} {t2.split()[0] if t2 else ''}",
+            # Pattern 3: First half of lang1, lang2 particle, second half of lang1
+            lambda t1, t2: (
+                f"{' '.join(t1.split()[:len(t1.split())//2])} "
+                f"{t2.split()[0] if t2 else ''} "
+                f"{' '.join(t1.split()[len(t1.split())//2:])}"
+                if len(t1.split()) > 1
+                else f"{t1} {t2.split()[0] if t2 else ''}"
+            ),
         ]
         
         pattern = random.choice(patterns)
@@ -137,8 +143,8 @@ class MultilingualDataBuilder:
         print(f"Creating {num_synthetic} synthetic code-switched examples...")
         
         for _ in tqdm(range(num_synthetic)):
-            # Pick two random languages
-            lang1, lang2 = random.sample(["zu", "xh", "af", "st"], 2)
+            # Pick two random languages (including Setswana "tn")
+            lang1, lang2 = random.sample(["zu", "xh", "af", "st", "tn"], 2)
             
             if not data[lang1] or not data[lang2]:
                 continue

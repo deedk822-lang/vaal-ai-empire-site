@@ -130,10 +130,23 @@ class MultilingualVoiceAgent(BaseAgent):
         """Lazy-load TTS model with thread-safe locking."""
         async with self._tts_lock:
             if self._tts_model is None:
-                self.log(f"Loading TTS model from {self.tts_model_path}")
-                # Would load TTS model here
-                # For now, placeholder
-                self._tts_model = "loaded"
+                try:
+                    device = 0 if torch.cuda.is_available() else -1
+                    self.log(f"Loading TTS model from {self.tts_model_path}")
+
+                    def _load_tts_model():
+                        return pipeline(
+                            "text-to-speech",
+                            model=str(self.tts_model_path) if self.tts_model_path.exists() else "facebook/mms-tts-eng",
+                            device=device
+                        )
+
+                    self._tts_model = await asyncio.to_thread(_load_tts_model)
+                    self.log("TTS model loaded successfully")
+                except Exception as e:
+                    self.log(f"TTS model load failed: {e}", level="error")
+                    self._tts_model = None
+                    raise
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -223,39 +236,61 @@ class MultilingualVoiceAgent(BaseAgent):
     async def _text_to_speech(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert text to speech.
-        
+
         Handles code-switched text by:
         1. Detecting language switches in text
         2. Using appropriate prosody for each segment
         3. Or using multilingual model that handles mixing naturally
         """
-        await self._load_tts()
-        
         text = context.get("text")
         if not text:
             return {"error": "No text provided"}
-        
+
         # Detect primary language
         lang_detection = self._analyze_language_mix(text)
         primary_lang = lang_detection.primary_language
-        
+
         # Synthesize
         try:
-            # In full implementation, would call TTS model
-            # For now, placeholder
-            audio_data = b"placeholder_audio_data"
-            audio_b64 = base64.b64encode(audio_data).decode()
-            
+            await self._load_tts()
+
+            if self._tts_model is None:
+                return {"error": "TTS model unavailable"}
+
+            # Run TTS in thread pool to avoid blocking
+            result = await asyncio.to_thread(self._tts_model, text)
+
+            # Extract audio data
+            audio_array = result.get("audio", result.get("waveform", np.array([])))
+            sample_rate = result.get("sampling_rate", result.get("sample_rate", 22050))
+
+            # Convert numpy array to base64 WAV
+            import wave
+            buf = io.BytesIO()
+            if isinstance(audio_array, np.ndarray):
+                audio_int16 = (audio_array * 32767).astype(np.int16)
+            else:
+                audio_int16 = np.array(audio_array, dtype=np.int16)
+
+            with wave.open(buf, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio_int16.tobytes())
+
+            audio_b64 = base64.b64encode(buf.getvalue()).decode()
+
             return {
                 "audio_base64": audio_b64,
                 "format": "wav",
-                "sample_rate": 22050,
+                "sample_rate": sample_rate,
                 "primary_language": primary_lang,
                 "detected_mix": lang_detection.language_mix,
             }
-            
+
         except Exception as e:
-            return {"error": f"Synthesis failed: {str(e)}"}
+            self.log(f"TTS synthesis error: {e}", level="error")
+            return {"error": str(e)}
     
     async def _voice_chat(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -290,12 +325,18 @@ class MultilingualVoiceAgent(BaseAgent):
             "language_hint": lang_info["primary"],
         }
         tts_result = await self._text_to_speech(tts_context)
-        
+
+        # Log TTS errors but don't fail the whole interaction
+        tts_error = tts_result.get("error")
+        if tts_error:
+            self.log(f"TTS synthesis failed: {tts_error}", level="warning")
+
         # Combine results
         return {
             "query_text": query_text,
             "response_text": llm_response,
             "response_audio": tts_result.get("audio_base64"),
+            "tts_error": tts_error,  # Propagate TTS error to caller
             "detected_languages": list(lang_info["mix"].keys()),
             "is_code_switched": lang_info["is_code_switched"],
             "confidence": lang_info["confidence"],

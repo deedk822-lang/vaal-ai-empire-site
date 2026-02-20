@@ -211,29 +211,30 @@ class MultilingualASRTrainer:
     def compute_metrics(self, pred) -> Dict[str, float]:
         """
         Compute WER (Word Error Rate) with special handling for code-switching.
+
+        Note: Only returns scalar values - HuggingFace Trainer cannot log lists.
+        Sample predictions/references are logged separately.
         """
         pred_ids = pred.predictions
         label_ids = pred.label_ids
-        
+
         # Replace -100 with pad token id
         label_ids[label_ids == -100] = self.processor.tokenizer.pad_token_id
-        
+
         # Decode
         pred_str = self.processor.batch_decode(pred_ids, skip_special_tokens=True)
         label_str = self.processor.batch_decode(label_ids, skip_special_tokens=True)
-        
+
         # Compute WER
         import jiwer
-        wer = jiwer.wer(label_str, pred_str)
-        
-        # Also compute per-language WER if we have that info
-        # (Would need to track language in eval dataset)
-        
-        return {
-            "wer": wer,
-            "predictions": pred_str[:3],  # Log first 3 for debugging
-            "references": label_str[:3],
-        }
+        wer_score = jiwer.wer(label_str, pred_str)
+
+        # Log samples separately — do NOT return lists to Trainer
+        logger.info(f"Sample predictions: %s", pred_str[:3])
+        logger.info(f"Sample references: %s", label_str[:3])
+
+        # Return only scalar metrics
+        return {"wer": wer_score}
     
     def train(self,
               train_manifest: Path,

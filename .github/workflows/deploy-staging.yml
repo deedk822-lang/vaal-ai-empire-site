@@ -59,7 +59,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-        continue-on-error: true
+        # REMOVED: continue-on-error: true
+        # Rationale: build failures must fail the job so stale images are not deployed
 
       - name: Smoke test — HTTP health check
         id: health_check
@@ -86,9 +87,9 @@ jobs:
             sleep "$SLEEP_SECONDS"
           done
           
-          echo "::warning::Smoke test did not pass after ${MAX_ATTEMPTS} attempts"
-          echo "result=warning" >> "$GITHUB_OUTPUT"
-          exit 0
+          echo "::error::Smoke test failed after ${MAX_ATTEMPTS} attempts — staging is unreachable"
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: Deployment summary
         if: always()

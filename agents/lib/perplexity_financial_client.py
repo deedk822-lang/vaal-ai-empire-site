@@ -135,6 +135,10 @@ class PerplexityFinancialClient:
                 "perplexityai is required: pip install perplexityai"
             )
 
+        # Validate api_key if provided (must be non-empty string)
+        if api_key is not None and (not api_key or not api_key.strip()):
+            raise ValueError("api_key must be a non-empty string")
+
         # SDK reads PERPLEXITY_API_KEY env var automatically when api_key=None
         self._client = _PerplexitySDK(api_key=api_key) if api_key else _PerplexitySDK()
 
