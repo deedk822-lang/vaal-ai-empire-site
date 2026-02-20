@@ -139,7 +139,7 @@
                     <li>Basic analytics</li>
                     <li>Community access</li>
                 </ul>
-                <button class="btn-pricing subscribe-btn" data-price="starter">Start Free Trial</button>
+                <button class="btn-pricing subscribe-btn" data-price="starter" aria-label="Start Free Trial — Vaal Starter plan">Start Free Trial</button>
             </div>
 
             <!-- Vaal Empire -->
@@ -155,13 +155,13 @@
                     <li>API access</li>
                     <li>Custom integrations</li>
                 </ul>
-                <button class="btn-pricing subscribe-btn" data-price="empire">Start Free Trial</button>
+                <button class="btn-pricing subscribe-btn" data-price="empire" aria-label="Start Free Trial — Vaal Empire plan">Start Free Trial</button>
             </div>
         </div>
     </section>
 
     <footer style="text-align: center; padding: 3rem 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
-        <p style="color: #666;">&copy; 2024 Vaal AI Empire. Built in the Vaal. Built for Africa.</p>
+        <p style="color: #666;">&copy; 2026 Vaal AI Empire. Built in the Vaal. Built for Africa.</p>
     </footer>
 
     <script>
@@ -171,7 +171,10 @@
 
         // Fetch config and initialize
         fetch('/config')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`Failed to load config (HTTP ${res.status})`);
+                return res.json();
+            })
             .then(config => {
                 stripe = Stripe(config.publishableKey);
                 priceIds = {

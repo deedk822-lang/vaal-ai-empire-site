@@ -196,6 +196,11 @@ class MultilingualTTSTrainer:
         # trainer = Trainer(...)
         # trainer.fit()
         
+        raise NotImplementedError(
+            "Multilingual TTS training is not yet implemented. "
+            "Wire up TTS.trainer.Trainer to enable actual training."
+        )
+        
         return model
 
 

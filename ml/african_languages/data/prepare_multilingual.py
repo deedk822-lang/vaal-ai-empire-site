@@ -180,10 +180,10 @@ class MultilingualDataBuilder:
         
         scores = {}
         for lang_code, markers in LANGUAGE_MARKERS.items():
-            matches = sum(1 for marker in markers if marker in text_lower)
+            matches = sum(1 for marker in markers if marker in words)
             scores[lang_code] = matches / max(len(words), 1)
         
-        # Detect slang
+        # Detect slang (substring match is appropriate for slang phrases)
         slang_matches = sum(1 for slang in SLANG_TERMS if slang in text_lower)
         scores["slang"] = slang_matches / max(len(words), 1)
         

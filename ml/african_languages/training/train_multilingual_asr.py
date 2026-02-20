@@ -71,8 +71,13 @@ class MultilingualASRDataset(Dataset):
     
     def _log_language_stats(self):
         """Log statistics about language distribution."""
+        total = len(self.manifest)
+        if total == 0:
+            logger.warning("No samples in manifest after filtering")
+            return
+        
         codeswitch_count = sum(1 for m in self.manifest if m.get("is_code_switched", False))
-        logger.info(f"Code-switched samples: {codeswitch_count} ({100*codeswitch_count/len(self.manifest):.1f}%)")
+        logger.info(f"Code-switched samples: {codeswitch_count} ({100*codeswitch_count/total:.1f}%)")
         
         # Primary language distribution
         lang_counts = {}
@@ -82,7 +87,7 @@ class MultilingualASRDataset(Dataset):
         
         logger.info("Primary language distribution:")
         for lang, count in sorted(lang_counts.items(), key=lambda x: -x[1]):
-            logger.info(f"  {lang}: {count} ({100*count/len(self.manifest):.1f}%)")
+            logger.info(f"  {lang}: {count} ({100*count/total:.1f}%)")
     
     def __len__(self):
         return len(self.manifest)
@@ -106,9 +111,8 @@ class MultilingualASRDataset(Dataset):
                 waveform = torch.mean(waveform, dim=0, keepdim=True)
             
         except Exception as e:
-            logger.warning(f"Error loading {audio_path}: {e}")
-            # Return dummy data
-            waveform = torch.zeros(1, 16000)
+            logger.error(f"Failed to load audio {audio_path}: {e}")
+            raise RuntimeError(f"Audio loading failed for {audio_path}: {e}") from e
         
         # Process audio
         input_features = self.processor.feature_extractor(

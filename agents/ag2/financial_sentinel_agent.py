@@ -225,6 +225,9 @@ class FinancialSentinelAgent:
             ) -> str:
                 """Fetch recent market news for a company using Perplexity."""
                 try:
+                    # Enforce bounds on max_results (1-5)
+                    max_results = max(1, min(max_results, 5))
+                    
                     news = self.perplexity.batch_market_news([company], max_results=max_results)
                     
                     if not news or company not in news:
@@ -236,11 +239,15 @@ class FinancialSentinelAgent:
                     
                     response_parts = [f"📰 Market News for {company}:\n"]
                     for i, article in enumerate(articles, 1):
+                        summary = article['summary']
+                        url = article['url']
+                        summary_truncated = summary[:100] + ('...' if len(summary) > 100 else '')
+                        url_truncated = url[:60] + ('...' if len(url) > 60 else '')
                         response_parts.append(
                             f"\n{i}. {article['headline']}\n"
                             f"   Source: {article['source']}\n"
-                            f"   Summary: {article['summary'][:100]}...\n"
-                            f"   URL: {article['url'][:60]}..."
+                            f"   Summary: {summary_truncated}\n"
+                            f"   URL: {url_truncated}"
                         )
                     
                     return "\n".join(response_parts)

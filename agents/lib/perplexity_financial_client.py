@@ -170,7 +170,7 @@ class PerplexityFinancialClient:
             >>> filing = client.fetch_sec_filings("AAPL", "10-Q")
             >>> print(filing['revenue'], filing['net_income'])
         """
-        query = f"{ticker} {filing_type} 2025"
+        query = f"{ticker} {filing_type} {datetime.now().year}"
         
         try:
             start = datetime.now()
@@ -253,7 +253,7 @@ Use null for unavailable data. data_quality should be 0.0-1.0 based on data fres
         try:
             start = datetime.now()
             
-            response = self.client.chat.create(
+            response = self.client.chat.completions.create(
                 model="sonar-pro",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,  # Deterministic extraction
@@ -396,7 +396,7 @@ Use null for unavailable data. data_quality should be 0.0-1.0 based on data fres
         """Extract domain from URL."""
         try:
             return urlparse(url).netloc
-        except:
+        except Exception:
             return "unknown"
     
     # ============ MONITORING ============
