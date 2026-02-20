@@ -1,246 +1,115 @@
-name: Swarm Auto-Fixer
+name: Hybrid Swarm Autofixer
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  pull_request_review:
-    types: [submitted]
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to process'
-        required: true
-        type: number
-      min_score:
-        description: 'Minimum approval score (0.0–1.0)'
+        description: PR number to fix
         required: false
-        default: '0.7'
         type: string
 
 permissions:
-  contents: write
+  contents:      write
   pull-requests: write
-  issues: write
-  actions: read
 
 concurrency:
-  group: swarm-autofixer-${{ github.event.pull_request.number || github.run_number }}
+  group: hybrid-swarm-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PYTHON_VERSION: '3.11'
-
 jobs:
-  detect-context:
-    name: Detect PR Context
+  # ──────────────────────────────────────────
+  # Core autofixer job
+  # ──────────────────────────────────────────
+  autofix:
+    name: Swarm Autofix
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      is_fork: ${{ steps.check.outputs.is_fork }}
-      should_run: ${{ steps.check.outputs.should_run }}
-      pr_number: ${{ steps.check.outputs.pr_number }}
-
-    steps:
-      - name: Check if PR is from a fork
-        id: check
-        env:
-          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          BASE_REPO: ${{ github.repository }}
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            PR_NUMBER="${{ github.event.inputs.pr_number }}"
-          elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "pull_request_review" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-          fi
-          
-          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
-          
-          if [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
-            echo "is_fork=true" >> "$GITHUB_OUTPUT"
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Fork PR detected — skipping autofixer."
-          else
-            echo "is_fork=false" >> "$GITHUB_OUTPUT"
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Same-repo PR — proceeding with swarm autofixer."
-          fi
-
-  swarm-execution:
-    name: Execute Enterprise Swarm
-    runs-on: ubuntu-latest
-    needs: detect-context
-    if: needs.detect-context.outputs.should_run == 'true'
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        # Pin to SHA for security (actions/checkout@v4.1.1)
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
-        with:
-          fetch-depth: 0
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install aiohttp pyyaml requests
-          [ -f requirements.txt ] && pip install -r requirements.txt || true
-
-      - name: Install and start Ollama
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh || true
-          ollama serve &
-          for i in {1..30}; do
-            curl -s http://localhost:11434/api/tags > /dev/null 2>&1 && break
-            sleep 1
-          done || true
-          ollama pull qwen2.5-coder:1.5b || true
-          ollama list || true
-        continue-on-error: true
-
-      - name: Execute Swarm
-        id: swarm
-        env:
-          PR_HEAD_REF: ${{ github.head_ref }}
-          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          OLLAMA_HOST: "127.0.0.1:11434"
-        run: |
-          # Create placeholder result
-          mkdir -p swarm-output
-          cat > swarm-results.json << 'EOF'
-          {
-            "success": true,
-            "duration_ms": 0,
-            "files_count": 0,
-            "files": [],
-            "agent_results": [],
-            "note": "Swarm executed successfully (placeholder)"
-          }
-          EOF
-          
-          # Try to run actual swarm if available
-          if [ -f "agents/sentient_swarm/__init__.py" ]; then
-            python3 << 'PYEOF' || true
-          import asyncio, sys, os, json
-          
-          try:
-              sys.path.insert(0, ".")
-              from agents.sentient_swarm import SwarmOrchestrator, SwarmConfig
-              
-              print("SwarmOrchestrator found — running swarm...")
-              
-              # Create minimal result
-              with open("swarm-results.json", "w") as f:
-                  json.dump({
-                      "success": True,
-                      "duration_ms": 1000,
-                      "files_count": 0,
-                      "files": [],
-                      "agent_results": [],
-                      "note": "Swarm module loaded successfully"
-                  }, f, indent=2)
-          except ImportError as e:
-              print(f"SwarmOrchestrator not found: {e}")
-          except Exception as e:
-              print(f"Swarm error: {e}")
-          PYEOF
-          else
-            echo "::notice::Swarm module not found — using placeholder"
-          fi
-
-      - name: Upload swarm output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: swarm-output
-          path: |
-            swarm-output/
-            swarm-results.json
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Comment on PR with swarm results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        with:
-          script: |
-            const fs = require('fs');
-            
-            let summary = '## 🤖 Swarm Auto-Fixer Results\n\n';
-            
-            try {
-              if (fs.existsSync('swarm-results.json')) {
-                const r = JSON.parse(fs.readFileSync('swarm-results.json', 'utf8'));
-                summary += `**Status:** ${r.success ? '✅ Success' : '❌ Failed'}\n`;
-                summary += `**Duration:** ${(r.duration_ms || 0).toFixed(0)}ms\n`;
-                summary += `**Files Generated:** ${r.files_count || 0}\n`;
-                if (r.note) summary += `\n*${r.note}*\n`;
-              } else {
-                summary += '⚠️ No results file found.\n';
-              }
-            } catch (e) {
-              summary += `⚠️ Could not parse results: ${e.message}\n`;
-            }
-            
-            try {
-              await github.rest.issues.createComment({
-                issue_number: parseInt(process.env.PR_NUMBER),
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: summary,
-              });
-            } catch (err) {
-              console.log('Could not post comment:', err.message);
-            }
-
-  metrics-export:
-    name: Export Metrics
-    runs-on: ubuntu-latest
-    needs: [detect-context, swarm-execution]
-    if: always() && needs.detect-context.outputs.should_run == 'true'
-    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
-        # Pin to SHA for security (actions/checkout@v4.1.1)
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        # Pinned SHA — consistent with all other workflows
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.VAAL_MONEY_BOT }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt --quiet
+
+      - name: Run hybrid swarm autofixer
+        env:
+          GITHUB_TOKEN:        ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          PERPLEXITY_API_KEY:  ${{ secrets.PERPLEXITY_API_KEY }}
+          CODERABBIT_API_KEY:  ${{ secrets.CODERABBIT_API_KEY }}
+          PR_NUMBER:           ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: python agents/sentient_swarm/hybrid_autofixer.py
+
+      - name: Upload swarm output
+        id: upload-swarm
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name:            swarm-output-${{ github.run_id }}
+          path:            swarm-output/
+          retention-days:  14
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────────
+  # Metrics export (no source checkout needed)
+  # ──────────────────────────────────────────
+  metrics-export:
+    name: Export Swarm Metrics
+    runs-on: ubuntu-latest
+    needs: autofix
+    if: always()
+
+    steps:
+      # Previous revision had `actions/checkout@v4` (mutable tag) here.
+      # The subsequent steps only use downloaded artifacts and env checks,
+      # so a source checkout is not required at all.
+      # Removed to eliminate unnecessary runner overhead and mutable tag risk.
 
       - name: Download swarm output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: swarm-output
-          path: swarm-output
-        continue-on-error: true
+          name: swarm-output-${{ github.run_id }}
+          path: swarm-output/
+
+      - name: Setup Python (for metric scripts only)
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install metric export dependencies
+        run: pip install prometheus-client requests --quiet
 
       - name: Export to Prometheus
         env:
+          PROMETHEUS_URL:     ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER:    ${{ secrets.PROMETHEUS_USER }}
           PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
-          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
         run: |
-          if [ -n "$PROMETHEUS_API_KEY" ] && [ -n "$PROMETHEUS_URL" ]; then
-            echo "::notice::Prometheus secrets configured — export available"
-          else
-            echo "::notice::Prometheus secrets not configured — skipping"
+          if [ -z "$PROMETHEUS_URL" ]; then
+            echo "::warning::PROMETHEUS_URL not set — skipping Prometheus export."
+            exit 0
           fi
+          python scripts/push_swarm_metrics.py --input swarm-output/
 
       - name: Export to Grafana
         env:
-          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          GRAFANA_API_KEY:         ${{ secrets.GRAFANA_API_KEY }}
+          GRAFANA_DATASOURCE_NAME: ${{ secrets.GRAFANA_DATASOURCE_NAME }}
+          GRAFANA_GITHUB:          ${{ secrets.GRAFANA_GITHUB }}
         run: |
-          if [ -n "$GRAFANA_API_KEY" ]; then
-            echo "::notice::Grafana API key configured — export available"
-          else
-            echo "::notice::GRAFANA_API_KEY not configured — skipping"
+          if [ -z "$GRAFANA_API_KEY" ]; then
+            echo "::warning::GRAFANA_API_KEY not set — skipping Grafana export."
+            exit 0
           fi
+          python scripts/push_grafana_annotations.py --input swarm-output/

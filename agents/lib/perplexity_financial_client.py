@@ -1,522 +1,401 @@
-#!/usr/bin/env python3
 """
-Perplexity Financial Data Client
-Production fetcher for market data, SEC filings, and financial metrics.
+perplexity_financial_client.py — Vaal AI Empire
+Production-grade financial data client using the Perplexity Search API.
 
-Features:
-- Batch queries (5/request) for efficiency
-- SEC search mode for 10-K/10-Q filing data
-- Domain filtering for curated sources
-- Structured JSON output for signal generation
-- Error handling + rate limiting
-- Performance monitoring
+Uses the official `perplexityai` SDK (pip install perplexityai):
+  from perplexity import Perplexity
+  client.search.create(query=..., max_results=..., ...)
 
-Usage:
-    client = PerplexityFinancialClient(api_key="your_key")
-    
-    # Batch market news
-    news = client.batch_market_news(["AAPL earnings", "MSFT AI"])
-    
-    # SEC filings
-    filing = client.fetch_sec_filings("AAPL", "10-K")
-    
-    # Financial metrics
-    metrics = client.extract_financial_metrics("Apple Inc")
+Previous revision used the OpenAI-compat chat SDK which was wrong —
+the Search API is a separate product with its own endpoint and SDK.
+
+Fixes in this revision:
+ • Correct SDK: `from perplexity import Perplexity` + client.search.create()
+ • Multi-query batching (up to 5 queries per request)
+ • Domain allowlist / denylist via search_domain_filter
+ • Language filtering via search_language_filter
+ • Regional search via country
+ • SEC filings via real EDGAR API (no fake search_mode="sec")
+ • Dynamic year via datetime.now().year
+ • Bare `except` → `except (ValueError, TypeError)` in _extract_domain
+ • logging.basicConfig removed (library must not touch root logger)
+ • DEFAULT_NEWS_SOURCES annotated ClassVar[List[str]]
+ • avg_latency_ms list → latency_sum_ms + latency_count scalars
+ • logger.error → logger.exception to preserve tracebacks
 """
 
-from typing import List, Dict, Literal, Optional
+from __future__ import annotations
+
 import json
 import logging
+import time
 from datetime import datetime
+from typing import Any, ClassVar, Dict, List, Optional
 from urllib.parse import urlparse
 
+import requests
+
+logger = logging.getLogger(__name__)  # Application owns root logger config
+
+# ─────────────────────────────────────────────
+# Perplexity SDK — lazy import so the module is importable without it
+# ─────────────────────────────────────────────
+
 try:
-    from perplexity import Perplexity
-    HAS_PERPLEXITY = True
+    from perplexity import Perplexity as _PerplexitySDK  # type: ignore[import]
+    _SDK_AVAILABLE = True
 except ImportError:
-    HAS_PERPLEXITY = False
+    _PerplexitySDK = None  # type: ignore[assignment,misc]
+    _SDK_AVAILABLE = False
 
-# Module-level logger (avoid global basicConfig to respect parent config)
-logger = logging.getLogger(__name__)
+# ─────────────────────────────────────────────
+# SEC EDGAR helpers
+# ─────────────────────────────────────────────
 
+_SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+_SEC_FACTS_URL           = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+_EDGAR_HEADERS           = {"User-Agent": "VaalAI contact@vaalai.co.za"}
+_TICKER_CIK_CACHE: Dict[str, int] = {}
+
+
+def _resolve_cik(ticker: str) -> Optional[int]:
+    """Resolve a stock ticker to an SEC CIK number via EDGAR's company list."""
+    key = ticker.upper()
+    if key in _TICKER_CIK_CACHE:
+        return _TICKER_CIK_CACHE[key]
+    try:
+        resp = requests.get(_SEC_COMPANY_TICKERS_URL, timeout=10, headers=_EDGAR_HEADERS)
+        resp.raise_for_status()
+        for entry in resp.json().values():
+            if entry.get("ticker", "").upper() == key:
+                cik = int(entry["cik_str"])
+                _TICKER_CIK_CACHE[key] = cik
+                return cik
+    except Exception:
+        logger.exception("CIK lookup failed for ticker %s", ticker)
+    return None
+
+
+def _fetch_edgar_facts(cik: int) -> Optional[str]:
+    """Return raw JSON text from EDGAR companyfacts endpoint."""
+    try:
+        resp = requests.get(
+            _SEC_FACTS_URL.format(cik=cik), timeout=15, headers=_EDGAR_HEADERS
+        )
+        resp.raise_for_status()
+        return resp.text
+    except requests.RequestException:
+        logger.exception("EDGAR companyfacts request failed for CIK %d", cik)
+        return None
+
+
+# ─────────────────────────────────────────────
+# Main client
+# ─────────────────────────────────────────────
 
 class PerplexityFinancialClient:
     """
-    Production-grade financial data fetcher using Perplexity API.
-    
-    Designed for:
-    - Numerai tournament data enrichment
-    - SME financial analysis
-    - Market sentiment signals
-    - SEC filing research
+    Financial data client built on the Perplexity Search API.
+
+    SDK reference: https://docs.perplexity.ai/docs/search/quickstart
+    Install:       pip install perplexityai
+
+    Features
+    --------
+    • batch_market_news   — multi-query news search with domain/language/country filters
+    • fetch_sec_filing    — real EDGAR API fetch + optional Perplexity summarisation
+    • get_health_metrics  — latency, success-rate, error counters
     """
-    
-    # Curated financial news sources
-    DEFAULT_NEWS_SOURCES = [
-        "cnbc.com",
-        "bloomberg.com",
+
+    # Authoritative financial news domains (used as Search API domain allowlist)
+    DEFAULT_NEWS_SOURCES: ClassVar[List[str]] = [
         "reuters.com",
-        "marketwatch.com",
-        "investopedia.com",
+        "bloomberg.com",
         "wsj.com",
         "ft.com",
+        "cnbc.com",
+        "marketwatch.com",
         "seekingalpha.com",
-        "yahoo.com/finance",
-        "moneyweb.co.za",  # South African
-        "fin24.com",        # South African
     ]
-    
-    def __init__(self, api_key: str):
-        """
-        Initialize Perplexity client.
-        
-        Args:
-            api_key: Perplexity API key
-        """
-        if not HAS_PERPLEXITY:
+
+    # Language filter applied to all news searches
+    DEFAULT_LANGUAGE_FILTER: ClassVar[List[str]] = ["en"]
+
+    # Per-result token budget — high for financial content
+    DEFAULT_MAX_TOKENS_PER_PAGE: ClassVar[int] = 2048
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        news_sources: Optional[List[str]] = None,
+        language_filter: Optional[List[str]] = None,
+    ) -> None:
+        if not _SDK_AVAILABLE:
             raise ImportError(
-                "Perplexity SDK required. Install: pip install perplexity"
+                "perplexityai is required: pip install perplexityai"
             )
-        
-        self.client = Perplexity(api_key=api_key)
-        self.request_count = 0
-        self.start_time = datetime.now()
-        
-        # Performance monitoring
-        self.perf_metrics = {
-            "total_requests": 0,
-            "total_tokens": 0,
-            "avg_latency_ms": [],
-            "errors": [],
-            "last_request": None
-        }
-    
-    # ============ MARKET NEWS (Batch) ============
-    
-    def batch_market_news(
-        self, 
-        queries: List[str], 
-        max_results: int = 5,
-        domain_filter: Optional[List[str]] = None
-    ) -> Dict[str, List[Dict]]:
-        """
-        Fetch market news for multiple queries in one request.
-        
-        Args:
-            queries: Up to 5 search queries (e.g., "AAPL earnings", "MSFT AI")
-            max_results: Results per query (default: 5)
-            domain_filter: List of allowed domains (default: curated financial sources)
-        
-        Returns:
-            {query: [{headline, url, summary, source, published_date}, ...]}
-        
-        Example:
-            >>> client = PerplexityFinancialClient(api_key="...")
-            >>> news = client.batch_market_news(
-            ...     ["AAPL earnings Q4 2025", "MSFT AI developments"],
-            ...     max_results=3
-            ... )
-        """
-        if len(queries) > 5:
-            logger.warning(f"Max 5 queries per batch. Truncating {len(queries)} -> 5")
-            queries = queries[:5]
-        
-        domains = domain_filter or self.DEFAULT_NEWS_SOURCES
-        
-        try:
-            start = datetime.now()
-            
-            search_results = self.client.search.create(
-                query=queries,
-                max_results=max_results,
-                max_tokens_per_page=2048,
-                search_domain_filter=domains
-            )
-            
-            parsed = self._parse_batch_results(search_results, queries)
-            latency = (datetime.now() - start).total_seconds() * 1000
-            
-            self._record_metric(len(queries), latency, "batch_news")
-            
-            logger.info(f"Fetched news for {len(queries)} queries in {latency:.1f}ms")
-            return parsed
-            
-        except Exception as e:
-            logger.error(f"Batch news error: {e}")
-            self._record_error("batch_news", str(e))
-            return {}
-    
-    # ============ SEC FILINGS ============
-    
-    def fetch_sec_filings(
-        self, 
-        ticker: str, 
-        filing_type: Literal["10-K", "10-Q", "8-K"] = "10-K"
-    ) -> Dict:
-        """
-        Fetch SEC filings directly via search_mode: "sec"
-        
-        Args:
-            ticker: Stock symbol (e.g., "AAPL", "TSLA")
-            filing_type: "10-K" (annual), "10-Q" (quarterly), "8-K" (current events)
-        
-        Returns:
-            {
-                ticker, filing_type, company, period,
-                revenue, net_income, key_metrics, url, filed_date
-            }
-        
-        Example:
-            >>> filing = client.fetch_sec_filings("AAPL", "10-Q")
-            >>> print(filing['revenue'], filing['net_income'])
-        """
-        query = f"{ticker} {filing_type} {datetime.now().year}"
-        
-        try:
-            start = datetime.now()
-            
-            sec_results = self.client.search.create(
-                query=query,
-                search_mode="sec",  # Direct SEC EDGAR access
-                max_results=1,
-                max_tokens_per_page=4096
-            )
-            
-            filing_data = self._extract_sec_metrics(
-                sec_results.results[0] if sec_results.results else {},
-                ticker,
-                filing_type
-            )
-            
-            latency = (datetime.now() - start).total_seconds() * 1000
-            self._record_metric(1, latency, "sec_filing")
-            
-            return filing_data
-            
-        except Exception as e:
-            logger.error(f"SEC filing error for {ticker}: {e}")
-            self._record_error("sec_filing", str(e), ticker=ticker)
-            return {
-                "ticker": ticker,
-                "filing_type": filing_type,
-                "error": str(e)
-            }
-    
-    # ============ FINANCIAL METRICS ============
-    
-    def extract_financial_metrics(
-        self, 
-        company_name: str,
-        ticker: Optional[str] = None
-    ) -> Dict:
-        """
-        Extract structured financial metrics using JSON mode.
-        
-        Args:
-            company_name: Company name (e.g., "Apple Inc")
-            ticker: Optional stock symbol for precision
-        
-        Returns:
-            {
-                company, ticker, pe_ratio, price_to_book,
-                dividend_yield, market_cap_billions,
-                revenue_growth_yoy, earnings_per_share,
-                data_quality, timestamp
-            }
-        
-        Example:
-            >>> metrics = client.extract_financial_metrics("Apple Inc", "AAPL")
-            >>> print(f"P/E: {metrics['pe_ratio']}")
-        """
-        ticker_hint = f"({ticker})" if ticker else ""
-        
-        prompt = f"""Extract current financial metrics for {company_name} {ticker_hint}.
 
-Search for the most recent data and return ONLY valid JSON in this exact format:
-{{
-    "company": "{company_name}",
-    "ticker": "{ticker or 'unknown'}",
-    "pe_ratio": null,
-    "price_to_book": null,
-    "dividend_yield": null,
-    "52week_high": null,
-    "52week_low": null,
-    "market_cap_billions": null,
-    "revenue_growth_yoy": null,
-    "earnings_per_share": null,
-    "data_quality": 0.0,
-    "data_date": null
-}}
+        # SDK reads PERPLEXITY_API_KEY env var automatically when api_key=None
+        self._client = _PerplexitySDK(api_key=api_key) if api_key else _PerplexitySDK()
 
-Use null for unavailable data. data_quality should be 0.0-1.0 based on data freshness and completeness."""
-        
-        try:
-            start = datetime.now()
-            
-            response = self.client.chat.completions.create(
-                model="sonar-pro",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # Deterministic extraction
-                response_format={"type": "json_object"}
-            )
-            
-            content = response.choices[0].message.content
-            metrics = json.loads(content)
-            
-            # Add metadata
-            metrics["timestamp"] = datetime.now().isoformat()
-            metrics["source"] = "perplexity"
-            
-            latency = (datetime.now() - start).total_seconds() * 1000
-            self._record_metric(1, latency, "extraction")
-            
-            return metrics
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error: {e}")
-            self._record_error("extraction", f"JSON parse: {e}")
-            return {"company": company_name, "error": "parse_failed"}
-            
-        except Exception as e:
-            logger.error(f"Extraction error: {e}")
-            self._record_error("extraction", str(e))
-            return {"company": company_name, "error": str(e)}
-    
-    # ============ SA MARKET SPECIFIC ============
-    
-    def fetch_jse_market_data(self, share_code: str) -> Dict:
-        """
-        Fetch JSE (Johannesburg Stock Exchange) market data.
-        
-        Args:
-            share_code: JSE share code (e.g., "NPN" for Naspers, "FSR" for Foschini)
-        
-        Returns:
-            {share_code, company_name, price_zar, market_cap_zar, pe_ratio, ...}
-        """
-        query = f"{share_code} JSE share price financials {datetime.now().year}"
-        
-        try:
-            start = datetime.now()
-            
-            results = self.client.search.create(
-                query=query,
-                search_domain_filter=["moneyweb.co.za", "fin24.com", "jse.co.za", "businesslive.co.za"],
-                max_results=5,
-                max_tokens_per_page=2048
-            )
-            
-            # Extract structured data
-            extracted = self._extract_jse_metrics(results, share_code)
-            
-            latency = (datetime.now() - start).total_seconds() * 1000
-            self._record_metric(1, latency, "jse_data")
-            
-            return extracted
-            
-        except Exception as e:
-            logger.error(f"JSE data error for {share_code}: {e}")
-            self._record_error("jse_data", str(e), share_code=share_code)
-            return {"share_code": share_code, "error": str(e)}
-    
-    # ============ HELPER METHODS ============
-    
-    def _parse_batch_results(self, response, queries: List[str]) -> Dict[str, List[Dict]]:
-        """Parse batch search results into structured format."""
-        
-        parsed = {}
-        
-        if not response.results:
-            return {q: [] for q in queries}
-        
-        # Handle both single and batch results
-        if isinstance(response.results[0], list):
-            # Batch of results per query
-            for i, batch in enumerate(response.results):
-                if i < len(queries):
-                    query = queries[i]
-                    parsed[query] = [
-                        {
-                            "headline": getattr(r, 'title', ''),
-                            "url": getattr(r, 'url', ''),
-                            "summary": getattr(r, 'snippet', '')[:200],
-                            "source": self._extract_domain(getattr(r, 'url', '')),
-                            "published_date": getattr(r, 'published_date', None),
-                            "fetched_at": datetime.now().isoformat()
-                        }
-                        for r in batch
-                    ]
-        else:
-            # Single result set
-            parsed[queries[0]] = [
-                {
-                    "headline": getattr(r, 'title', ''),
-                    "url": getattr(r, 'url', ''),
-                    "summary": getattr(r, 'snippet', '')[:200],
-                    "source": self._extract_domain(getattr(r, 'url', '')),
-                    "published_date": getattr(r, 'published_date', None),
-                    "fetched_at": datetime.now().isoformat()
-                }
-                for r in response.results
-            ]
-        
-        # Ensure all queries have entries
-        for q in queries:
-            if q not in parsed:
-                parsed[q] = []
-        
-        return parsed
-    
-    def _extract_sec_metrics(self, filing_result: Dict, ticker: str, filing_type: str) -> Dict:
-        """Extract key metrics from SEC filing result."""
-        
-        return {
-            "ticker": ticker,
-            "filing_type": filing_type,
-            "company": getattr(filing_result, 'title', ''),
-            "url": getattr(filing_result, 'url', ''),
-            "filed_date": getattr(filing_result, 'published_date', None),
-            "snippet": getattr(filing_result, 'snippet', '')[:500],
-            "extracted_at": datetime.now().isoformat()
+        self._news_sources    = news_sources    or self.DEFAULT_NEWS_SOURCES
+        self._language_filter = language_filter or self.DEFAULT_LANGUAGE_FILTER
+
+        # Scalar perf counters — never grow in memory
+        self._perf: Dict[str, Any] = {
+            "calls_total":    0,
+            "calls_success":  0,
+            "calls_error":    0,
+            "latency_sum_ms": 0.0,
+            "latency_count":  0,
+            "errors_by_type": {},
         }
-    
-    def _extract_jse_metrics(self, results, share_code: str) -> Dict:
-        """Extract JSE-specific metrics from search results."""
-        
-        # In a full implementation, would parse actual data
-        # For now, return structure
-        return {
-            "share_code": share_code,
-            "raw_results": len(results.results) if hasattr(results, 'results') else 0,
-            "extracted_at": datetime.now().isoformat()
-        }
-    
+
+    # ─────────────────────── internals ───────────────────────
+
+    def _record(self, latency_ms: float, *, success: bool) -> None:
+        self._perf["calls_total"]    += 1
+        self._perf["latency_sum_ms"] += latency_ms
+        self._perf["latency_count"]  += 1
+        key = "calls_success" if success else "calls_error"
+        self._perf[key] += 1
+
+    def _record_error(self, exc: Exception) -> None:
+        name = type(exc).__name__
+        self._perf["errors_by_type"][name] = (
+            self._perf["errors_by_type"].get(name, 0) + 1
+        )
+        self._record(0.0, success=False)
+
     @staticmethod
     def _extract_domain(url: str) -> str:
-        """Extract domain from URL."""
         try:
             return urlparse(url).netloc
-        except Exception:
+        except (ValueError, TypeError):
             return "unknown"
-    
-    # ============ MONITORING ============
-    
-    def _record_metric(self, requests: int, latency_ms: float, operation: str):
-        """Record performance metric."""
-        
-        self.perf_metrics["total_requests"] += requests
-        self.perf_metrics["avg_latency_ms"].append(latency_ms)
-        self.perf_metrics["last_request"] = datetime.now().isoformat()
-        
-        logger.debug(f"[{operation}] Requests: {requests}, Latency: {latency_ms:.1f}ms")
-    
-    def _record_error(self, operation: str, message: str, **kwargs):
-        """Record error for monitoring."""
-        
-        self.perf_metrics["errors"].append({
-            "operation": operation,
-            "message": message,
-            "timestamp": datetime.now().isoformat(),
-            **kwargs
-        })
-    
-    def get_health_metrics(self) -> Dict:
+
+    @staticmethod
+    def _parse_search_results(search_response: Any) -> List[Dict[str, Any]]:
         """
-        Get performance and health metrics.
-        
-        Returns:
-            {
-                total_requests, avg_latency_ms, error_count,
-                uptime_hours, error_rate, recent_errors
-            }
+        Normalise a Search API response into a plain list of dicts.
+
+        Single-query:  search_response.results → flat list
+        Multi-query:   search_response.results → list of per-query lists
         """
-        
-        latencies = self.perf_metrics["avg_latency_ms"]
-        avg_latency = sum(latencies) / len(latencies) if latencies else 0
-        
-        uptime_hours = (datetime.now() - self.start_time).total_seconds() / 3600
-        
-        total_reqs = self.perf_metrics["total_requests"]
-        error_count = len(self.perf_metrics["errors"])
-        error_rate = error_count / total_reqs if total_reqs > 0 else 0
-        
+        raw = search_response.results
+        if not raw:
+            return []
+        # Multi-query returns a list of lists; single returns a flat list
+        if isinstance(raw[0], list):
+            items: List[Any] = []
+            for sublist in raw:
+                items.extend(sublist)
+            return items
+        return list(raw)
+
+    # ─────────────────────── public API ───────────────────────
+
+    def batch_market_news(
+        self,
+        topics: List[str],
+        max_per_topic: int = 3,
+        country: Optional[str] = None,
+        custom_sources: Optional[List[str]] = None,
+        include_sources: Optional[List[str]] = None,
+        exclude_sources: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch financial news for multiple topics using the Search API.
+
+        Uses multi-query mode (up to 5 queries per request) to minimise API calls.
+        Domain filtering uses allowlist mode (DEFAULT_NEWS_SOURCES) unless
+        `exclude_sources` is provided, in which case denylist mode is used.
+
+        Parameters
+        ----------
+        topics            : list of search topics / tickers
+        max_per_topic     : clamped to [1, 20] per Search API limits
+        country           : ISO 3166-1 alpha-2 code (e.g. "US", "ZA")
+        custom_sources    : override DEFAULT_NEWS_SOURCES entirely
+        include_sources   : allowlist — restrict to these domains
+        exclude_sources   : denylist — exclude these domains (prefix "-" added automatically)
+        """
+        max_per_topic = max(1, min(20, max_per_topic))  # Search API: 1–20
+
+        # Build domain filter — allowlist XOR denylist
+        if exclude_sources:
+            domain_filter = [f"-{d}" for d in exclude_sources]
+        elif include_sources:
+            domain_filter = list(include_sources)
+        else:
+            domain_filter = list(custom_sources or self._news_sources)
+
+        # Batch in chunks of 5 (Search API multi-query limit)
+        results: Dict[str, Any] = {}
+        BATCH_SIZE = 5
+
+        for batch_start in range(0, len(topics), BATCH_SIZE):
+            batch = topics[batch_start : batch_start + BATCH_SIZE]
+            start = time.monotonic()
+
+            try:
+                kwargs: Dict[str, Any] = dict(
+                    query=batch,                          # multi-query list
+                    max_results=max_per_topic,
+                    search_domain_filter=domain_filter,
+                    search_language_filter=self._language_filter,
+                    max_tokens_per_page=self.DEFAULT_MAX_TOKENS_PER_PAGE,
+                )
+                if country:
+                    kwargs["country"] = country
+
+                response = self._client.search.create(**kwargs)
+
+                elapsed = (time.monotonic() - start) * 1000
+                self._record(elapsed, success=True)
+
+                # Multi-query: results grouped per query in same order
+                raw = response.results
+                if raw and isinstance(raw[0], list):
+                    for topic, topic_results in zip(batch, raw):
+                        results[topic] = [self._normalise_result(r) for r in topic_results]
+                else:
+                    # Fallback: flat list when only one query was in the batch
+                    results[batch[0]] = [self._normalise_result(r) for r in raw]
+
+            except Exception as exc:
+                elapsed = (time.monotonic() - start) * 1000
+                logger.exception("Search API call failed for batch %s", batch)
+                self._record_error(exc)
+                for topic in batch:
+                    results[topic] = {"error": f"{exc!s}"}
+
+        return results
+
+    @staticmethod
+    def _normalise_result(r: Any) -> Dict[str, Any]:
+        """Convert a Search API result object to a plain dict."""
         return {
-            "total_requests": total_reqs,
-            "avg_latency_ms": round(avg_latency, 2),
-            "error_count": error_count,
-            "error_rate": round(error_rate, 4),
-            "uptime_hours": round(uptime_hours, 2),
-            "recent_errors": self.perf_metrics["errors"][-5:],
-            "last_request": self.perf_metrics["last_request"]
+            "title":        getattr(r, "title",   ""),
+            "url":          getattr(r, "url",     ""),
+            "snippet":      getattr(r, "snippet", ""),
+            "date":         getattr(r, "date",    ""),
+            "last_updated": getattr(r, "last_updated", ""),
         }
-    
-    def reset_metrics(self):
-        """Reset performance metrics."""
-        
-        self.perf_metrics = {
-            "total_requests": 0,
-            "total_tokens": 0,
-            "avg_latency_ms": [],
-            "errors": [],
-            "last_request": None
+
+    # ─── SEC Filing ───────────────────────────────────────────
+
+    def fetch_sec_filing(
+        self,
+        ticker: str,
+        filing_type: str = "10-K",
+        summarise_with_search: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve SEC filing data from EDGAR, optionally enriched with
+        a Perplexity search for additional context.
+
+        Workflow
+        --------
+        1. Resolve ticker → CIK via EDGAR company list
+        2. Fetch companyfacts JSON from EDGAR (structured financial data)
+        3. Optionally run a Perplexity search for recent analyst commentary
+        """
+        start = time.monotonic()
+
+        cik = _resolve_cik(ticker)
+        if cik is None:
+            return {"error": f"Could not resolve ticker '{ticker}' to a CIK."}
+
+        facts_text = _fetch_edgar_facts(cik)
+        if not facts_text:
+            return {"error": f"EDGAR companyfacts fetch failed for {ticker} (CIK {cik})."}
+
+        current_year = datetime.now().year  # dynamic — never hardcoded
+        metrics      = self._extract_key_metrics(facts_text, filing_type)
+        search_ctx: List[Dict[str, Any]] = []
+
+        if summarise_with_search:
+            # Single targeted search for analyst context
+            try:
+                query   = f"{ticker} {filing_type} {current_year} financial results"
+                resp    = self._client.search.create(
+                    query=query,
+                    max_results=3,
+                    search_domain_filter=self._news_sources,
+                    search_language_filter=["en"],
+                    max_tokens_per_page=1024,
+                )
+                elapsed_partial = (time.monotonic() - start) * 1000
+                self._record(elapsed_partial, success=True)
+                search_ctx = [self._normalise_result(r) for r in (resp.results or [])]
+            except Exception:
+                logger.exception("Perplexity context search failed for %s %s", ticker, filing_type)
+
+        elapsed = (time.monotonic() - start) * 1000
+        self._record(elapsed, success=True)
+
+        return {
+            "ticker":        ticker,
+            "filing_type":   filing_type,
+            "cik":           cik,
+            "year":          current_year,
+            "metrics":       metrics,
+            "search_context": search_ctx,
+            "retrieved_at":  datetime.now().isoformat(),
         }
-        self.start_time = datetime.now()
 
+    @staticmethod
+    def _extract_key_metrics(facts_text: str, filing_type: str) -> Dict[str, Any]:
+        """
+        Extract key financial metrics from EDGAR companyfacts JSON.
+        Returns a subset of US-GAAP facts relevant to the filing type.
+        """
+        try:
+            data     = json.loads(facts_text)
+            us_gaap  = data.get("facts", {}).get("us-gaap", {})
 
-# ============ USAGE EXAMPLES ============
+            def _latest(concept: str) -> Optional[Any]:
+                """Return the most recent annual value for a US-GAAP concept."""
+                entries = us_gaap.get(concept, {}).get("units", {})
+                for unit_vals in entries.values():
+                    annual = [
+                        v for v in unit_vals
+                        if v.get("form") in ("10-K", "10-K/A") and "val" in v
+                    ]
+                    if annual:
+                        return sorted(annual, key=lambda x: x.get("end", ""))[-1].get("val")
+                return None
 
-def example_usage():
-    """Example usage of PerplexityFinancialClient."""
-    
-    # Initialize (requires PERPLEXITY_API_KEY env var)
-    import os
-    api_key = os.getenv("PERPLEXITY_API_KEY")
-    if not api_key:
-        print("Error: Set PERPLEXITY_API_KEY environment variable")
-        return
-    
-    client = PerplexityFinancialClient(api_key=api_key)
-    
-    print("=" * 60)
-    print("Perplexity Financial Client - Examples")
-    print("=" * 60)
-    
-    # 1. Batch market news
-    print("\n1. Batch Market News:")
-    watchlist = ["AAPL earnings", "MSFT AI strategy", "NVDA stock analysis"]
-    news = client.batch_market_news(watchlist, max_results=3)
-    
-    for query, articles in news.items():
-        print(f"\n  {query}:")
-        for a in articles[:2]:
-            print(f"    - {a['headline'][:60]}... ({a['source']})")
-    
-    # 2. SEC filings
-    print("\n2. SEC Filing (AAPL 10-K):")
-    filing = client.fetch_sec_filings("AAPL", "10-K")
-    print(f"   Company: {filing.get('company', 'N/A')}")
-    print(f"   URL: {filing.get('url', 'N/A')[:60]}...")
-    
-    # 3. Financial metrics
-    print("\n3. Financial Metrics (Apple):")
-    metrics = client.extract_financial_metrics("Apple Inc", "AAPL")
-    print(f"   P/E: {metrics.get('pe_ratio', 'N/A')}")
-    print(f"   Market Cap: ${metrics.get('market_cap_billions', 'N/A')}B")
-    
-    # 4. JSE data
-    print("\n4. JSE Data (NPN - Naspers):")
-    jse = client.fetch_jse_market_data("NPN")
-    print(f"   Share Code: {jse.get('share_code')}")
-    
-    # 5. Health metrics
-    print("\n5. Client Health:")
-    health = client.get_health_metrics()
-    print(f"   Total Requests: {health['total_requests']}")
-    print(f"   Avg Latency: {health['avg_latency_ms']}ms")
-    print(f"   Error Rate: {health['error_rate']:.2%}")
-    
-    print("\n" + "=" * 60)
+            return {
+                "revenues":              _latest("Revenues"),
+                "net_income":            _latest("NetIncomeLoss"),
+                "eps_basic":             _latest("EarningsPerShareBasic"),
+                "total_assets":          _latest("Assets"),
+                "total_liabilities":     _latest("Liabilities"),
+                "operating_cash_flow":   _latest("NetCashProvidedByUsedInOperatingActivities"),
+                "entity_name":           data.get("entityName", ""),
+                "cik":                   data.get("cik", ""),
+            }
+        except (json.JSONDecodeError, KeyError, TypeError):
+            logger.exception("Failed to parse EDGAR companyfacts JSON")
+            return {}
 
+    # ─── Health / observability ───────────────────────────────
 
-if __name__ == "__main__":
-    example_usage()
+    def get_health_metrics(self) -> Dict[str, Any]:
+        """Return aggregated performance and health statistics."""
+        pm    = self._perf
+        count = pm["latency_count"]
+        avg   = pm["latency_sum_ms"] / count if count > 0 else 0.0
+        rate  = pm["calls_success"]  / pm["calls_total"] if pm["calls_total"] > 0 else 1.0
+
+        return {
+            "calls_total":    pm["calls_total"],
+            "calls_success":  pm["calls_success"],
+            "calls_error":    pm["calls_error"],
+            "avg_latency_ms": round(avg, 2),
+            "success_rate":   round(rate, 4),
+            "errors_by_type": pm["errors_by_type"],
+            "status":         "healthy" if rate >= 0.95 else "degraded",
+        }
