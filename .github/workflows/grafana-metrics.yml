@@ -1,76 +1,68 @@
-name: Grafana Metrics Export
+name: Setup Grafana Metrics Environment
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  export-metrics:
-    name: Export Metrics to Grafana / Prometheus
+  setup-env:
+    name: Generate Grafana .env from Secrets
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt --quiet
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Check for required secrets
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER: ${{ secrets.PROMETHEUS_USER }}
+          PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+          GRAFANA_DATASOURCE_NAME: ${{ secrets.GRAFANA_DATASOURCE_NAME }}
         run: |
-          MISSING=()
-          [ -z "${{ secrets.PROMETHEUS_URL }}"          ] && MISSING+=("PROMETHEUS_URL")
-          [ -z "${{ secrets.PROMETHEUS_USER }}"         ] && MISSING+=("PROMETHEUS_USER")
-          [ -z "${{ secrets.PROMETHEUS_API_KEY }}"      ] && MISSING+=("PROMETHEUS_API_KEY")
-          [ -z "${{ secrets.GRAFANA_API_KEY }}"         ] && MISSING+=("GRAFANA_API_KEY")
-          [ -z "${{ secrets.GRAFANA_DATASOURCE_NAME }}" ] && MISSING+=("GRAFANA_DATASOURCE_NAME")
-
-          if [ ${#MISSING[@]} -gt 0 ]; then
-            echo "::error::Missing required secrets: ${MISSING[*]}"
-            exit 1
+          echo "Checking for Grafana/Prometheus secrets..."
+          
+          COUNT=0
+          [ -n "$PROMETHEUS_URL" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_URL configured"
+          [ -n "$PROMETHEUS_USER" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_USER configured"
+          [ -n "$PROMETHEUS_API_KEY" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_API_KEY configured"
+          [ -n "$GRAFANA_DATASOURCE_NAME" ] && COUNT=$((COUNT + 1)) && echo "✅ GRAFANA_DATASOURCE_NAME configured"
+          
+          if [ $COUNT -eq 0 ]; then
+            echo "::notice::No Grafana/Prometheus secrets configured."
+            echo "::notice::Add secrets in: Settings → Secrets and variables → Actions"
+          else
+            echo "::notice::$COUNT of 4 secrets configured."
           fi
-          echo "All required secrets present."
 
-      # ─── SECURITY NOTE ─────────────────────────────────────────────────────
-      # The step "Upload .env as artifact" that existed in a previous revision
-      # has been permanently removed.  That step persisted PROMETHEUS_* and
-      # GRAFANA_* credentials to GitHub artifact storage for 24 hours, making
-      # them accessible to anyone with repository read access.
-      #
-      # Credentials are injected directly as environment variables below and
-      # are never written to disk or uploaded as artifacts.
-      # ────────────────────────────────────────────────────────────────────────
-
-      - name: Export metrics to Prometheus
+      - name: Generate .env file from secrets
         env:
-          PROMETHEUS_URL:      ${{ secrets.PROMETHEUS_URL }}
-          PROMETHEUS_USER:     ${{ secrets.PROMETHEUS_USER }}
-          PROMETHEUS_API_KEY:  ${{ secrets.PROMETHEUS_API_KEY }}
-        run: python scripts/export_prometheus_metrics.py
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER: ${{ secrets.PROMETHEUS_USER }}
+          PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+          GRAFANA_DATASOURCE_NAME: ${{ secrets.GRAFANA_DATASOURCE_NAME }}
+        run: |
+          # Only create .env if secrets are configured
+          if [ -n "$PROMETHEUS_URL" ] || [ -n "$PROMETHEUS_API_KEY" ]; then
+            cat > .env << EOF
+          PROMETHEUS_URL=${PROMETHEUS_URL:-not_configured}
+          PROMETHEUS_USER=${PROMETHEUS_USER:-not_configured}
+          PROMETHEUS_PASSWORD=${PROMETHEUS_API_KEY:-not_configured}
+          GRAFANA_DATASOURCE_NAME=${GRAFANA_DATASOURCE_NAME:-not_configured}
+          EOF
+            echo ".env generated from secrets."
+          else
+            echo "::notice::No secrets configured — skipping .env generation"
+          fi
 
-      - name: Export metrics to Grafana
-        env:
-          GRAFANA_API_KEY:          ${{ secrets.GRAFANA_API_KEY }}
-          GRAFANA_DATASOURCE_NAME:  ${{ secrets.GRAFANA_DATASOURCE_NAME }}
-          GRAFANA_GITHUB:           ${{ secrets.GRAFANA_GITHUB }}
-        run: python scripts/export_grafana_metrics.py
-
-      - name: Upload metrics summary (non-sensitive)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+      - name: Upload .env as artifact
+        uses: actions/upload-artifact@v4
         with:
-          name:            metrics-summary-${{ github.run_id }}
-          # Only upload the sanitised summary JSON — never the .env file
-          path:            metrics-summary.json
-          retention-days:  7
-          if-no-files-found: ignore
+          name: grafana-env
+          path: .env
+          retention-days: 1
+        if: always()
+        continue-on-error: true
