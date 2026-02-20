@@ -26,23 +26,59 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # FIX: Python needs its dependencies present for autobuild to produce
+      # something CodeQL can analyze. Without this, autobuild finds nothing,
+      # analyze uploads empty results, and GitHub's code scanning aggregator
+      # reports "1 configuration not found" as a neutral check.
+      - name: Set up Python (Python matrix leg only)
+        if: matrix.language == 'python'
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies (Python matrix leg only)
+        if: matrix.language == 'python'
+        run: |
+          python -m pip install --upgrade pip
+          # Install whatever requirements exist so CodeQL can trace imports
+          for req in requirements.txt ml/african_languages/requirements.txt; do
+            [ -f "$req" ] && pip install -r "$req" --quiet || true
+          done
+          # Core agent dependencies CodeQL needs to resolve
+          pip install \
+            httpx \
+            opentelemetry-api \
+            opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-http \
+            prometheus_client \
+            torch --index-url https://download.pytorch.org/whl/cpu \
+            transformers \
+            --quiet || true
+        continue-on-error: true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
         with:
           languages: ${{ matrix.language }}
-        continue-on-error: true
+          # Explicit query suite: security-extended covers OWASP Top 10 +
+          # injection, path traversal, crypto issues — appropriate for this repo.
+          queries: security-extended
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
-        continue-on-error: true
+        uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        # FIX: continue-on-error removed from this step.
+        # When it was present, a failed autobuild would silently produce
+        # an empty database, analyze would upload nothing, and GitHub's
+        # code scanning results aggregator would report
+        # "1 configuration not found" as a neutral check — masking real
+        # security issues. A genuine analysis failure must be visible.
+        uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
         with:
           category: '/language:${{ matrix.language }}'
-        continue-on-error: true
 
   bandit:
     name: Bandit — Python SAST
@@ -51,10 +87,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -72,7 +108,7 @@ jobs:
             -o bandit-results.sarif || true
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841
         if: always()
         with:
           sarif_file: bandit-results.sarif
@@ -82,7 +118,7 @@ jobs:
       - name: Check for HIGH/CRITICAL issues
         run: |
           if [ -f "bandit-results.sarif" ]; then
-            echo "✅ Bandit scan completed - results uploaded to Security tab"
+            echo "✅ Bandit scan completed — results uploaded to Security tab"
           else
             echo "::warning::Bandit results file not created"
           fi
@@ -94,10 +130,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: '20'
 
@@ -106,7 +142,8 @@ jobs:
           if [ -f "server/package.json" ]; then
             cd server
             npm install --package-lock-only --ignore-scripts 2>/dev/null || true
-            npm audit --audit-level=critical --omit=dev || echo "::warning::Vulnerabilities found - review npm audit output"
+            npm audit --audit-level=critical --omit=dev \
+              || echo "::warning::Vulnerabilities found — review npm audit output"
           else
             echo "::notice::No server/package.json found — skipping npm audit"
           fi
@@ -118,10 +155,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: '3.11'
 
@@ -131,7 +168,8 @@ jobs:
       - name: Run Safety check
         run: |
           if [ -f requirements.txt ]; then
-            safety check -r requirements.txt || echo "::warning::Python dependency vulnerabilities found"
+            safety check -r requirements.txt \
+              || echo "::warning::Python dependency vulnerabilities found"
           else
             echo "::notice::No requirements.txt found — skipping safety check"
           fi
@@ -143,7 +181,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
 
