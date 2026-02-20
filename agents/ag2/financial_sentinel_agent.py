@@ -31,7 +31,7 @@ class FinancialSentinelAgent:
     
     LOCAL KNOWLEDGE:
     - Uses local SARS JSON files for all static tax regulations
-    - Can self-update when SARS publishes new regulations
+    - Knowledge base can be updated by modifying JSON files in data/sars/
     - No external database dependencies
     
     SECURITY:

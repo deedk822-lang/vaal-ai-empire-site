@@ -263,7 +263,7 @@ class MultilingualASRTrainer:
             gradient_accumulation_steps=2,  # Effective batch size = 32
             learning_rate=learning_rate,
             warmup_steps=500,
-            max_steps=10000,
+            num_train_epochs=num_epochs,  # Use the epochs parameter
             gradient_checkpointing=True,
             fp16=True,
             eval_strategy="steps",

@@ -95,36 +95,45 @@ class MultilingualVoiceAgent(BaseAgent):
         self._tts_model = None
         self._audio_processor = None
         
+        # Thread-safe lazy loading locks
+        self._asr_lock = asyncio.Lock()
+        self._tts_lock = asyncio.Lock()
+        
         # Language detection thresholds
         self.CODESWITCH_THRESHOLD = 0.3  # If secondary language > 30%, it's code-switched
         
         self.log("MultilingualVoiceAgent initialized (code-switching enabled)")
     
-    def _load_asr(self):
-        """Lazy-load ASR model."""
-        if self._asr_pipeline is None:
-            self.log(f"Loading ASR model from {self.asr_model_path}")
-            
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            self._asr_pipeline = pipeline(
-                "automatic-speech-recognition",
-                model=str(self.asr_model_path),
-                tokenizer=str(self.asr_model_path),
-                feature_extractor=str(self.asr_model_path),
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                device=device,
-            )
-            
-            self.log(f"ASR model loaded on {device}")
+    async def _load_asr(self):
+        """Lazy-load ASR model with thread-safe locking."""
+        async with self._asr_lock:
+            if self._asr_pipeline is None:
+                self.log(f"Loading ASR model from {self.asr_model_path}")
+                
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                
+                # Load model in thread pool to avoid blocking event loop
+                def _load_model():
+                    return pipeline(
+                        "automatic-speech-recognition",
+                        model=str(self.asr_model_path),
+                        tokenizer=str(self.asr_model_path),
+                        feature_extractor=str(self.asr_model_path),
+                        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                        device=device,
+                    )
+                
+                self._asr_pipeline = await asyncio.to_thread(_load_model)
+                self.log(f"ASR model loaded on {device}")
     
-    def _load_tts(self):
-        """Lazy-load TTS model."""
-        if self._tts_model is None:
-            self.log(f"Loading TTS model from {self.tts_model_path}")
-            # Would load TTS model here
-            # For now, placeholder
-            self._tts_model = "loaded"
+    async def _load_tts(self):
+        """Lazy-load TTS model with thread-safe locking."""
+        async with self._tts_lock:
+            if self._tts_model is None:
+                self.log(f"Loading TTS model from {self.tts_model_path}")
+                # Would load TTS model here
+                # For now, placeholder
+                self._tts_model = "loaded"
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -159,7 +168,7 @@ class MultilingualVoiceAgent(BaseAgent):
         Key feature: Handles code-switching naturally.
         Returns both transcription AND language analysis.
         """
-        self._load_asr()
+        await self._load_asr()
         
         audio_b64 = context.get("audio_base64")
         if not audio_b64:
@@ -220,7 +229,7 @@ class MultilingualVoiceAgent(BaseAgent):
         2. Using appropriate prosody for each segment
         3. Or using multilingual model that handles mixing naturally
         """
-        self._load_tts()
+        await self._load_tts()
         
         text = context.get("text")
         if not text:

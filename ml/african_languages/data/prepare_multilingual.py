@@ -109,8 +109,8 @@ class MultilingualDataBuilder:
             lambda t1, t2: f"{t1} {t2.split()[0] if t2 else ''}",
             # Pattern 2: Start with lang2, finish with lang1
             lambda t1, t2: f"{t2.split()[0] if t2 else ''}, {t1}",
-            # Pattern 3: Lang1, lang2 particle, lang1
-            lambda t1, t2: f"{t1} {t2} {t1.split()[-1] if t1 else ''}",
+            # Pattern 3: Lang1 with lang2 particle at end
+            lambda t1, t2: f"{t1} {t2.split()[0] if t2 else ''}",
         ]
         
         pattern = random.choice(patterns)

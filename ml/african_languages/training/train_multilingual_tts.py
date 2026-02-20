@@ -24,7 +24,7 @@ from TTS.tts.configs.vits_config import VitsConfig
 from TTS.utils.audio import AudioProcessor
 import logging
 
-logging.basicConfig(level=logging.INFO)
+# Module-level logger (avoid global basicConfig to respect parent config)
 logger = logging.getLogger(__name__)
 
 
@@ -110,25 +110,22 @@ class MultilingualTTSTrainer:
         - Enable phoneme cleaners for multiple languages
         """
         
+        # Dataset config
+        dataset_config = BaseDatasetConfig(
+            formatter="ljspeech",
+            dataset_name="multilingual_sa",
+            path=str(data_path),
+            meta_file_train="metadata.csv",
+        )
+        
         config = VitsConfig(
-            # Model architecture
-            model_args={
-                "use_speaker_embedding": True,
-                "num_speakers": num_languages,  # One per language
-                "use_sdp": True,  # Stochastic duration predictor
-                "use_speaker_encoder": True,  # For voice cloning
-            },
+            # Model architecture (use proper VitsArgs for dataclass fields)
+            num_speakers=num_languages,  # One per language
+            use_speaker_embedding=True,
+            use_sdp=True,  # Stochastic duration predictor
             
             # Audio settings
-            audio={
-                "sample_rate": 22050,
-                "fft_size": 1024,
-                "win_length": 1024,
-                "hop_length": 256,
-                "num_mels": 80,
-                "mel_fmin": 0,
-                "mel_fmax": None,
-            },
+            sample_rate=22050,
             
             # Training settings
             batch_size=32,
@@ -150,17 +147,10 @@ class MultilingualTTSTrainer:
             
             # Paths
             output_path=str(self.output_dir),
+            
+            # Dataset
+            datasets=[dataset_config],
         )
-        
-        # Dataset config
-        dataset_config = BaseDatasetConfig(
-            formatter="ljspeech",
-            dataset_name="multilingual_sa",
-            path=str(data_path),
-            meta_file_train="metadata.csv",
-        )
-        
-        config.datasets = [dataset_config]
         
         return config
     
@@ -240,8 +230,8 @@ class MultilingualTTSInference:
         self.ap = AudioProcessor.init_from_config(config_dict)
         self.model = Vits(config_dict, self.ap)
         
-        # Load checkpoint
-        checkpoint = torch.load(model_path, map_location=device)
+        # Load checkpoint with security (weights_only=True for safe deserialization)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         self.model.load_state_dict(checkpoint["model"])
         self.model.to(device)
         self.model.eval()
@@ -276,13 +266,15 @@ class MultilingualTTSInference:
         # In full implementation, would use phonemizer
         
         # Get speaker embedding
+        speaker_id = None  # Initialize before conditional
+        speaker_embedding = None
+        
         if speaker_wav and hasattr(self.model, 'speaker_encoder'):
             # Compute speaker embedding from reference
             speaker_embedding = self._compute_speaker_embedding(speaker_wav)
         else:
             # Use language as speaker
             speaker_id = self.language_to_speaker.get(language, 0)
-            speaker_embedding = None
         
         # Synthesize
         with torch.no_grad():

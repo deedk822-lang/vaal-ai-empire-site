@@ -35,9 +35,8 @@ try:
     HAS_PERPLEXITY = True
 except ImportError:
     HAS_PERPLEXITY = False
-    logging.warning("Perplexity SDK not installed. Install with: pip install perplexity")
 
-logging.basicConfig(level=logging.INFO)
+# Module-level logger (avoid global basicConfig to respect parent config)
 logger = logging.getLogger(__name__)
 
 
