@@ -1,422 +1,422 @@
-// Vaal AI Empire - Main Server
-// Enterprise-grade PayFast + Auth + Observability Platform
+// Vaal AI Empire — Main Server
+// PayFast + Auth + Observability Platform
 // Built in the Vaal. Built for Africa. 🇿🇦
 
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const cookieParser = require('cookie-parser');
-const path = require('path');
-const crypto = require('crypto');
+'use strict';
 
-// Database connection
-let connectDB;
+require('dotenv').config();
+
+const crypto      = require('crypto');
+const path        = require('path');
+const express     = require('express');
+const cors        = require('cors');
+const helmet      = require('helmet');
+const rateLimit   = require('express-rate-limit');
+const cookieParser= require('cookie-parser');
+const { filterXSS }= require('xss');               // replaces abandoned xss-clean
+
+// ── Optional modules ─────────────────────────────────────────────────────────
+
+let connectDB = async () => {};
 try {
     connectDB = require('./config/database');
-} catch (error) {
-    console.log('ℹ️  Database module not found, running without MongoDB');
-    connectDB = async () => console.log('📊 MongoDB connection skipped');
-}
+} catch { console.log('ℹ️  Database module not found — running without MongoDB'); }
 
-// Import middleware
-let globalErrorHandler, notFound;
+let globalErrorHandler = (err, _req, res, _next) => {
+    console.error(err);
+    res.status(err.statusCode || 500).json({
+        status:  'error',
+        message: err.message || 'Internal server error',
+        // Never leak stack traces to clients in production
+        ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+    });
+};
+let notFound = (_req, res) => res.status(404).json({ error: 'Not found' });
 try {
-    const errorHandler = require('./middleware/errorHandler');
-    globalErrorHandler = errorHandler.globalErrorHandler;
-    notFound = errorHandler.notFound;
-} catch (error) {
-    console.log('ℹ️  Error handler module not found, using defaults');
-    globalErrorHandler = (err, req, res, next) => {
-        console.error(err);
-        res.status(500).json({ error: 'Internal server error' });
-    };
-    notFound = (req, res) => res.status(404).json({ error: 'Not found' });
-}
+    const errorHandler  = require('./middleware/errorHandler');
+    globalErrorHandler  = errorHandler.globalErrorHandler;
+    notFound            = errorHandler.notFound;
+} catch { console.log('ℹ️  Error handler module not found — using defaults'); }
 
-// Import routes
 let authRoutes, paymentRoutes, subscriptionRoutes, analyticsRoutes, observabilityRoutes;
-try {
-    authRoutes = require('./routes/auth');
-} catch (e) { console.log('ℹ️  Auth routes not found'); }
-try {
-    paymentRoutes = require('./routes/paymentRoutes');
-} catch (e) { console.log('ℹ️  Payment routes not found'); }
-try {
-    subscriptionRoutes = require('./routes/subscriptionRoutes');
-} catch (e) { console.log('ℹ️  Subscription routes not found'); }
-try {
-    analyticsRoutes = require('./routes/analyticsRoutes');
-} catch (e) { console.log('ℹ️  Analytics routes not found'); }
-try {
-    observabilityRoutes = require('./routes/observability');
-} catch (e) { console.log('ℹ️  Observability routes not found'); }
+try { authRoutes         = require('./routes/auth');                } catch { console.log('ℹ️  Auth routes not found'); }
+try { paymentRoutes      = require('./routes/paymentRoutes');       } catch { console.log('ℹ️  Payment routes not found'); }
+try { subscriptionRoutes = require('./routes/subscriptionRoutes');  } catch { console.log('ℹ️  Subscription routes not found'); }
+try { analyticsRoutes    = require('./routes/analyticsRoutes');     } catch { console.log('ℹ️  Analytics routes not found'); }
+try { observabilityRoutes= require('./routes/observability');       } catch { console.log('ℹ️  Observability routes not found'); }
 
-// Import tracer if available
 let tracer;
 try {
     const { getTracer } = require('./lib/tracing');
-    tracer = getTracer({
-        projectName: 'vaal-ai-empire',
-        environment: process.env.NODE_ENV || 'development'
-    });
-} catch (error) {
-    console.log('ℹ️  Observability module not found, running without tracing');
+    tracer = getTracer({ projectName: 'vaal-ai-empire', environment: process.env.NODE_ENV || 'development' });
+} catch { console.log('ℹ️  Tracing module not found — running without tracing'); }
+
+// httpx-style fetch — Node 18+ has native fetch; use it instead of axios
+// (axios was never in package.json but was required inside a route — replaced here)
+const nodeFetch = globalThis.fetch ?? require('node:http');
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
+const app  = express();
+const port = parseInt(process.env.PORT || '3000', 10);
+
+// ── PayFast config ────────────────────────────────────────────────────────────
+
+if (!process.env.PAYFAST_MERCHANT_ID || !process.env.PAYFAST_MERCHANT_KEY) {
+    console.warn('⚠️  PAYFAST_MERCHANT_ID / PAYFAST_MERCHANT_KEY not set — payments will fail in production');
 }
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-// =============================
-// PAYFAST CONFIGURATION
-// =============================
 
 const PAYFAST_CONFIG = {
-    merchant_id: process.env.PAYFAST_MERCHANT_ID || '10000100',
+    merchant_id:  process.env.PAYFAST_MERCHANT_ID  || '10000100',
     merchant_key: process.env.PAYFAST_MERCHANT_KEY || '',
-    passphrase: process.env.PAYFAST_PASSPHRASE || '',
-    sandbox: process.env.PAYFAST_SANDBOX === 'true',
-    // PayFast URLs
-    get baseUrl() {
-        return this.sandbox 
+    passphrase:   process.env.PAYFAST_PASSPHRASE   || '',
+    sandbox:      process.env.PAYFAST_SANDBOX === 'true',
+    get processUrl() {
+        return this.sandbox
             ? 'https://sandbox.payfast.co.za/eng/process'
             : 'https://www.payfast.co.za/eng/process';
-    }
+    },
+    get validateUrl() {
+        return this.sandbox
+            ? 'https://sandbox.payfast.co.za/eng/query/validate'
+            : 'https://www.payfast.co.za/eng/query/validate';
+    },
 };
 
-// PayFast signature generator
+const PLAN_CONFIG = {
+    starter: {
+        name:        'Vaal Starter',
+        amount:      parseInt(process.env.VAAL_STARTER_PRICE || '99900', 10),  // cents
+        description: 'Vaal Starter — Monthly Subscription',
+    },
+    empire: {
+        name:        'Vaal Empire',
+        amount:      parseInt(process.env.VAAL_EMPIRE_PRICE  || '299900', 10), // cents
+        description: 'Vaal Empire — Monthly Subscription',
+    },
+};
+
+// ── PayFast helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Generate a PayFast MD5 signature from a plain-object payload.
+ * Does NOT mutate the input.
+ */
 function generatePayFastSignature(data, passphrase = '') {
-    // Sort data alphabetically by key
-    const sortedKeys = Object.keys(data).sort();
-    const paramString = sortedKeys
-        .map(key => `${key}=${encodeURIComponent(data[key]).replace(/%20/g, '+')}`)
+    const sorted = Object.keys(data)
+        .sort()
+        .map(k => `${k}=${encodeURIComponent(String(data[k])).replace(/%20/g, '+')}`)
         .join('&');
-    
-    // Add passphrase if provided
-    const stringToHash = passphrase ? `${paramString}&passphrase=${encodeURIComponent(passphrase)}` : paramString;
-    
-    return crypto.createHash('md5').update(stringToHash).digest('hex');
+    const toHash = passphrase
+        ? `${sorted}&passphrase=${encodeURIComponent(passphrase)}`
+        : sorted;
+    return crypto.createHash('md5').update(toHash).digest('hex');
 }
 
-// Verify PayFast ITN signature
+/**
+ * Verify a PayFast ITN signature.
+ * Creates a copy without `signature` before computing — never mutates the
+ * original `data` object.
+ */
 function verifyPayFastSignature(data, passphrase = '') {
-    const receivedSignature = data.signature;
-    delete data.signature;
-    
-    const calculatedSignature = generatePayFastSignature(data, passphrase);
-    return receivedSignature === calculatedSignature;
+    const { signature: received, ...rest } = data;  // non-mutating destructure
+    if (!received) return false;
+    return received === generatePayFastSignature(rest, passphrase);
 }
 
-// =============================
-// SECURITY MIDDLEWARE
-// =============================
+/**
+ * Validate an ITN payload with the PayFast server.
+ * Uses Node 18 native fetch — no axios dependency.
+ */
+async function validatePayFastITN(data) {
+    const body = new URLSearchParams(data).toString();
+    const resp = await fetch(PAYFAST_CONFIG.validateUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+    });
+    return (await resp.text()).trim() === 'VALID';
+}
 
-app.use(helmet());
+// ── Security middleware ───────────────────────────────────────────────────────
+
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc:  ["'self'"],
+            scriptSrc:   ["'self'", 'https://www.payfast.co.za', 'https://sandbox.payfast.co.za'],
+            connectSrc:  ["'self'", 'https://www.payfast.co.za', 'https://sandbox.payfast.co.za'],
+            frameSrc:    ["'none'"],
+            objectSrc:   ["'none'"],
+            upgradeInsecureRequests: [],
+        },
+    },
+}));
+
+// CORS — fail-safe: no wildcard fallback; log a warning if env var is missing
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : [];
+
+if (allowedOrigins.length === 0) {
+    console.warn('⚠️  ALLOWED_ORIGINS not set — CORS will reject all cross-origin requests');
+}
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow server-to-server requests (no Origin header) and listed origins
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
+    credentials:         true,
+    optionsSuccessStatus: 200,
+}));
 
 // Rate limiting
-const limiter = rateLimit({
-    max: 100,
-    windowMs: 15 * 60 * 1000,
-    message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api', limiter);
-
-// Auth-specific rate limiter
+app.use('/api', rateLimit({
+    max:       100,
+    windowMs:  15 * 60 * 1000,
+    message:   'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders:   false,
+}));
 const authLimiter = rateLimit({
-    max: 5,
-    windowMs: 15 * 60 * 1000,
-    message: 'Too many login attempts, please try again later.',
-    skipSuccessfulRequests: true
+    max:       5,
+    windowMs:  15 * 60 * 1000,
+    message:   'Too many login attempts, please try again later.',
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders:   false,
 });
-app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/login',  authLimiter);
 app.use('/api/auth/signup', authLimiter);
 
-// CORS
-const corsOptions = {
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
-    credentials: true,
-    optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
+// PayFast endpoints also rate-limited independently
+app.use('/create-payment', rateLimit({
+    max:      20,
+    windowMs: 15 * 60 * 1000,
+    message:  'Too many payment requests, please try again later.',
+}));
 
-// =============================
-// BODY PARSING
-// =============================
+// ── Body parsing ──────────────────────────────────────────────────────────────
+// express.json / urlencoded are built into Express 4.16+ — body-parser removed.
 
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
-// Static files
-app.use(express.static(path.join(__dirname, '..')));
-
-// =============================
-// REQUEST LOGGING MIDDLEWARE
-// =============================
-
-app.use((req, res, next) => {
-    if (tracer) {
-        const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
-            method: req.method,
-            path: req.path,
-            ip: req.ip
-        });
-        req.traceId = traceId;
-        res.on('finish', () => {
-            tracer.endTrace(traceId, {
-                statusCode: res.statusCode,
-                duration: Date.now() - req.timestamp
-            });
-        });
-    }
-    req.timestamp = Date.now();
+// XSS sanitisation — replaces abandoned xss-clean package
+// Recursively sanitises all string values in body / query / params
+function _sanitize(val) {
+    if (typeof val === 'string')         return filterXSS(val);
+    if (Array.isArray(val))              return val.map(_sanitize);
+    if (val && typeof val === 'object')  return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, _sanitize(v)]));
+    return val;
+}
+app.use((req, _res, next) => {
+    req.body   = _sanitize(req.body);
+    req.query  = _sanitize(req.query);
+    req.params = _sanitize(req.params);
     next();
 });
 
-// =============================
-// ROUTES
-// =============================
+// Static files
+app.use(express.static(path.join(__dirname, '..')));
 
-// Health check
-app.get('/health', (req, res) => {
-    const stats = tracer ? tracer.getStats() : {};
+// ── Request tracing ───────────────────────────────────────────────────────────
+
+app.use((req, res, next) => {
+    req.timestamp = Date.now();
+    if (!tracer) return next();
+    const traceId = tracer.startTrace(`${req.method} ${req.path}`, {
+        method: req.method,
+        path:   req.path,
+        ip:     req.ip,
+    });
+    req.traceId = traceId;
+    res.on('finish', () =>
+        tracer.endTrace(traceId, { statusCode: res.statusCode, duration: Date.now() - req.timestamp })
+    );
+    next();
+});
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+
+app.get('/health', (_req, res) => {
     res.json({
-        status: 'ok',
-        service: 'vaal-ai-empire',
-        timestamp: new Date().toISOString(),
-        node: process.version,
-        uptime: process.uptime(),
-        payment: 'PayFast',
-        stats
+        status:     'ok',
+        service:    'vaal-ai-empire',
+        timestamp:  new Date().toISOString(),
+        node:       process.version,
+        uptime:     process.uptime(),
+        payment:    'PayFast',
+        sandbox:    PAYFAST_CONFIG.sandbox,
+        ...(tracer && { stats: tracer.getStats() }),
     });
 });
 
-// Home page
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
-});
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
 
-// API Routes
-if (authRoutes) app.use('/api/auth', authRoutes);
-if (paymentRoutes) app.use('/api/payments', paymentRoutes);
-if (subscriptionRoutes) app.use('/api/subscriptions', subscriptionRoutes);
-if (analyticsRoutes) app.use('/api/analytics', analyticsRoutes);
-if (observabilityRoutes) app.use('/api/observability', observabilityRoutes);
+if (authRoutes)          app.use('/api/auth',          authRoutes);
+if (paymentRoutes)       app.use('/api/payments',       paymentRoutes);
+if (subscriptionRoutes)  app.use('/api/subscriptions',  subscriptionRoutes);
+if (analyticsRoutes)     app.use('/api/analytics',      analyticsRoutes);
+if (observabilityRoutes) app.use('/api/observability',  observabilityRoutes);
 
-// =============================
-// PAYFAST ROUTES
-// =============================
+// ── PayFast routes ────────────────────────────────────────────────────────────
 
-// Get PayFast configuration (for frontend)
-app.get('/config', (req, res) => {
+// Frontend reads this to build the payment form
+app.get('/config', (_req, res) => {
     res.json({
-        merchantId: PAYFAST_CONFIG.merchant_id,
-        merchantKey: PAYFAST_CONFIG.merchant_key,
-        sandbox: PAYFAST_CONFIG.sandbox,
-        returnUrl: `${process.env.DOMAIN}/success.html`,
-        cancelUrl: `${process.env.DOMAIN}/canceled.html`,
-        notifyUrl: `${process.env.DOMAIN}/payfast/notify`,
+        merchantId:  PAYFAST_CONFIG.merchant_id,
+        sandbox:     PAYFAST_CONFIG.sandbox,
+        processUrl:  PAYFAST_CONFIG.processUrl,
+        returnUrl:   `${process.env.DOMAIN}/success`,
+        cancelUrl:   `${process.env.DOMAIN}/canceled`,
+        notifyUrl:   `${process.env.DOMAIN}/payfast/notify`,
         prices: {
-            starter: {
-                name: 'Vaal Starter',
-                amount: parseInt(process.env.VAAL_STARTER_PRICE) || 99900, // R999.00 in cents
-                description: 'Vaal Starter - Monthly Subscription'
-            },
-            empire: {
-                name: 'Vaal Empire',
-                amount: parseInt(process.env.VAAL_EMPIRE_PRICE) || 299900, // R2,999.00 in cents
-                description: 'Vaal Empire - Monthly Subscription'
-            }
-        }
+            starter: { name: PLAN_CONFIG.starter.name, amount: PLAN_CONFIG.starter.amount },
+            empire:  { name: PLAN_CONFIG.empire.name,  amount: PLAN_CONFIG.empire.amount  },
+        },
     });
 });
 
-// Create PayFast payment
+// Create a signed PayFast payment payload — frontend POSTs this as a form
 app.post('/create-payment', async (req, res) => {
-    const { plan, email, name } = req.body;
-    
-    // Determine plan details
-    let amount, itemName;
-    if (plan === 'empire') {
-        amount = parseInt(process.env.VAAL_EMPIRE_PRICE) || 299900;
-        itemName = 'Vaal Empire';
-    } else {
-        amount = parseInt(process.env.VAAL_STARTER_PRICE) || 99900;
-        itemName = 'Vaal Starter';
+    const { plan, email = '', name = '' } = req.body;
+
+    if (!plan || !PLAN_CONFIG[plan]) {
+        return res.status(400).json({ error: `Invalid plan '${plan}'. Must be 'starter' or 'empire'.` });
     }
 
-    // Generate unique payment ID
-    const paymentId = `Vaal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const { amount, name: itemName, description } = PLAN_CONFIG[plan];
 
-    // PayFast payment data
+    // Cryptographically random payment ID — substr is deprecated, use slice
+    const paymentId = `Vaal-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+    const [firstName, ...rest] = name.trim().split(' ');
     const paymentData = {
-        merchant_id: PAYFAST_CONFIG.merchant_id,
-        merchant_key: PAYFAST_CONFIG.merchant_key,
-        return_url: `${process.env.DOMAIN}/success.html?payment_id=${paymentId}`,
-        cancel_url: `${process.env.DOMAIN}/canceled.html`,
-        notify_url: `${process.env.DOMAIN}/payfast/notify`,
-        name_first: name ? name.split(' ')[0] : 'Customer',
-        name_last: name ? name.split(' ').slice(1).join(' ') || '' : '',
-        email_address: email || '',
-        m_payment_id: paymentId,
-        amount: (amount / 100).toFixed(2), // Convert cents to Rands
-        item_name: itemName,
-        item_description: `${itemName} - Monthly Subscription`,
-        custom_str1: plan,
-        custom_str2: 'vaal-ai-empire',
-        custom_int1: 1, // Subscription flag
+        merchant_id:      PAYFAST_CONFIG.merchant_id,
+        merchant_key:     PAYFAST_CONFIG.merchant_key,
+        return_url:       `${process.env.DOMAIN}/success?payment_id=${paymentId}`,
+        cancel_url:       `${process.env.DOMAIN}/canceled`,
+        notify_url:       `${process.env.DOMAIN}/payfast/notify`,
+        name_first:       firstName || 'Customer',
+        name_last:        rest.join(' ') || '',
+        email_address:    email,
+        m_payment_id:     paymentId,
+        amount:           (amount / 100).toFixed(2), // rands
+        item_name:        itemName,
+        item_description: description,
+        custom_str1:      plan,
+        custom_str2:      'vaal-ai-empire',
+        custom_int1:      '1',
     };
 
-    // Generate signature
+    // Signature computed from a copy — paymentData is not mutated
     const signature = generatePayFastSignature(paymentData, PAYFAST_CONFIG.passphrase);
-    paymentData.signature = signature;
 
-    if (tracer) {
-        tracer.recordMetric('payment_created', { paymentId, plan, amount });
-    }
+    if (tracer) tracer.recordMetric('payment_created', { paymentId, plan, amount });
 
-    res.json({
-        success: true,
+    return res.json({
+        success:     true,
         paymentId,
-        paymentData,
-        payfastUrl: PAYFAST_CONFIG.baseUrl,
-        sandbox: PAYFAST_CONFIG.sandbox
+        paymentData: { ...paymentData, signature },
+        payfastUrl:  PAYFAST_CONFIG.processUrl,
+        sandbox:     PAYFAST_CONFIG.sandbox,
     });
 });
 
-// PayFast ITN (Instant Transaction Notification) webhook
-app.post('/payfast/notify', express.urlencoded({ extended: true }), async (req, res) => {
-    console.log('📢 PayFast ITN received');
-    
+// PayFast ITN webhook
+app.post('/payfast/notify', express.urlencoded({ extended: false }), async (req, res) => {
     const data = req.body;
-    
-    // Verify signature
-    if (!verifyPayFastSignature({ ...data }, PAYFAST_CONFIG.passphrase)) {
-        console.error('❌ Invalid PayFast signature');
+
+    // 1. Verify signature first — fail fast, never continue on bad sig
+    if (!verifyPayFastSignature(data, PAYFAST_CONFIG.passphrase)) {
+        console.error('❌ PayFast ITN: invalid signature');
         return res.status(400).send('Invalid signature');
     }
 
-    // Verify with PayFast server (security best practice)
+    // 2. Validate with PayFast server — required in both sandbox AND production
     try {
-        const axios = require('axios');
-        const verifyResponse = await axios.post(
-            PAYFAST_CONFIG.sandbox 
-                ? 'https://sandbox.payfast.co.za/eng/query/validate'
-                : 'https://www.payfast.co.za/eng/query/validate',
-            new URLSearchParams(data).toString(),
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-
-        if (verifyResponse.data !== 'VALID') {
-            console.error('❌ PayFast validation failed:', verifyResponse.data);
+        const valid = await validatePayFastITN(data);
+        if (!valid) {
+            console.error('❌ PayFast ITN: server validation failed');
             return res.status(400).send('Validation failed');
         }
-    } catch (error) {
-        console.error('❌ PayFast verification error:', error.message);
-        // Continue anyway for sandbox testing
-        if (!PAYFAST_CONFIG.sandbox) {
-            return res.status(400).send('Verification failed');
-        }
+    } catch (err) {
+        console.error('❌ PayFast ITN: validation request error:', err.message);
+        // Do NOT continue silently — return 400 so PayFast retries
+        return res.status(400).send('Validation error');
     }
 
-    const paymentStatus = data.payment_status;
-    const paymentId = data.m_payment_id;
-    const amount = parseFloat(data.amount_gross);
-    const plan = data.custom_str1;
+    const { payment_status, m_payment_id, amount_gross, custom_str1: plan } = data;
+    const amount = parseFloat(amount_gross);
 
-    console.log(`💰 Payment ${paymentId}: ${paymentStatus} - R${amount}`);
+    console.log(`💰 PayFast ITN ${m_payment_id}: ${payment_status} — R${amount}`);
 
-    // Handle payment status
-    switch (paymentStatus) {
+    switch (payment_status) {
         case 'COMPLETE':
-            console.log(`✅ Payment completed: ${paymentId}`);
-            if (tracer) {
-                tracer.recordMetric('payment_complete', { paymentId, plan, amount });
-            }
-            // TODO: Update database, send email, activate subscription
+            console.log(`✅ Payment completed: ${m_payment_id}`);
+            if (tracer) tracer.recordMetric('payment_complete', { paymentId: m_payment_id, plan, amount });
+            // TODO: update DB, activate subscription, send confirmation email
             break;
         case 'FAILED':
-            console.log(`❌ Payment failed: ${paymentId}`);
-            if (tracer) {
-                tracer.recordMetric('payment_failed', { paymentId, plan });
-            }
+            console.error(`❌ Payment failed: ${m_payment_id}`);
+            if (tracer) tracer.recordMetric('payment_failed', { paymentId: m_payment_id, plan });
             break;
         case 'PENDING':
-            console.log(`⏳ Payment pending: ${paymentId}`);
+            console.log(`⏳ Payment pending: ${m_payment_id}`);
             break;
         default:
-            console.log(`ℹ️ Unknown status: ${paymentStatus}`);
+            console.log(`ℹ️  Unknown PayFast status '${payment_status}' for ${m_payment_id}`);
     }
 
-    // Respond to PayFast
     res.status(200).send('OK');
 });
 
-// Check payment status
-app.get('/payment-status/:paymentId', async (req, res) => {
+// Payment status check
+app.get('/payment-status/:paymentId', (req, res) => {
     const { paymentId } = req.params;
-    
-    // TODO: Check payment status from database
-    res.json({
-        paymentId,
-        status: 'pending', // Would come from database
-        message: 'Payment status check'
-    });
+    // TODO: query database for actual status
+    res.json({ paymentId, status: 'pending', message: 'Payment status check' });
 });
 
-// =============================
-// ERROR HANDLING
-// =============================
+// ── Error handling ────────────────────────────────────────────────────────────
 
 app.use(notFound);
 app.use(globalErrorHandler);
 
-// =============================
-// SERVER STARTUP
-// =============================
+// ── Startup ───────────────────────────────────────────────────────────────────
 
 const startServer = async () => {
     try {
         await connectDB();
 
-        // Cleanup old traces every hour
         if (tracer) {
-            setInterval(() => {
-                tracer.cleanup(24 * 60 * 60 * 1000);
-            }, 60 * 60 * 1000);
+            setInterval(() => tracer.cleanup(24 * 60 * 60 * 1000), 60 * 60 * 1000);
         }
 
         app.listen(port, () => {
             console.log('');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('   VAAL AI EMPIRE - SERVER');
-            console.log('⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡');
-            console.log('');
-            console.log(`🚀 Running on: http://localhost:${port}`);
-            console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-            console.log(`💳 Payments: PayFast (${PAYFAST_CONFIG.sandbox ? 'SANDBOX' : 'PRODUCTION'})`);
-            console.log('');
-            console.log('🇿🇦 Built in the Vaal. Built for Africa.');
+            console.log('⚡ VAAL AI EMPIRE — SERVER RUNNING ⚡');
+            console.log(`🚀  http://localhost:${port}`);
+            console.log(`📊  ${process.env.NODE_ENV || 'development'}`);
+            console.log(`💳  PayFast ${PAYFAST_CONFIG.sandbox ? '(SANDBOX)' : '(PRODUCTION)'}`);
+            console.log('🇿🇦  Built in the Vaal. Built for Africa.');
         });
-    } catch (error) {
-        console.error('❌ Failed to start server:', error);
+    } catch (err) {
+        console.error('❌ Failed to start server:', err);
         process.exit(1);
     }
 };
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
+    console.error('UNHANDLED REJECTION — shutting down:', err.name, err.message);
     process.exit(1);
 });
-
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
+    console.error('UNCAUGHT EXCEPTION — shutting down:', err.name, err.message);
     process.exit(1);
 });
 
