@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 from TTS.tts.configs.shared_configs import BaseDatasetConfig
 from TTS.tts.datasets import load_tts_samples
 from TTS.tts.models.vits import Vits
-from TTS.tts.configs.vits_config import VitsConfig
+from TTS.tts.configs.vits_config import VitsConfig, VitsArgs, VitsAudioConfig
 from TTS.utils.audio import AudioProcessor
 import logging
 
@@ -236,7 +236,7 @@ class MultilingualTTSInference:
         self.model = Vits(config_dict, self.ap)
         
         # Load checkpoint with security (weights_only=True for safe deserialization)
-        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=True)
         self.model.load_state_dict(checkpoint["model"])
         self.model.to(device)
         self.model.eval()
@@ -270,16 +270,14 @@ class MultilingualTTSInference:
         # Preprocess text
         # In full implementation, would use phonemizer
         
-        # Get speaker embedding
-        speaker_id = None  # Initialize before conditional
+        # Get speaker embedding - initialize speaker_id before conditional
+        speaker_id = self.language_to_speaker.get(language, 0)
         speaker_embedding = None
         
         if speaker_wav and hasattr(self.model, 'speaker_encoder'):
             # Compute speaker embedding from reference
             speaker_embedding = self._compute_speaker_embedding(speaker_wav)
-        else:
-            # Use language as speaker
-            speaker_id = self.language_to_speaker.get(language, 0)
+        # speaker_id is always defined now
         
         # Synthesize
         with torch.no_grad():

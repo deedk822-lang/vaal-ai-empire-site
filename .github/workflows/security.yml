@@ -59,7 +59,7 @@ jobs:
         continue-on-error: true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           # Explicit query suite: security-extended covers OWASP Top 10 +
@@ -67,7 +67,7 @@ jobs:
           queries: security-extended
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
         # FIX: continue-on-error removed from this step.
@@ -76,7 +76,7 @@ jobs:
         # code scanning results aggregator would report
         # "1 configuration not found" as a neutral check — masking real
         # security issues. A genuine analysis failure must be visible.
-        uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{ matrix.language }}'
 
@@ -108,12 +108,11 @@ jobs:
             -o bandit-results.sarif || true
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-results.sarif
           category: bandit-python
-        continue-on-error: true
 
       - name: Check for HIGH/CRITICAL issues
         run: |

@@ -76,36 +76,17 @@ def download_file(url: str, output_path: Path, chunk_size: int = 8192) -> bool:
         return False
 
 
-def is_safe_tar_member(member: tarfile.TarInfo, extract_dir: Path) -> bool:
-    """Validate tar member to prevent path traversal attacks."""
-    member_path = Path(member.name)
-    # Check for absolute paths
-    if member_path.is_absolute():
-        return False
-    # Check for parent directory references (path traversal)
-    resolved_path = (extract_dir / member_path).resolve()
-    extract_dir_resolved = extract_dir.resolve()
-    try:
-        # Ensure the resolved path is within the extract directory
-        resolved_path.relative_to(extract_dir_resolved)
-        return True
-    except ValueError:
-        return False
-
-
 def extract_archive(archive_path: Path, extract_dir: Path) -> bool:
-    """Extract tar.gz archive safely with member validation."""
+    """Extract tar.gz archive safely using filter='data' to prevent path traversal.
+
+    Uses Python 3.12+ built-in protection against CVE-2007-4559.
+    The filter='data' parameter prevents extraction of files outside the target
+    directory by rejecting absolute paths and path traversal sequences.
+    """
     try:
         print(f"Extracting {archive_path}...")
         with tarfile.open(archive_path, "r:gz") as tar:
-            # Validate each member before extraction
-            for member in tar.getmembers():
-                if not is_safe_tar_member(member, extract_dir):
-                    print(f"  ⚠️  Skipping dangerous member: {member.name}")
-                    continue
-            # Safe extraction with validated members only
-            tar.extractall(extract_dir, members=[m for m in tar.getmembers() 
-                          if is_safe_tar_member(m, extract_dir)])
+            tar.extractall(extract_dir, filter="data")
         return True
     except Exception as e:
         print(f"Error extracting {archive_path}: {e}")

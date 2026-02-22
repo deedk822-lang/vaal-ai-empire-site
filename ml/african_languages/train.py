@@ -3,17 +3,20 @@
 train.py — Vaal AI Empire
 Unified training CLI: download / prepare / train-asr / train-tts.
 
-Fixes applied vs previous revision:
+Fixes applied (PR #117 CodeRabbit review):
  • test harness: uses --output-dir (not --cv-dir) matching download_main()
  • sys.argv is saved and restored to avoid corrupting global state
- • run_train_asr reads multilingual_manifest.json (single manifest from build())
-   and passes it directly to MultilingualASRTrainer (trainer handles split)
+ • run_train_asr: loads multilingual_manifest.json, performs 90/10 train/eval
+   split, writes multilingual_manifest_train.json and
+   multilingual_manifest_eval.json, then passes split paths to trainer
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import random
 import sys
 from pathlib import Path
 
@@ -77,16 +80,39 @@ def run_train_asr(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    # Load and split manifest (configurable train/eval split)
+    with open(manifest_path) as f:
+        all_samples = json.load(f)
+
+    random.shuffle(all_samples)
+    train_ratio = 1.0 - args.eval_split
+    split_idx = int(len(all_samples) * train_ratio)
+    train_samples = all_samples[:split_idx]
+    eval_samples = all_samples[split_idx:]
+
+    # Write split manifests
+    train_manifest = args.output_dir / "multilingual_manifest_train.json"
+    eval_manifest = args.output_dir / "multilingual_manifest_eval.json"
+    with open(train_manifest, "w") as f:
+        json.dump(train_samples, f)
+    with open(eval_manifest, "w") as f:
+        json.dump(eval_samples, f)
+
+    logger.info("Train/eval split (%.0f%%/%.0f%%): %d / %d samples",
+                train_ratio * 100, args.eval_split * 100,
+                len(train_samples), len(eval_samples))
+
     trainer = MultilingualASRTrainer(
         model_name=args.asr_model,
-        manifest_path=manifest_path,   # Trainer handles train/eval split internally
         output_dir=args.output_dir / "asr_checkpoints",
         batch_size=args.batch_size,
         num_epochs=args.epochs,
         learning_rate=args.lr,
-        eval_split=args.eval_split,
     )
-    trainer.train()
+    trainer.train(
+        train_manifest=train_manifest,
+        eval_manifest=eval_manifest,
+    )
 
 
 def run_train_tts(args: argparse.Namespace) -> None:

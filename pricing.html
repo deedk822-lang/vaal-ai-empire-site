@@ -25,7 +25,7 @@
           <button
             class="btn-pricing subscribe-btn"
             data-plan="starter"
-            aria-label="Start Free Trial — Vaal Starter plan (R999/month after 7-day trial)">
+            aria-label="Start Free Trial — Vaal Starter plan">
             Start Free Trial
           </button>
         </div>
@@ -40,7 +40,7 @@
           <button
             class="btn-pricing subscribe-btn"
             data-plan="empire"
-            aria-label="Start Free Trial — Vaal Empire plan (R2,999/month after 7-day trial)">
+            aria-label="Start Free Trial — Vaal Empire plan">
             Start Free Trial
           </button>
         </div>
@@ -63,7 +63,7 @@
     async function loadConfig() {
       try {
         const res = await fetch('/config');
-        if (!res.ok) throw new Error(`Config load failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`Failed to load config (HTTP ${res.status})`);
         config = await res.json();
       } catch (err) {
         console.error('[Config]', err);
