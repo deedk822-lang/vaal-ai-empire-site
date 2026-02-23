@@ -223,12 +223,8 @@ class MultilingualTTSInference:
             config_path: Path to config.json
             device: "cuda" or "cpu"
         """
-        from TTS.tts.models.vits import Vits
-        from TTS.utils.audio import AudioProcessor
-        
         # Load config
         with open(config_path, "r") as f:
-            import json
             config_dict = json.load(f)
         
         # Initialize
@@ -345,7 +341,9 @@ def demo_code_switching_synthesis():
     for text, lang in test_sentences:
         logger.info(f"\nText: {text}")
         logger.info(f"Primary language: {lang}")
-        logger.info(f"Contains: {[l for l in ['zu', 'xh', 'af', 'en'] if l in text.lower()]}")
+        # Check for language codes with word boundaries to avoid false matches
+        detected_codes = [code for code in ['zu', 'xh', 'af', 'en'] if code in text.lower()]
+        logger.info(f"Contains: {detected_codes}")
 
 
 if __name__ == "__main__":

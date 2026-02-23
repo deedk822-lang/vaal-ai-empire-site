@@ -170,9 +170,8 @@ class MultilingualASRTrainer:
     def create_dataloaders(self,
                           train_manifest: Path,
                           eval_manifest: Path,
-                          audio_dir: Path,
-                          batch_size: int = 16) -> tuple:
-        """Create training and evaluation dataloaders."""
+                          audio_dir: Path) -> tuple:
+        """Create training and evaluation datasets and collator."""
         
         train_dataset = MultilingualASRDataset(
             train_manifest, self.processor, audio_dir
@@ -189,7 +188,7 @@ class MultilingualASRTrainer:
             
             # Pad labels
             labels = [f["labels"] for f in features]
-            max_label_len = max(len(l) for l in labels)
+            max_label_len = max(len(lab) for lab in labels)
             
             # Whisper uses -100 for padding
             padded_labels = torch.full(

@@ -14,7 +14,7 @@ import base64
 import io
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import ClassVar, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 
@@ -60,7 +60,7 @@ class MultilingualVoiceAgent(BaseAgent):
     """
     
     # Language configuration
-    SUPPORTED_LANGUAGES = {
+    SUPPORTED_LANGUAGES: ClassVar[Dict[str, Dict[str, str]]] = {
         "zu": {"name": "isiZulu", "greeting": "Sawubona"},
         "xh": {"name": "isiXhosa", "greeting": "Molo"},
         "af": {"name": "Afrikaans", "greeting": "Hallo"},
@@ -69,7 +69,7 @@ class MultilingualVoiceAgent(BaseAgent):
     }
     
     # Code-switching patterns we expect
-    COMMON_MIXES = [
+    COMMON_MIXES: ClassVar[List[Tuple[str, str]]] = [
         ("en", "zu"),  # English + isiZulu (most common in urban SA)
         ("zu", "en"),
         ("en", "xh"),  # English + isiXhosa
@@ -143,8 +143,8 @@ class MultilingualVoiceAgent(BaseAgent):
 
                     self._tts_model = await asyncio.to_thread(_load_tts_model)
                     self.log("TTS model loaded successfully")
-                except Exception as e:
-                    self.log(f"TTS model load failed: {e}", level="error")
+                except (OSError, RuntimeError) as e:
+                    self.log(f"TTS model load failed: {e!s}", level="error")
                     self._tts_model = None
                     raise
     
@@ -204,8 +204,8 @@ class MultilingualVoiceAgent(BaseAgent):
                 resampler = torchaudio.transforms.Resample(sample_rate, 16000)
                 waveform = resampler(waveform)
             
-        except Exception as e:
-            return {"error": f"Audio decoding failed: {str(e)}"}
+        except (ValueError, OSError) as e:
+            return {"error": f"Audio decoding failed: {e!s}"}
         
         # Transcribe
         try:
@@ -230,8 +230,8 @@ class MultilingualVoiceAgent(BaseAgent):
                 "chunks": result.get("chunks", []),  # Word-level timestamps
             }
             
-        except Exception as e:
-            return {"error": f"Transcription failed: {str(e)}"}
+        except (RuntimeError, ValueError) as e:
+            return {"error": f"Transcription failed: {e!s}"}
     
     async def _text_to_speech(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -288,9 +288,9 @@ class MultilingualVoiceAgent(BaseAgent):
                 "detected_mix": lang_detection.language_mix,
             }
 
-        except Exception as e:
-            self.log(f"TTS synthesis error: {e}", level="error")
-            return {"error": str(e)}
+        except (RuntimeError, ValueError) as e:
+            self.log(f"TTS synthesis error: {e!s}", level="error")
+            return {"error": f"{e!s}"}
     
     async def _voice_chat(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -470,9 +470,11 @@ class MultilingualVoiceAgent(BaseAgent):
     async def _get_llm_response(self, query: str, system_prompt: str, context: str) -> str:
         """Get response from LLM."""
         if self.llm:
+            # Incorporate context into the system prompt
+            enriched_prompt = f"{system_prompt}\n\nContext: {context}" if context else system_prompt
             response = await self.llm.generate(
                 prompt=query,
-                system_message=system_prompt,
+                system_message=enriched_prompt,
                 temperature=0.7,
                 max_tokens=500
             )

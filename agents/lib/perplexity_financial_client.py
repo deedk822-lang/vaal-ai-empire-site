@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from threading import Lock
-from typing import Optional
+from typing import ClassVar, List, Optional
 from urllib.parse import urlparse
 
 import httpx  # used for EDGAR; no extra auth required
@@ -90,8 +90,8 @@ CB_RECOVERY_TIMEOUT   = 60.0  # seconds before attempting half-open probe
 RATE_LIMIT_CALLS = 10         # calls
 RATE_LIMIT_PERIOD = 1.0       # per second
 
-SEC_ALLOWLIST = ["sec.gov", "efts.sec.gov", "investor.gov"]
-NEWS_DENYLIST = ["-reddit.com", "-quora.com", "-pinterest.com", "-facebook.com", "-twitter.com"]
+SEC_ALLOWLIST: ClassVar[List[str]] = ["sec.gov", "efts.sec.gov", "investor.gov"]
+NEWS_DENYLIST: ClassVar[List[str]] = ["-reddit.com", "-quora.com", "-pinterest.com", "-facebook.com", "-twitter.com"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
