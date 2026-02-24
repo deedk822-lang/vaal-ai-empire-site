@@ -101,36 +101,47 @@ const PLAN_CONFIG = {
 // ── PayFast helpers ───────────────────────────────────────────────────────────
 
 /**
- * Generate a PayFast MD5 signature from a plain-object payload.
- * Does NOT mutate the input.
- * 
- * Note: MD5 is REQUIRED by PayFast API for signature verification.
- * This is NOT used for password hashing - PayFast specifically requires
- * MD5 signatures for their payment integration.
- * See: https://developers.payfast.co.za/api#signature-generation
+ * Generates a PayFast payment request signature.
+ *
+ * NOT a password storage operation.
+ * PayFast's API specification explicitly mandates MD5 for ITN signature
+ * generation. This cannot be replaced with bcrypt, scrypt, or Argon2.
+ * The passphrase is a shared API secret used purely for request signing,
+ * not a user password being stored or verified.
+ *
+ * Reference: https://developers.payfast.co.za/docs#step_1_form_fields
+ *
+ * @param {object} data       - Payment fields (must not include 'signature')
+ * @param {string} passphrase - Merchant passphrase (empty string if not set)
+ * @returns {string}          - MD5 hex signature required by PayFast
  */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 function generatePayFastSignature(data, passphrase = '') {
-    const sorted = Object.keys(data)
+    const paramString = Object.keys(data)
         .sort()
-        .map(k => `${k}=${encodeURIComponent(String(data[k])).replace(/%20/g, '+')}`)
+        .map(key => `${key}=${encodeURIComponent(String(data[key])).replace(/%20/g, '+')}`)
         .join('&');
-    const toHash = passphrase
-        ? `${sorted}&passphrase=${encodeURIComponent(passphrase)}`
-        : sorted;
-    // PayFast requires MD5 - this is NOT a security vulnerability
-    return crypto.createHash('md5').update(toHash).digest('hex');
+
+    const stringToHash = passphrase
+        ? `${paramString}&passphrase=${encodeURIComponent(passphrase)}`
+        : paramString;
+
+    // MD5 is mandated by the PayFast API spec — NOT a password hash
+    // codeql[js/insufficient-password-hash]
+    return crypto.createHash('md5').update(stringToHash).digest('hex');
 }
 
 /**
- * Verify a PayFast ITN signature.
- * Creates a copy without `signature` before computing — never mutates the
- * original `data` object.
+ * Verifies a PayFast ITN signature.
+ * Uses destructuring instead of delete to avoid mutating the caller's object.
+ *
+ * @param {object} data       - Full ITN POST body including 'signature'
+ * @param {string} passphrase - Merchant passphrase
+ * @returns {boolean}
  */
 function verifyPayFastSignature(data, passphrase = '') {
-    const { signature: received, ...rest } = data;  // non-mutating destructure
-    if (!received) return false;
-    return received === generatePayFastSignature(rest, passphrase);
+    const { signature, ...rest } = data;
+    const calculatedSignature = generatePayFastSignature(rest, passphrase);
+    return signature === calculatedSignature;
 }
 
 /**
