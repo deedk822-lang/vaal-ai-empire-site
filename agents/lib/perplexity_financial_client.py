@@ -269,7 +269,7 @@ def _with_retry(fn, retries: int = 3, base_delay: float = 1.0,
     Raises the last exception if all retries are exhausted.
     """
     import random
-    last_exc = None
+    last_exc: Optional[Exception] = None
     for attempt in range(retries):
         try:
             return fn()
@@ -281,7 +281,10 @@ def _with_retry(fn, retries: int = 3, base_delay: float = 1.0,
                     "Retry %d/%d in %.2fs after: %s", attempt + 1, retries, delay, exc
                 )
                 time.sleep(delay)
-    raise last_exc
+    # Ensure we have an exception to raise
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("Retry logic failed unexpectedly - no exception captured")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -866,6 +869,7 @@ class PerplexityFinancialClient:
                 span.set_status(trace.StatusCode.ERROR)
             span.end()
         except Exception:
+            # Silently ignore span errors to avoid disrupting the main flow
             pass
 
 

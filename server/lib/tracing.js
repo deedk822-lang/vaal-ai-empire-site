@@ -41,7 +41,9 @@ class VaalTracer {
     };
 
     this.traces.set(traceId, trace);
-    console.log(`⚡ Trace started: ${name} [${traceId}]`);
+    // Sanitize name to prevent log injection attacks
+    const sanitizedName = String(name).replace(/[\r\n]/g, '_');
+    console.log(`⚡ Trace started: ${sanitizedName} [${traceId}]`);
     return traceId;
   }
 

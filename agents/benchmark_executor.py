@@ -36,7 +36,6 @@ import os
 import re
 import statistics
 import subprocess
-import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -890,6 +889,7 @@ Respond with ONLY a JSON object: {{"correctness": N, "security": N, "efficiency"
                     "best_practices": float(scores.get("best_practices", 5.0)),
                 }
         except Exception:
+            # Intentionally silent - JSON parsing failures fall back to default scores
             pass
 
         return self._default_quality_scores()

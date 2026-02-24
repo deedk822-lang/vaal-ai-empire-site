@@ -12,7 +12,6 @@ We build: One bot that understands "I'm going ekhaya now"
 import asyncio
 import base64
 import io
-import json
 from pathlib import Path
 from typing import ClassVar, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
