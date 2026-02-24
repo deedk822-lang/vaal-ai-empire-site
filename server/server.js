@@ -145,8 +145,7 @@ function generatePayFastSignature(data, passphrase = '') {
     // This is NOT password storage - it's HMAC-style request signing.
     // PayFast explicitly requires MD5 and rejects other algorithms.
     // See: https://developers.payfast.co.za/docs#signature-generation
-    // lgtm[js/insufficient-password-hash]
-    return crypto.createHash('md5').update(stringToHash).digest('hex');
+    return crypto.createHash('md5').update(stringToHash).digest('hex'); // codeql[js/insufficient-password-hash] This is PayFast API signature generation, not password hashing
 }
 
 /**
