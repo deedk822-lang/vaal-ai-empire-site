@@ -28,8 +28,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: hybrid-benchmark-${{ github.ref }}
-  cancel-in-progress: true
+  group: hybrid-benchmark-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  # Only cancel in-progress for the same event type and ref
+  # This prevents PR runs from being cancelled when new commits are pushed
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   PYTHON_VERSION: '3.11'
@@ -39,10 +41,10 @@ jobs:
     name: Ollama Backend Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # On pull_request events github.event.inputs is null — the bare != 'direct'
-    # comparison would evaluate null != 'direct' = true and always run.
-    # Use inputs.backend with a fallback so it evaluates correctly on all triggers.
-    if: ${{ github.event.inputs.backend != 'direct' }}
+    # Run unless backend is explicitly set to 'direct'
+    # For workflow_dispatch: use inputs.backend
+    # For push/pull_request: inputs.backend is empty, so run by default
+    if: ${{ inputs.backend != 'direct' }}
 
     steps:
       - name: Checkout
@@ -101,7 +103,17 @@ jobs:
         continue-on-error: true
 
       - name: Create results directory
+        if: always()
         run: mkdir -p benchmark_results
+
+      - name: Ensure placeholder artifact exists
+        if: always()
+        run: |
+          # Always create a placeholder to ensure artifact upload succeeds
+          if [ ! -f benchmark_results/ollama_report.json ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"ollama","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[],"note":"Job may have been cancelled or failed early"}' \
+              > benchmark_results/ollama_report.json
+          fi
 
       - name: Run Ollama benchmarks
         env:
