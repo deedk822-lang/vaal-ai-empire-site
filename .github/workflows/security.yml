@@ -62,9 +62,8 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          # Explicit query suite: security-extended covers OWASP Top 10 +
-          # injection, path traversal, crypto issues — appropriate for this repo.
-          queries: security-extended
+          # Reference the custom config file to avoid "configuration not found" error
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v4

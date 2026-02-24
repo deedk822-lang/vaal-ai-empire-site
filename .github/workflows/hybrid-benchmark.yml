@@ -214,6 +214,16 @@ jobs:
 
       - name: Generate combined summary
         run: |
+          # Create results directories if they don't exist
+          mkdir -p results/ollama results/direct
+          
+          # Check if results exist before processing
+          if [ ! -f "results/ollama/ollama_report.json" ] && [ ! -f "results/direct/direct_report.json" ]; then
+            echo "## Hybrid Benchmark Results\n"
+            echo "⚠️ No benchmark results available - this is expected for PRs without benchmark changes"
+            exit 0
+          fi
+          
           python3 << 'PYEOF'
           import json, os, sys
           from pathlib import Path
