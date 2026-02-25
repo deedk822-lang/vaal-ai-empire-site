@@ -154,15 +154,18 @@ jobs:
     if: always()
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
       - name: Download Ollama results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ollama-benchmark-results
           path: results/ollama
         continue-on-error: true
 
       - name: Download Direct API results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: direct-api-benchmark-results
           path: results/direct
@@ -171,7 +174,7 @@ jobs:
       - name: Generate combined summary
         run: |
           python3 << 'PYEOF' || true
-          import json, os
+          import json, os, sys
           from pathlib import Path
           
           lines = ["## Hybrid Benchmark Results\n"]
@@ -196,6 +199,10 @@ jobs:
               lines.append(f"| Overall Score  | {summary.get('overall_score', 0):.1f}% |")
               lines.append("")
           
+          # Create results directories if they don't exist
+          Path("results/ollama").mkdir(parents=True, exist_ok=True)
+          Path("results/direct").mkdir(parents=True, exist_ok=True)
+          
           render_backend("Ollama Backend", Path("results/ollama/ollama_report.json"))
           render_backend("Direct API Backend", Path("results/direct/direct_report.json"))
           
@@ -203,6 +210,11 @@ jobs:
           print(output)
           
           sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
-          with open(sf, "a") as f:
-              f.write(output + "\n")
+          try:
+              with open(sf, "a") as f:
+                  f.write(output + "\n")
+          except Exception as e:
+              print(f"Warning: Could not write to summary: {e}", file=sys.stderr)
+          
+          print("\n✅ Benchmark summary generated successfully")
           PYEOF
