@@ -16,15 +16,16 @@ const path = require('path');
 const crypto = require('crypto');
 
 // Import centralized sanitizeLog utility
-let sanitizeLog, safeLog;
+let sanitizeLog;
+let _safeLog;
 try {
     const sanitizeModule = require('./utils/sanitizeLog');
     sanitizeLog = sanitizeModule.sanitizeLog;
-    safeLog = sanitizeModule.safeLog;
+    _safeLog = sanitizeModule.safeLog;
 } catch {
     // Fallback if utils module not available
     sanitizeLog = (value) => String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    safeLog = {
+    _safeLog = {
         info: (msg, meta = {}) => console.log(JSON.stringify({ level: 'info', message: sanitizeLog(msg), meta })),
         warn: (msg, meta = {}) => console.warn(JSON.stringify({ level: 'warn', message: sanitizeLog(msg), meta })),
         error: (msg, meta = {}) => console.error(JSON.stringify({ level: 'error', message: sanitizeLog(msg), meta })),
@@ -49,7 +50,7 @@ try {
 let connectDB;
 try {
     connectDB = require('./config/database');
-} catch (error) {
+} catch (_error) {
     console.log('ℹ️  Database module not found, running without MongoDB');
     connectDB = async () => console.log('📊 MongoDB connection skipped');
 }
@@ -60,9 +61,9 @@ try {
     const errorHandler = require('./middleware/errorHandler');
     globalErrorHandler = errorHandler.globalErrorHandler;
     notFound = errorHandler.notFound;
-} catch (error) {
+} catch (_error) {
     console.log('ℹ️  Error handler module not found, using defaults');
-    globalErrorHandler = (err, req, res, next) => {
+    globalErrorHandler = (err, req, res, _next) => {
         console.error(err);
         res.status(500).json({ error: 'Internal server error' });
     };
@@ -73,19 +74,19 @@ try {
 let authRoutes, paymentRoutes, subscriptionRoutes, analyticsRoutes, observabilityRoutes;
 try {
     authRoutes = require('./routes/auth');
-} catch (e) { console.log('ℹ️  Auth routes not found'); }
+} catch (_e) { console.log('ℹ️  Auth routes not found'); }
 try {
     paymentRoutes = require('./routes/paymentRoutes');
-} catch (e) { console.log('ℹ️  Payment routes not found'); }
+} catch (_e) { console.log('ℹ️  Payment routes not found'); }
 try {
     subscriptionRoutes = require('./routes/subscriptionRoutes');
-} catch (e) { console.log('ℹ️  Subscription routes not found'); }
+} catch (_e) { console.log('ℹ️  Subscription routes not found'); }
 try {
     analyticsRoutes = require('./routes/analyticsRoutes');
-} catch (e) { console.log('ℹ️  Analytics routes not found'); }
+} catch (_e) { console.log('ℹ️  Analytics routes not found'); }
 try {
     observabilityRoutes = require('./routes/observability');
-} catch (e) { console.log('ℹ️  Observability routes not found'); }
+} catch (_e) { console.log('ℹ️  Observability routes not found'); }
 
 // Import tracer if available
 let tracer;
@@ -95,7 +96,7 @@ try {
         projectName: 'vaal-ai-empire',
         environment: process.env.NODE_ENV || 'development'
     });
-} catch (error) {
+} catch (_error) {
     console.log('ℹ️  Observability module not found, running without tracing');
 }
 
@@ -123,7 +124,6 @@ const PAYFAST_CONFIG = {
     }
 };
 
- digital-preeminence-fixes
 // =============================
 // PAYFAST SIGNATURE UTILITIES
 // =============================
