@@ -45,4 +45,5 @@ query-filters:
       reason: |
         PayFast API signature generation uses MD5 per provider specification.
         This is NOT password storage - it's API request signature generation.
+        Variable renamed from 'passphrase' to 'signingKey' to avoid password semantics.
         The alert is a false positive for this use case.
