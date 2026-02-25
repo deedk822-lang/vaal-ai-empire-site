@@ -17,20 +17,12 @@ const crypto = require('crypto');
 
 // Import centralized sanitizeLog utility
 let sanitizeLog;
-let _safeLog;
 try {
     const sanitizeModule = require('./utils/sanitizeLog');
     sanitizeLog = sanitizeModule.sanitizeLog;
-    _safeLog = sanitizeModule.safeLog;
 } catch {
     // Fallback if utils module not available
     sanitizeLog = (value) => String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    _safeLog = {
-        info: (msg, meta = {}) => console.log(JSON.stringify({ level: 'info', message: sanitizeLog(msg), meta })),
-        warn: (msg, meta = {}) => console.warn(JSON.stringify({ level: 'warn', message: sanitizeLog(msg), meta })),
-        error: (msg, meta = {}) => console.error(JSON.stringify({ level: 'error', message: sanitizeLog(msg), meta })),
-        debug: (msg, meta = {}) => process.env.NODE_ENV !== 'production' && console.debug(JSON.stringify({ level: 'debug', message: sanitizeLog(msg), meta }))
-    };
 }
 
 // Import configurable rate limiters

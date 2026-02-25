@@ -12,11 +12,11 @@ Docs: https://github.com/ollama/ollama/blob/main/docs/openai.md
 """
 
 import os
-import json
+
 import logging
 import requests
-from typing import Optional, List, Dict, Any, Union
-from dataclasses import dataclass, field
+from typing import Optional, Dict, Any
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)

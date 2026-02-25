@@ -13,9 +13,9 @@ Docs: https://xrpl.org/rlusd.html
 @author Vaal AI Empire Team
 """
 
-import os
+
 import logging
-from typing import Literal, Optional, Dict, Any, List
+from typing import Literal, Optional, Dict, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -25,9 +25,9 @@ try:
     import xrpl
     from xrpl.clients import JsonRpcClient
     from xrpl.models.transactions import Payment
-    from xrpl.models.currencies import IssuedCurrency
+
     from xrpl.wallet import Wallet
-    from xrpl.utils import xrp_to_drops, drops_to_xrp
+    from xrpl.utils import drops_to_xrp
     XRPL_AVAILABLE = True
 except ImportError:
     XRPL_AVAILABLE = False
@@ -141,14 +141,16 @@ class RLUSDSettlement:
                 wallet
             )
             
+            # Initialize result safely before use
+            result = response.result if response and hasattr(response, 'result') else {}
+            
             if response.is_successful():
-                result = response.result
-                logger.info(f"RLUSD settlement confirmed: {result['hash']}")
+                logger.info(f"RLUSD settlement confirmed: {result.get('hash', 'unknown')}")
                 
                 return SettlementResult(
                     success=True,
-                    hash=result["hash"],
-                    ledger_index=result["ledger_index"],
+                    hash=result.get("hash", ""),
+                    ledger_index=result.get("ledger_index", 0),
                     validated=result.get("validated", False),
                     amount_usd=amount_usd,
                     destination=destination,
