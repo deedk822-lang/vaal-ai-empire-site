@@ -15,9 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  # Job name kept as 'codeql' for branch protection compatibility
   codeql:
-    name: CodeQL — ${{ matrix.language }}
+    name: CodeQL
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -34,17 +33,14 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
-        continue-on-error: true
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
-        continue-on-error: true
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
         with:
           category: '/language:${{ matrix.language }}'
-        continue-on-error: true
 
   bandit:
     name: Bandit — Python SAST
