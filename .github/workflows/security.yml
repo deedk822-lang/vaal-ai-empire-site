@@ -15,10 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  # Job renamed from 'codeql' to 'security-scan' to match the required
-  # status check configured on main/master branch protection rules.
-  # The mismatch was causing "1 configuration not found" on every PR.
-  security-scan:
+  # Job name kept as 'codeql' for branch protection compatibility
+  codeql:
     name: CodeQL — ${{ matrix.language }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
