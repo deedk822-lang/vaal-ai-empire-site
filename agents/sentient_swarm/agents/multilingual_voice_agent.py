@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 """
-Multilingual Voice Agent - Production Integration
+Multilingual Voice Agent - Production Integration with Ollama
 
 This is the KEY differentiator: One agent that handles 
 CODE-SWITCHING South African speech, not language silos.
 
 Competitors build: isiZulu bot, isiXhosa bot, English bot (separate)
 We build: One bot that understands "I'm going ekhaya now"
+
+Features:
+- Ollama primary (free, unlimited, low latency)
+- DashScope fallback (cloud backup with free tier)
+- Automatic language detection and code-switching support
+- Qwen2.5 native multilingual support (100+ languages)
 """
 
 import asyncio
 import base64
 import io
+import os
+import logging
 from pathlib import Path
 from typing import ClassVar, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
@@ -22,6 +30,17 @@ import torchaudio
 from transformers import pipeline
 
 from .base_agent import BaseAgent
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Import ModelRouter for Ollama + DashScope fallback
+try:
+    from agents.lib.model_router import ModelRouter, classify_task
+    MODEL_ROUTER_AVAILABLE = True
+except ImportError:
+    MODEL_ROUTER_AVAILABLE = False
+    logger.warning("ModelRouter not available - using default LLM client")
 
 
 @dataclass
@@ -82,7 +101,8 @@ class MultilingualVoiceAgent(BaseAgent):
                  metrics=None, 
                  tracer=None,
                  asr_model_path: Optional[Path] = None,
-                 tts_model_path: Optional[Path] = None):
+                 tts_model_path: Optional[Path] = None,
+                 use_ollama: bool = True):
         super().__init__("MultilingualVoice", llm_client, metrics, tracer)
         
         # Model paths
@@ -100,6 +120,20 @@ class MultilingualVoiceAgent(BaseAgent):
         
         # Language detection thresholds
         self.CODESWITCH_THRESHOLD = 0.3  # If secondary language > 30%, it's code-switched
+        
+        # Initialize ModelRouter for Ollama + DashScope fallback
+        self.use_ollama = use_ollama and MODEL_ROUTER_AVAILABLE
+        self._model_router = None
+        
+        if self.use_ollama and MODEL_ROUTER_AVAILABLE:
+            try:
+                self._model_router = ModelRouter()
+                logger.info("MultilingualVoiceAgent initialized with Ollama + DashScope fallback")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ModelRouter: {e}")
+                self._model_router = None
+        else:
+            logger.info("MultilingualVoiceAgent initialized (using default LLM client)")
         
         self.log("MultilingualVoiceAgent initialized (code-switching enabled)")
     
@@ -467,9 +501,44 @@ class MultilingualVoiceAgent(BaseAgent):
         return base_prompt
     
     async def _get_llm_response(self, query: str, system_prompt: str, context: str) -> str:
-        """Get response from LLM."""
+        """
+        Get response from LLM with Ollama primary + DashScope fallback.
+        
+        Strategy:
+        - Use ModelRouter for automatic failover (Ollama -> DashScope)
+        - Select optimal model based on task type
+        - Qwen2.5 for multilingual support (100+ languages)
+        """
+        # Try ModelRouter first (Ollama primary with DashScope fallback)
+        if self._model_router is not None:
+            try:
+                # Classify task for optimal model selection
+                task_type = classify_task(query) if 'classify_task' in dir() else 'multilingual'
+                model = self._model_router.get_model_for_task('multilingual')
+                
+                # Build messages
+                enriched_prompt = f"{system_prompt}\n\nContext: {context}" if context else system_prompt
+                messages = [
+                    {"role": "system", "content": enriched_prompt},
+                    {"role": "user", "content": query}
+                ]
+                
+                # Get response with automatic failover
+                response = self._model_router.chat_completion(
+                    messages=messages,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=500
+                )
+                
+                return response["choices"][0]["message"]["content"].strip()
+                
+            except Exception as e:
+                logger.warning(f"ModelRouter failed: {e}, falling back to default LLM")
+                # Fall through to default LLM
+        
+        # Fallback to default LLM client
         if self.llm:
-            # Incorporate context into the system prompt
             enriched_prompt = f"{system_prompt}\n\nContext: {context}" if context else system_prompt
             response = await self.llm.generate(
                 prompt=query,
@@ -479,8 +548,8 @@ class MultilingualVoiceAgent(BaseAgent):
             )
             return response.content
         
-        # Fallback
-        return "LLM not available. Query: " + query
+        # No LLM available
+        return "Ngiyaxolisa, akuwazi ukuphendula. (Sorry, I cannot respond at this time.)"
 
 
 # API endpoint examples

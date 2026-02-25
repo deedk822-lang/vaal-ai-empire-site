@@ -1,31 +1,34 @@
-name: Custom CodeQL Configuration
-
-# Disable default queries
-disable-default-queries: false
+name: "CodeQL Config for vaal-ai-empire-site"
 
 # Paths to include in analysis
 paths:
-  - agents
   - server
+  - agents
 
 # Paths to exclude from analysis
 paths-ignore:
   - node_modules
-  - '**/test*.py'
+  - '**/*.test.js'
+  - '**/*.spec.js'
   - '**/tests/**'
   - '**/__pycache__/**'
+  - ml/african_languages
   - '**/*.min.js'
   - '**/dist/**'
   - '**/build/**'
   - .venv
   - venv
 
+# Query filters - exclude documented false positives
+query-filters:
+  # PayFast integration requires MD5 for signature generation (third-party requirement)
+  # This is NOT used for password hashing or security-critical operations
+  # Reference: https://developers.payfast.co.za/docs/secure-your-integration/
+  - exclude:
+      id: js/weak-cryptographic-algorithm
+      reason: "PayFast API signature generation requires MD5 per their specification"
+
 # Query suites to run
 queries:
   - uses: security-and-quality
-  # Exclude false positive: PayFast MD5 signature is required by PayFast API
-  # for ITN signature verification. This is NOT password storage - it's
-  # HMAC-style request signing mandated by the payment provider.
-  # Reference: https://developers.payfast.co.za/docs#signature-generation
-  - exclude:
-      id: js/insufficient-password-hash
+  - uses: security-extended

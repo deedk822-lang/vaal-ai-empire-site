@@ -15,6 +15,36 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const crypto = require('crypto');
 
+// Import centralized sanitizeLog utility
+let sanitizeLog, safeLog;
+try {
+    const sanitizeModule = require('./utils/sanitizeLog');
+    sanitizeLog = sanitizeModule.sanitizeLog;
+    safeLog = sanitizeModule.safeLog;
+} catch {
+    // Fallback if utils module not available
+    sanitizeLog = (value) => String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
+    safeLog = {
+        info: (msg, meta = {}) => console.log(JSON.stringify({ level: 'info', message: sanitizeLog(msg), meta })),
+        warn: (msg, meta = {}) => console.warn(JSON.stringify({ level: 'warn', message: sanitizeLog(msg), meta })),
+        error: (msg, meta = {}) => console.error(JSON.stringify({ level: 'error', message: sanitizeLog(msg), meta })),
+        debug: (msg, meta = {}) => process.env.NODE_ENV !== 'production' && console.debug(JSON.stringify({ level: 'debug', message: sanitizeLog(msg), meta }))
+    };
+}
+
+// Import configurable rate limiters
+let rateLimiters;
+try {
+    rateLimiters = require('./middleware/rateLimiter');
+} catch {
+    // Fallback rate limiters
+    rateLimiters = {
+        payment: rateLimit({ max: 50, windowMs: 15 * 60 * 1000 }),
+        general: rateLimit({ max: 200, windowMs: 15 * 60 * 1000 }),
+        auth: rateLimit({ max: 5, windowMs: 15 * 60 * 1000, skipSuccessfulRequests: true })
+    };
+}
+
 // Database connection
 let connectDB;
 try {
@@ -71,23 +101,6 @@ try {
 
 const app = express();
 const port = process.env.PORT || 3000;
-
-// =============================
-// LOG SANITIZER
-// =============================
-
-/**
- * Strips newline and control characters from any value before logging.
- * Prevents log injection when values originate from user-supplied HTTP
- * request fields (PayFast ITN POST body, request paths, etc).
- * Fixes CodeQL js/log-injection on server.js:384,388,393,397,401
- *
- * @param {*} value
- * @returns {string}
- */
-function sanitizeLog(value) {
-    return String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-}
 
 // =============================
 // PAYFAST CONFIGURATION
@@ -169,23 +182,15 @@ function verifyPayFastSignature(data, passphrase = '') {
 
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit({
-    max: 100,
-    windowMs: 15 * 60 * 1000,
-    message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api', limiter);
+// Rate limiting - using centralized configurable limiters
+app.use('/api', rateLimiters.general);
 
 // Auth-specific rate limiter
-const authLimiter = rateLimit({
-    max: 5,
-    windowMs: 15 * 60 * 1000,
-    message: 'Too many login attempts, please try again later.',
-    skipSuccessfulRequests: true
-});
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/signup', authLimiter);
+app.use('/api/auth/login', rateLimiters.auth);
+app.use('/api/auth/signup', rateLimiters.auth);
+
+// Payment-specific rate limiter (stricter)
+app.use('/create-payment', rateLimiters.payment);
 
 // CORS
 const corsOptions = {

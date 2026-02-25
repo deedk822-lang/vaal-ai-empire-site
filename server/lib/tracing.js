@@ -3,21 +3,19 @@
 
 const crypto = require('crypto');
 
-// =============================
-// LOG SANITIZER
-// =============================
-
-/**
- * Strips newline and control characters from any value before it is written
- * to a log. Prevents log injection when trace names originate from
- * user-supplied HTTP request data (e.g. req.method + req.path).
- * Fixes CodeQL js/log-injection on tracing.js:46
- *
- * @param {*} value
- * @returns {string}
- */
-function sanitizeLog(value) {
-    return String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
+// Import centralized sanitizeLog for consistency across the codebase
+let sanitizeLog;
+try {
+    sanitizeLog = require('../utils/sanitizeLog').sanitizeLog;
+} catch {
+    // Fallback if utils module not available
+    /**
+     * Local fallback sanitizer - strips control characters.
+     * Prefer importing from ../utils/sanitizeLog for consistency.
+     */
+    sanitizeLog = function(value) {
+        return String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
+    };
 }
 
 class VaalTracer {
