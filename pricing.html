@@ -1,372 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pricing - Vaal AI Empire</title>
- feature/stripe-checkout
-    <link rel="stylesheet" href="/css/styles.css">
-    <script src="https://js.stripe.com/v3/"></script>
-    <style>
-        .pricing-hero {
-            text-align: center;
-            padding: 4rem 2rem 2rem;
-            background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
-        }
-        .pricing-hero h1 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            color: #f7b731;
-        }
-        .pricing-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
-            max-width: 1200px;
-            margin: 3rem auto;
-            padding: 0 2rem;
-        }
-        .pricing-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(247, 183, 49, 0.2);
-            border-radius: 12px;
-            padding: 2rem;
-            transition: all 0.3s ease;
-        }
-        .pricing-card:hover {
-            transform: translateY(-5px);
-            border-color: #f7b731;
-            box-shadow: 0 10px 30px rgba(247, 183, 49, 0.3);
-        }
-        .pricing-card.featured {
-            border: 2px solid #f7b731;
-            transform: scale(1.05);
-            position: relative;
-        }
-        .featured-badge {
-            position: absolute;
-            top: -15px;
-            right: 20px;
-            background: #f7b731;
-            color: #0f3460;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-weight: 700;
-            font-size: 0.875rem;
-        }
-        .plan-name {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            color: #f7b731;
-        }
-        .plan-price {
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
-        }
-        .plan-price span {
-            font-size: 1.25rem;
-            font-weight: 400;
-            color: #999;
-        }
-        .plan-description {
-            color: #ccc;
-            margin-bottom: 2rem;
-            font-size: 0.95rem;
-        }
-        .plan-features {
-            list-style: none;
-            margin-bottom: 2rem;
-            text-align: left;
-        }
-        .plan-features li {
-            padding: 0.75rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-        }
-        .plan-features li:before {
-            content: '✔️';
-            margin-right: 0.75rem;
-            color: #00ff88;
-        }
-        .subscribe-btn {
-            width: 100%;
-            padding: 1rem 2rem;
-            font-size: 1.1rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #f7b731 0%, #ff9933 100%);
-            color: #0f3460;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .subscribe-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(247, 183, 49, 0.4);
-        }
-        .subscribe-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .trial-notice {
-            margin-top: 1rem;
-            font-size: 0.875rem;
-            color: #999;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — Vaal AI Empire</title>
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <section class="pricing-hero">
-        <h1>⚡ Choose Your Empire</h1>
-        <p class="hero-subtitle">Digital sovereignty for South African SMEs. Cancel anytime.</p>
-    </section>
 
-    <div class="pricing-grid">
-        <!-- Vaal Starter Plan -->
+  <!-- Pricing cards -->
+  <main>
+    <section class="pricing-section">
+      <h1>Choose Your Plan</h1>
+
+      <div class="pricing-grid">
+
+        <!-- Starter -->
         <div class="pricing-card">
-            <h2 class="plan-name">Vaal Starter</h2>
-            <div class="plan-price">R999<span>/month</span></div>
-            <p class="plan-description">Essential AI tools for growing SMEs</p>
-            <ul class="plan-features">
-                <li>Financial Sentinel (Basic)</li>
-                <li>Tax recovery monitoring</li>
-                <li>Guardian Engine alerts</li>
-                <li>Monthly reports</li>
-                <li>Email support</li>
-            </ul>
-            <button class="subscribe-btn" data-plan="starter">Start Free Trial</button>
-            <p class="trial-notice">7-day free trial, then R999/month</p>
+          <h2>Vaal Starter</h2>
+          <p class="pricing-amount">R999<span>/month</span></p>
+          <p style="margin-top:1rem;font-size:0.875rem;color:#999;">
+            7-day trial, then R999/month
+          </p>
+          <button
+            class="btn-pricing subscribe-btn"
+            data-plan="starter"
+            aria-label="Start Free Trial — Vaal Starter plan">
+            Start Free Trial
+          </button>
         </div>
 
-        <!-- Vaal Empire Plan (Featured) -->
-        <div class="pricing-card featured">
-            <div class="featured-badge">🔥 Most Popular</div>
-            <h2 class="plan-name">Vaal Empire</h2>
-            <div class="plan-price">R2,999<span>/month</span></div>
-            <p class="plan-description">Full autonomous AI empire with all engines</p>
-            <ul class="plan-features">
-                <li>All Starter features</li>
-                <li>Financial Sentinel (Advanced)</li>
-                <li>Guardian Engine (Real-time)</li>
-                <li>Talent Accelerator (Full access)</li>
-                <li>Self-healing infrastructure</li>
-                <li>Priority support</li>
-                <li>Custom integrations</li>
-                <li>Dedicated success manager</li>
-            </ul>
-            <button class="subscribe-btn" data-plan="empire">Start Free Trial</button>
-            <p class="trial-notice">7-day free trial, then R2,999/month</p>
+        <!-- Empire -->
+        <div class="pricing-card pricing-card--featured">
+          <h2>Vaal Empire</h2>
+          <p class="pricing-amount">R2,999<span>/month</span></p>
+          <p style="margin-top:1rem;font-size:0.875rem;color:#999;">
+            7-day trial, then R2,999/month
+          </p>
+          <button
+            class="btn-pricing subscribe-btn"
+            data-plan="empire"
+            aria-label="Start Free Trial — Vaal Empire plan">
+            Start Free Trial
+          </button>
         </div>
-    </div>
 
-    <section style="text-align: center; padding: 3rem 2rem; max-width: 800px; margin: 0 auto;">
-        <h3 style="margin-bottom: 1rem;">All Plans Include:</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 2rem;">
-            <div>🔒 Secure payments via Stripe</div>
-            <div>📊 Real-time analytics</div>
-            <div>🚫 No setup fees</div>
-            <div>✅ Cancel anytime</div>
-            <div>🇸🇦 Built for South Africa</div>
-            <div>💸 Money-back guarantee</div>
-        </div>
+      </div>
     </section>
+  </main>
 
-    <script>
-        // Initialize Stripe
-        let stripe;
-        let publishableKey;
-        let priceIds = {};
+  <footer style="text-align:center;padding:3rem 2rem;border-top:1px solid rgba(255,255,255,0.1);">
+    <p style="color:#666;">&copy; 2026 Vaal AI Empire. Built in the Vaal. Built for Africa.</p>
+  </footer>
 
-        // Load Stripe configuration
-        fetch('/config')
-            .then(response => response.json())
-            .then(config => {
-                publishableKey = config.publishableKey;
-                priceIds = config.prices;
-                stripe = Stripe(publishableKey);
-            })
-            .catch(error => {
-                console.error('Error loading Stripe config:', error);
-                alert('Error loading payment configuration. Please refresh the page.');
-            });
+  <script>
+  (() => {
+    'use strict';
 
-        // Handle subscription button clicks
-        document.querySelectorAll('.subscribe-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-=======
-    <link rel="stylesheet" href="css/styles.css">
-    <script src="https://js.stripe.com/v3/"></script>
-</head>
-<body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="logo">⚡ Vaal AI Empire</div>
-            <ul class="nav-menu">
-                <li><a href="index.html">Home</a></li>
-                <li><a href="index.html#engines">Engines</a></li>
-                <li><a href="index.html#features">Features</a></li>
-                <li><a href="pricing.html">Pricing</a></li>
-            </ul>
-        </div>
-    </nav>
+    let config = null; // populated from /config on load
 
-    <section class="hero" style="min-height: 60vh;">
-        <div class="hero-content">
-            <h1 class="hero-title">
-                <span class="gradient-text">Choose Your Empire</span>
-            </h1>
-            <p class="hero-subtitle">
-                7-day free trial. No credit card required. Cancel anytime.
-            </p>
-        </div>
-    </section>
-
-    <section style="padding: 4rem 2rem;">
-        <div class="pricing-cards" style="max-width: 1000px; margin: 0 auto;">
-            <!-- Vaal Starter -->
-            <div class="pricing-card">
-                <h3>Vaal Starter</h3>
-                <div class="price">R999<span>/month</span></div>
-                <p class="plan-desc">Essential AI for growing SMEs</p>
-                <ul class="plan-features">
-                    <li>✅ Financial Sentinel (Basic)</li>
-                    <li>✅ Tax recovery monitoring</li>
-                    <li>✅ Guardian Engine alerts</li>
-                    <li>✅ Monthly reports</li>
-                    <li>✅ Email support</li>
-                </ul>
-                <button class="btn-pricing" data-plan="starter">Start Free Trial</button>
-                <p style="margin-top: 1rem; font-size: 0.875rem; color: #999;">
-                    7-day trial, then R999/month
-                </p>
-            </div>
-
-            <!-- Vaal Empire -->
-            <div class="pricing-card featured">
-                <div class="popular-badge">🔥 Most Popular</div>
-                <h3>Vaal Empire</h3>
-                <div class="price">R2,999<span>/month</span></div>
-                <p class="plan-desc">Full autonomous AI empire</p>
-                <ul class="plan-features">
-                    <li>✅ All Starter features</li>
-                    <li>✅ Financial Sentinel (Advanced)</li>
-                    <li>✅ Guardian Engine (Real-time)</li>
-                    <li>✅ Talent Accelerator (Full)</li>
-                    <li>✅ Self-healing infrastructure</li>
-                    <li>✅ Priority support</li>
-                    <li>✅ Custom integrations</li>
-                    <li>✅ Dedicated success manager</li>
-                </ul>
-                <button class="btn-pricing primary" data-plan="empire">Start Free Trial</button>
-                <p style="margin-top: 1rem; font-size: 0.875rem; color: #999;">
-                    7-day trial, then R2,999/month
-                </p>
-            </div>
-        </div>
-
-        <div style="text-align: center; margin-top: 3rem; padding: 2rem; background: rgba(0,255,136,0.05); border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto;">
-            <h3 style="color: #00ff88; margin-bottom: 1rem;">All Plans Include:</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                <div>🔒 Secure payments via Stripe</div>
-                <div>📊 Real-time analytics</div>
-                <div>🚫 No setup fees</div>
-                <div>✅ Cancel anytime</div>
-                <div>🇿🇦 Built for South Africa</div>
-                <div>💸 Money-back guarantee</div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="footer">
-        <div class="footer-bottom">
-            <p>⚡ Built in the Vaal. Built for Africa. 🇿🇦</p>
-        </div>
-    </footer>
-
-    <script>
-        let stripe;
-        let priceIds = {};
-
-        // Load Stripe config
-        fetch('/config')
-            .then(res => res.json())
-            .then(config => {
-                stripe = Stripe(config.publishableKey);
-                priceIds = config.prices;
-            })
-            .catch(err => {
-                console.error('Config error:', err);
-                alert('Error loading payment system. Please refresh.');
-            });
-
-        // Handle checkout
-        document.querySelectorAll('.btn-pricing').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
- main
-                const plan = e.target.dataset.plan;
-                const priceId = priceIds[plan];
-
-                if (!priceId) {
- feature/stripe-checkout
-                    alert('Price configuration error. Please contact support.');
-                    return;
-                }
-
-                // Disable button and show loading state
-
-                    alert('Configuration error. Contact support.');
-                    return;
-                }
-
- main
-                e.target.disabled = true;
-                e.target.textContent = 'Loading...';
-
-                try {
- feature/stripe-checkout
-                    // Create checkout session
-                    const response = await fetch('/create-checkout-session', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-
-                    const response = await fetch('/create-checkout-session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
- main
-                        body: JSON.stringify({ priceId }),
-                    });
-
-                    const session = await response.json();
- feature/stripe-checkout
-
-                    if (session.error) {
-                        throw new Error(session.error);
-                    }
-
-                    // Redirect to Checkout
-                    const result = await stripe.redirectToCheckout({
-                        sessionId: session.sessionId,
-                    }))
-
-                    const result = await stripe.redirectToCheckout({ sessionId: session.sessionId });
- main
-
-                    if (result.error) {
-                        throw new Error(result.error.message);
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert('Payment error: ' + error.message);
-                    e.target.disabled = false;
-                    e.target.textContent = 'Start Free Trial';
-                }
-            });
+    // ── Load PayFast config from server ────────────────────────────────────
+    async function loadConfig() {
+      try {
+        const res = await fetch('/config');
+        if (!res.ok) throw new Error(`Failed to load config (HTTP ${res.status})`);
+        config = await res.json();
+      } catch (err) {
+        console.error('[Config]', err);
+        document.querySelectorAll('.subscribe-btn').forEach(btn => {
+          btn.disabled     = true;
+          btn.textContent  = 'Payment Unavailable';
         });
-    </script>
+      }
+    }
+
+    // ── Submit a hidden form to PayFast ─────────────────────────────────────
+    // PayFast uses a browser form POST — not a fetch-based session redirect.
+    // The server generates the signed payload; we POST it directly to PayFast.
+    function redirectToPayFast(paymentData, payfastUrl) {
+      const form = document.createElement('form');
+      form.method  = 'post';
+      form.action  = payfastUrl;
+
+      Object.entries(paymentData).forEach(([key, value]) => {
+        const input   = document.createElement('input');
+        input.type    = 'hidden';
+        input.name    = key;
+        input.value   = String(value);
+        form.appendChild(input);
+      });
+
+      // Form must be in the DOM to submit in all browsers
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    // ── Handle plan button click ────────────────────────────────────────────
+    async function subscribe(plan) {
+      if (!config) {
+        alert('Payment system not ready. Please refresh the page.');
+        return;
+      }
+
+      const btn          = document.querySelector(`[data-plan="${plan}"]`);
+      const originalText = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+      try {
+        const res = await fetch('/create-payment', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ plan }),
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Server error (HTTP ${res.status})`);
+        }
+
+        const data = await res.json();
+
+        if (!data.success)     throw new Error(data.error || 'Payment creation failed');
+        if (!data.payfastUrl)  throw new Error('No PayFast URL returned from server');
+        if (!data.paymentData) throw new Error('No payment data returned from server');
+
+        // Hand off to PayFast — browser will navigate away
+        redirectToPayFast(data.paymentData, data.payfastUrl);
+
+      } catch (err) {
+        console.error('[Checkout]', err);
+        alert(`Checkout error: ${err.message}`);
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
+    }
+
+    // ── Boot ────────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadConfig();
+
+      document.querySelectorAll('.subscribe-btn').forEach(btn => {
+        btn.addEventListener('click', () => subscribe(btn.dataset.plan));
+      });
+    });
+  })();
+  </script>
+
 </body>
 </html>

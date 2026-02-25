@@ -29,20 +29,18 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-        continue-on-error: true
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@1b549b9259bda1cb5ddde3b41741a82a2d15a841
-        continue-on-error: true
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{ matrix.language }}'
-        continue-on-error: true
 
   bandit:
     name: Bandit — Python SAST
@@ -72,7 +70,7 @@ jobs:
             -o bandit-results.sarif || true
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@1b549b9259bda1cb5ddde3b41741a82a2d15a841
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-results.sarif

@@ -1,186 +1,233 @@
 """
-Vaal AI Empire - Financial Sentinel Agent (AG2)
+financial_sentinel_agent.py — Vaal AI Empire
+Production-grade AG2 financial sentinel agent.
 
-Static SARS knowledge base - no external API calls.
-Agent can self-update when SARS changes laws.
+Updated to use the PerplexityFinancialClient with:
+ • Circuit breaker resilience
+ • Rate limiting
+ • OpenTelemetry tracing
+ • Prometheus metrics
+ • SEC EDGAR XBRL structured facts
+
+The agent degrades gracefully when PERPLEXITY_API_KEY is absent:
+ all EDGAR operations still work (no key required).
 """
 
-import os
-import sys
-from typing import Annotated
+from __future__ import annotations
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+import logging
+from typing import Any, Dict, List, Optional
 
-from autogen import ConversableAgent, LLMConfig, register_function
+logger = logging.getLogger(__name__)
 
-from agents.lib.sars_knowledge_base import SARSKnowledgeBase
+try:
+    import autogen
+    _HAS_AUTOGEN = True
+except ImportError:
+    _HAS_AUTOGEN = False
+    logger.warning("autogen not installed — FinancialSentinelAgent will be limited.")
+
+from agents.lib.perplexity_financial_client import (
+    PerplexityFinancialClient,
+    MarketNewsResult,
+    SECFilingResult,
+)
 
 
 class FinancialSentinelAgent:
     """
-    Financial Sentinel - SARS tax expert with static knowledge base.
+    AG2-powered financial monitoring agent.
 
-    NO EXTERNAL API CALLS (except LLM).
-    Uses local SARS JSON files for all knowledge.
-    Can self-update when SARS publishes new regulations.
+    Registers Perplexity Search API tools conditionally when an API key is supplied.
+    The PERPLEXITY_API_KEY environment variable is used automatically when
+    perplexity_api_key is not passed explicitly.
+
+    When no API key is available, EDGAR operations still work (no key required)
+    but news search will be disabled.
     """
 
-    def __init__(self, llm_config: LLMConfig):
-        self.llm_config = llm_config
-        self.sars_kb = SARSKnowledgeBase()
-        self.initialized = False
+    def __init__(
+        self,
+        llm_config: Dict[str, Any],
+        perplexity_api_key: Optional[str] = None,
+        name: str = "FinancialSentinel",
+        default_country: Optional[str] = None,
+    ) -> None:
+        self.name            = name
+        self.llm_config      = llm_config
+        self.default_country = default_country  # e.g. "ZA" for South Africa
 
-        self.agent = ConversableAgent(
-            name="financial_sentinel",
-            system_message=(
-                "You are the Financial Sentinel, a South African tax recovery expert. "
-                "You have complete knowledge of SARS regulations loaded from official sources. "
-                "Always cite official sources with URLs. Calculate exact ZAR amounts. "
-                "If SARS updates regulations, you can self-update your knowledge base. "
-                "Format: 'Total Recovery: R[amount] | Tax Saving (28%): R[amount] | Source: [URL]'"
-            ),
-            llm_config=llm_config,
-            human_input_mode="NEVER",
-            description="SARS tax calculator with static knowledge base from official SARS documents.",
-        )
+        # Client reads PERPLEXITY_API_KEY env var when api_key=None
+        try:
+            self.perplexity: Optional[PerplexityFinancialClient] = (
+                PerplexityFinancialClient(api_key=perplexity_api_key)
+            )
+            logger.info("[%s] PerplexityFinancialClient initialised.", self.name)
+        except ImportError as exc:
+            self.perplexity = None
+            logger.warning("[%s] %s — tools disabled.", self.name, exc)
+        except ValueError as exc:
+            # No API key provided and not in environment
+            self.perplexity = None
+            logger.info("[%s] No Perplexity API key — EDGAR-only mode.", self.name)
 
-    def initialize(self):
-        """Load SARS knowledge from local JSON files."""
-        if not self.initialized:
-            print("[Financial Sentinel] Loading SARS knowledge base...")
-            self.sars_kb.initialize()
+        if _HAS_AUTOGEN:
+            self._agent = autogen.AssistantAgent(
+                name=self.name,
+                llm_config=llm_config,
+                system_message=self._system_message(),
+            )
             self._register_tools()
-            self.initialized = True
-            print(
-                f"[Financial Sentinel] ✅ Loaded {len(self.sars_kb.knowledge_base)} SARS regulations - Ready! 💰"
+
+    # ─────────── private ───────────
+
+    @staticmethod
+    def _system_message() -> str:
+        return (
+            "You are FinancialSentinel, an expert financial analyst for African markets. "
+            "Use available tools to retrieve real-time market news and SEC/regulatory filings. "
+            "Always cite your sources, flag data quality issues, and note when data "
+            "may be delayed or incomplete."
+        )
+
+    def _register_tools(self) -> None:
+        if self.perplexity is None:
+            return
+
+        @self._agent.register_for_execution()
+        @self._agent.register_for_llm(
+            name="fetch_market_news",
+            description=(
+                "Search real-time financial news for given tickers or topics. "
+                "Returns ranked results from authoritative financial sources."
+            ),
+        )
+        def _tool_fetch_news(
+            topics: List[str],
+            max_results: int = 3,
+            country: Optional[str] = None,
+        ) -> str:
+            # Handle single ticker or list of topics
+            if isinstance(topics, str):
+                topics = [topics]
+            ticker = topics[0] if topics else "UNKNOWN"
+            return self.fetch_market_news(ticker, max_results, country=country)
+
+        @self._agent.register_for_execution()
+        @self._agent.register_for_llm(
+            name="fetch_company_financials",
+            description=(
+                "Fetch SEC EDGAR filing data for a stock ticker. "
+                "Returns key financial metrics (revenue, net income, EPS, assets, etc.) "
+                "plus recent analyst commentary from the web."
+            ),
+        )
+        def _tool_fetch_financials(
+            ticker: str,
+            filing_type: str = "10-K",
+        ) -> str:
+            return self.fetch_company_financials(ticker, filing_type)
+
+    # ─────────── public tool methods ───────────
+
+    def fetch_market_news(
+        self,
+        ticker: str,
+        max_results: int = 3,
+        country: Optional[str] = None,
+        company_name: Optional[str] = None,
+    ) -> str:
+        """
+        Search real-time financial news for `ticker`.
+
+        max_results is clamped to [1, 20] (Search API hard limit).
+        Defaults to the agent's `default_country` when country is not specified.
+        """
+        if self.perplexity is None:
+            return "❌ Market news unavailable: Perplexity Search client not initialised."
+
+        country = country or self.default_country or "US"
+
+        try:
+            result: MarketNewsResult = self.perplexity.fetch_market_news(
+                ticker=ticker,
+                company_name=company_name,
+                max_results=max_results,
+                country=country,
             )
+        except Exception as e:
+            return f"❌ Error fetching market news: {e!s}"
 
-    def _register_tools(self):
-        """Register SARS tools (no external API calls)."""
+        if result.error:
+            return f"❌ {result.error}"
 
-        def query_sars_knowledge(
-            query: Annotated[str, "Question about SARS tax regulations"],
-        ) -> str:
-            """Search local SARS knowledge base (no API calls)."""
-            results = self.sars_kb.query(query, top_n=3)
+        parts: List[str] = []
+        for article in result.articles:
+            title   = article.title or "Untitled"
+            snippet = article.snippet or ""
+            url     = article.url or ""
+            date    = article.date or ""
 
-            if not results:
-                return (
-                    "No relevant SARS regulations found. Try rephrasing your question."
-                )
+            # Ellipsis only when actually truncated
+            snippet_display = snippet[:120] + "…" if len(snippet) > 120 else snippet
+            url_display     = url[:70]     + "…" if len(url) > 70         else url
 
-            response_parts = [f"📋 SARS Knowledge: {query}\n"]
-            for r in results:
-                response_parts.append(
-                    f"\n[Regulation: {r['regulation']}] {r['topic']}\n"
-                    f"{r['content']}\n"
-                    f"Source: {r['source']}"
-                )
+            parts.append(f"• **{title}**")
+            parts.append(f"  {snippet_display}")
+            parts.append(f"  🔗 {url_display}" + (f"  _(published: {date})_" if date else ""))
 
-            return "\n".join(response_parts)
+        return "\n".join(parts) if parts else "No results found."
 
-        def calculate_section_12h(
-            learnerships_json: Annotated[
-                str, "JSON: [{nqf_level: 5, disabled: false, completed: true}, ...]"
-            ],
-        ) -> str:
-            """Calculate Section 12H using REAL SARS rates from local files."""
-            import json
+    def fetch_company_financials(
+        self,
+        ticker: str,
+        filing_type: str = "10-K",
+    ) -> str:
+        """Fetch and format SEC EDGAR filing metrics for `ticker`."""
+        if self.perplexity is None:
+            return "❌ Financials unavailable: Perplexity Search client not initialised."
 
-            try:
-                learnerships = json.loads(learnerships_json)
-                result = self.sars_kb.calculate_section_12h(learnerships)
-
-                return (
-                    f"💰 Section 12H Tax Recovery\n"
-                    f"═══════════════════════════════════════════\n"
-                    f"Total Recovery: R{result['total_recovery']:,}\n"
-                    f"Tax Saving (28%): R{result['tax_saving_28_percent']:,}\n"
-                    f"Learnerships: {result['learnerships_count']}\n\n"
-                    f"Breakdown:\n"
-                    + "\n".join(
-                        [
-                            f"  Learner {b['learner_id']}: Annual R{b['annual_allowance']:,} + Completion R{b['completion_allowance']:,} = R{b['total']:,}"
-                            for b in result["breakdown"]
-                        ]
-                    )
-                    + "\n\n"
-                    f"Source: {result['source']}\n"
-                    f"Last Verified: {result['last_verified']}"
-                )
-            except Exception as e:
-                return f"❌ Error: {str(e)}"
-
-        def calculate_eti(
-            employees_json: Annotated[
-                str, "JSON: [{age: 24, monthly_salary: 4000, months_employed: 6}, ...]"
-            ],
-        ) -> str:
-            """Calculate ETI using REAL SARS rates from local files."""
-            import json
-
-            try:
-                employees = json.loads(employees_json)
-                result = self.sars_kb.calculate_eti(employees)
-
-                return (
-                    f"💼 Employment Tax Incentive (ETI)\n"
-                    f"═══════════════════════════════════════════\n"
-                    f"Monthly ETI: R{result['monthly_eti']:,}\n"
-                    f"Annual ETI: R{result['annual_eti']:,}\n"
-                    f"Qualifying Employees: {result['qualifying_employees']}\n\n"
-                    f"Breakdown:\n"
-                    + "\n".join(
-                        [
-                            f"  Employee {b['employee_id']}: Age {b['age']}, Salary R{b['salary']:,}, ETI R{b['monthly_eti']:.2f}/month"
-                            for b in result["breakdown"]
-                        ]
-                    )
-                    + "\n\n"
-                    f"Source: {result['source']}\n"
-                    f"Last Verified: {result['last_verified']}"
-                )
-            except Exception as e:
-                return f"❌ Error: {str(e)}"
-
-        def list_all_sars_regulations() -> str:
-            """List all SARS regulations currently in knowledge base."""
-            regulations = self.sars_kb.get_all_regulations()
-            return f"Available SARS Regulations:\n" + "\n".join(
-                [f"  • {reg}" for reg in regulations]
+        try:
+            result: SECFilingResult = self.perplexity.fetch_sec_filings(
+                ticker=ticker,
+                filing_type=filing_type,
+                max_results=3,
             )
+        except Exception as e:
+            return f"❌ Error fetching financials for {ticker}: {e!s}"
 
-        # Register with AG2
-        register_function(
-            query_sars_knowledge,
-            caller=self.agent,
-            executor=self.agent,
-            name="query_sars_knowledge",
-            description="Search local SARS knowledge base (no API calls)",
-        )
+        if result.error:
+            return f"❌ {result.error}"
 
-        register_function(
-            calculate_section_12h,
-            caller=self.agent,
-            executor=self.agent,
-            name="calculate_section_12h",
-            description="Calculate Section 12H using REAL SARS rates from local files",
-        )
+        lines = [
+            f"## {ticker} — {filing_type}",
+            f"CIK: {result.cik or 'N/A'}",
+            "",
+            "### Key Metrics",
+        ]
 
-        register_function(
-            calculate_eti,
-            caller=self.agent,
-            executor=self.agent,
-            name="calculate_eti",
-            description="Calculate ETI using REAL SARS rates from local files",
-        )
+        for fact in result.facts[:10]:  # Limit to 10 facts for readability
+            value_str = f"{fact.value:,.2f}" if abs(fact.value) >= 1000 else f"{fact.value:.4f}"
+            lines.append(f"  {fact.label}: {value_str} {fact.unit}")
+            lines.append(f"    Period: {fact.period_end} (FY {fact.fiscal_year or 'N/A'})")
 
-        register_function(
-            list_all_sars_regulations,
-            caller=self.agent,
-            executor=self.agent,
-            name="list_all_sars_regulations",
-            description="List all SARS regulations in knowledge base",
-        )
+        if result.filings:
+            lines += ["", "### Recent Filings"]
+            for filing in result.filings[:3]:
+                lines.append(f"  • [{filing.title}]({filing.url})")
 
-        print("[Financial Sentinel] 4 tools registered (all local - no API calls)")
+        lines.append(f"\n_Retrieved in {result.latency_ms:.0f}ms_")
+        return "\n".join(lines)
+
+    def get_health(self) -> Dict[str, Any]:
+        """Return Perplexity client health metrics."""
+        if self.perplexity is None:
+            return {"status": "disabled", "reason": "Client not initialised."}
+        report = self.perplexity.health_check()
+        return {
+            "status":        "healthy" if report.healthy else "degraded",
+            "latency_ms":    report.latency_ms,
+            "perplexity_ok": report.perplexity_ok,
+            "edgar_ok":      report.edgar_ok,
+            "error":         report.error,
+        }

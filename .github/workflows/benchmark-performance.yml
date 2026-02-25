@@ -83,8 +83,10 @@ jobs:
 
       - name: Pull Ollama models
         run: |
-          ollama pull qwen2.5-coder:1.5b || echo "::warning::Failed to pull qwen2.5-coder:1.5b"
-          ollama pull phi4 || echo "::warning::Failed to pull phi4"
+          timeout 300 ollama pull qwen2.5-coder:1.5b \
+            || echo "::warning::Failed to pull qwen2.5-coder:1.5b"
+          timeout 300 ollama pull phi4 \
+            || echo "::warning::Failed to pull phi4"
           ollama list || true
         continue-on-error: true
 
@@ -98,12 +100,11 @@ jobs:
           python3 << 'PYEOF' || true
           import os
           apis = {
-              "GLM5": os.getenv("GLM5_API_KEY"),
-              "KIMI": os.getenv("KIMI_API_KEY"),
+              "GLM5":      os.getenv("GLM5_API_KEY"),
+              "KIMI":      os.getenv("KIMI_API_KEY"),
               "DASHSCOPE": os.getenv("DASHSCOPE_API_KEY"),
           }
-          has_cloud_api = any(apis.values())
-          has_any = has_cloud_api
+          has_any = any(apis.values())
           print(f"Has any backend: {has_any}")
           with open(os.environ.get("GITHUB_OUTPUT", "/dev/null"), "a") as f:
               f.write(f"has_any_backend={'true' if has_any else 'false'}\n")
@@ -127,7 +128,7 @@ jobs:
           else
             echo "::notice::benchmark_executor.py not found — skipping"
           fi
-          
+
           if [ ! -f benchmark_results/report.json ]; then
             echo '{"timestamp":"'$(date -Iseconds)'","summary":{"total_tests":0,
               "passed_tests":0,"failed_tests":0,"overall_score":0,
@@ -140,7 +141,7 @@ jobs:
       - name: Run test coverage
         run: |
           pip install coverage || true
-          
+
           if [ -d "agents/tests" ]; then
             coverage run -m pytest agents/tests/ --tb=short -q || true
             coverage xml -o coverage.xml || true
@@ -163,15 +164,15 @@ jobs:
           python3 << 'PYEOF' || true
           import json, os
           from pathlib import Path
-          
+
           report_path = Path("benchmark_results/report.json")
           if not report_path.exists():
               print("No benchmark report found")
               exit(0)
-          
+
           with open(report_path) as f:
               data = json.load(f)
-          
+
           summary = data.get("summary", {})
           lines = [
               "## 📊 Benchmark Results\n",
@@ -183,10 +184,10 @@ jobs:
               f"| Overall Score        | {summary.get('overall_score', 0):.1f}% |",
               f"| Avg Execution Time   | {summary.get('avg_execution_time_ms', 0):.2f}ms |",
           ]
-          
+
           output = "\n".join(lines)
           print(output)
-          
+
           sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
           with open(sf, "a") as f:
               f.write(output + "\n")
@@ -215,7 +216,13 @@ jobs:
     name: Docker Benchmark
     runs-on: ubuntu-latest
     needs: benchmark
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # FIX: was `push || workflow_dispatch` — pull_request was excluded, causing
+    # the check to always show as "Skipped" in every PR. Added pull_request so
+    # the Docker image is validated on every PR, push, and manual trigger.
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -225,7 +232,9 @@ jobs:
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
 
       - name: Build benchmark image
-        run: docker compose -f docker-compose.benchmark.yml build || echo "::warning::Docker compose build failed"
+        run: |
+          docker compose -f docker-compose.benchmark.yml build \
+            || echo "::warning::Docker compose build failed"
         continue-on-error: true
 
       - name: Run benchmark container
@@ -235,7 +244,8 @@ jobs:
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
         run: |
           export COMPOSE_PROJECT_NAME=vaal-bench
-          docker compose -f docker-compose.benchmark.yml up --abort-on-container-exit || true
+          docker compose -f docker-compose.benchmark.yml up \
+            --abort-on-container-exit || true
         continue-on-error: true
 
       - name: Upload Docker benchmark results
@@ -258,7 +268,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Download benchmark results
-        uses: actions/download-artifact@fa0a91b85d4f404e444306234af8b54d09e4b4a
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: benchmark-results
           path: current_results
@@ -285,11 +295,11 @@ jobs:
               console.log('Could not read report:', e.message);
               return;
             }
-            
+
             const s = report.summary || {};
             const score = (s.overall_score || 0).toFixed(1);
             const badge = s.overall_score >= 85 ? '✅' : '⚠️';
-            
+
             const body = [
               '## Benchmark Results',
               '',
@@ -302,7 +312,7 @@ jobs:
               '',
               'Benchmarks completed successfully.',
             ].join('\n');
-            
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

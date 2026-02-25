@@ -2,6 +2,21 @@
 // Inspired by Opik's comprehensive tracing architecture
 
 const crypto = require('crypto');
+const { sanitizeLog, validateMetadata, logStructured } = require('../utils/sanitizeLog');
+
+// Allowed metadata keys for trace/span metadata (prevents property injection)
+const TRACE_METADATA_ALLOWED_KEYS = [
+  'method', 'path', 'userId', 'sessionId', 'userAgent', 
+  'ipHash', 'duration', 'status', 'error', 'component',
+  'project', 'environment', 'statusCode'
+];
+
+const SPAN_METADATA_ALLOWED_KEYS = [
+  'operation', 'component', 'error', 'http.method', 'http.status_code',
+  'db.operation', 'db.statement', 'rpc.method', 'messaging.destination',
+  'model', 'provider', 'inputTokens', 'prompt', 'output', 'outputTokens', 
+  'totalTokens', 'cost'
+];
 
 class VaalTracer {
   constructor(config = {}) {
@@ -25,13 +40,18 @@ class VaalTracer {
    */
   startTrace(name, metadata = {}) {
     const traceId = this.generateId();
+    
+    // SECURITY: Sanitize name and validate metadata to prevent injection
+    const sanitizedName = sanitizeLog(String(name || 'unnamed'));
+    const safeMetadata = validateMetadata(metadata, TRACE_METADATA_ALLOWED_KEYS);
+    
     const trace = {
       id: traceId,
-      name,
+      name: sanitizedName,
       startTime: Date.now(),
       endTime: null,
       metadata: {
-        ...metadata,
+        ...safeMetadata,
         project: this.config.projectName,
         environment: this.config.environment
       },
@@ -41,7 +61,15 @@ class VaalTracer {
     };
 
     this.traces.set(traceId, trace);
-    console.log(`⚡ Trace started: ${name} [${traceId}]`);
+    
+    // SECURITY: Use structured logging instead of template literals
+    // This prevents log injection by not interpolating user input
+    // codeql[js/log-injection] User input is sanitized via sanitizeLog and passed as structured data, not interpolated
+    logStructured('info', 'trace_started', {
+      traceId,
+      name: sanitizedName
+    });
+    
     return traceId;
   }
 
@@ -53,7 +81,11 @@ class VaalTracer {
   endTrace(traceId, result = {}) {
     const trace = this.traces.get(traceId);
     if (!trace) {
-      console.warn(`Trace not found: ${traceId}`);
+      // SECURITY: Use structured logging
+      // codeql[js/log-injection] User input is sanitized via sanitizeLog before logging
+      logStructured('warn', 'trace_not_found', {
+        traceId: sanitizeLog(String(traceId))
+      });
       return;
     }
 
@@ -70,7 +102,14 @@ class VaalTracer {
       });
     }
 
-    console.log(`✅ Trace completed: ${trace.name} [${traceId}] - ${trace.duration}ms`);
+    // SECURITY: Use structured logging
+    // codeql[js/log-injection] Values come from internal trace object, not direct user input
+    logStructured('info', 'trace_completed', {
+      traceId,
+      name: trace.name,
+      duration: trace.duration,
+      status: trace.status
+    });
   }
 
   /**
@@ -83,18 +122,27 @@ class VaalTracer {
   startSpan(traceId, name, metadata = {}) {
     const trace = this.traces.get(traceId);
     if (!trace) {
-      console.warn(`Trace not found: ${traceId}`);
+      // SECURITY: Use structured logging
+      // codeql[js/log-injection] User input is sanitized via sanitizeLog before logging
+      logStructured('warn', 'trace_not_found_for_span', {
+        traceId: sanitizeLog(String(traceId))
+      });
       return null;
     }
 
     const spanId = this.generateId();
+    
+    // SECURITY: Sanitize name and validate metadata
+    const sanitizedName = sanitizeLog(String(name || 'unnamed'));
+    const safeMetadata = validateMetadata(metadata, SPAN_METADATA_ALLOWED_KEYS);
+    
     const span = {
       id: spanId,
       traceId,
-      name,
+      name: sanitizedName,
       startTime: Date.now(),
       endTime: null,
-      metadata,
+      metadata: safeMetadata,
       status: 'running',
       error: null
     };
@@ -126,10 +174,13 @@ class VaalTracer {
    * @param {object} data
    */
   recordMetric(name, data = {}) {
+    const sanitizedName = sanitizeLog(String(name || 'unnamed'));
+    const safeData = validateMetadata(data, [...TRACE_METADATA_ALLOWED_KEYS, ...SPAN_METADATA_ALLOWED_KEYS]);
+    
     const metric = {
       timestamp: Date.now(),
-      name,
-      data,
+      name: sanitizedName,
+      data: safeData,
       project: this.config.projectName
     };
 
@@ -169,11 +220,13 @@ class VaalTracer {
     }
 
     if (filters.name) {
-      traces = traces.filter(t => t.name.includes(filters.name));
+      // SECURITY: Sanitize filter name before using in includes
+      const sanitizedFilter = sanitizeLog(String(filters.name));
+      traces = traces.filter(t => t.name && t.name.includes(sanitizedFilter));
     }
 
     if (filters.limit) {
-      traces = traces.slice(0, filters.limit);
+      traces = traces.slice(0, parseInt(filters.limit));
     }
 
     return traces.map(trace => ({
@@ -191,15 +244,23 @@ class VaalTracer {
     let metrics = [...this.metrics];
 
     if (filters.name) {
-      metrics = metrics.filter(m => m.name === filters.name);
+      // SECURITY: Sanitize filter name
+      const sanitizedFilter = sanitizeLog(String(filters.name));
+      metrics = metrics.filter(m => m.name === sanitizedFilter);
     }
 
     if (filters.since) {
-      metrics = metrics.filter(m => m.timestamp >= filters.since);
+      const since = parseInt(filters.since);
+      if (!isNaN(since)) {
+        metrics = metrics.filter(m => m.timestamp >= since);
+      }
     }
 
     if (filters.limit) {
-      metrics = metrics.slice(-filters.limit);
+      const limit = parseInt(filters.limit);
+      if (!isNaN(limit)) {
+        metrics = metrics.slice(-limit);
+      }
     }
     
     return metrics;
@@ -212,11 +273,14 @@ class VaalTracer {
    * @returns {string} spanId
    */
   trackLLMCall(traceId, params) {
+    // SECURITY: Validate params before using
+    const safeParams = validateMetadata(params || {}, SPAN_METADATA_ALLOWED_KEYS);
+    
     const spanId = this.startSpan(traceId, 'llm_call', {
-      model: params.model,
-      provider: params.provider,
-      inputTokens: params.inputTokens,
-      prompt: params.prompt
+      model: safeParams.model,
+      provider: safeParams.provider,
+      inputTokens: safeParams.inputTokens,
+      prompt: safeParams.prompt
     });
 
     return spanId;
@@ -228,16 +292,19 @@ class VaalTracer {
    * @param {object} response
    */
   completeLLMCall(spanId, response) {
+    // SECURITY: Validate response before using
+    const safeResponse = validateMetadata(response || {}, SPAN_METADATA_ALLOWED_KEYS);
+    
     this.endSpan(spanId, {
-      output: response.output,
-      outputTokens: response.outputTokens,
-      totalTokens: response.totalTokens,
-      cost: response.cost
+      output: safeResponse.output,
+      outputTokens: safeResponse.outputTokens,
+      totalTokens: safeResponse.totalTokens,
+      cost: safeResponse.cost
     });
 
     this.recordMetric('llm_call_completed', {
-      outputTokens: response.outputTokens,
-      cost: response.cost
+      outputTokens: safeResponse.outputTokens,
+      cost: safeResponse.cost
     });
   }
 
@@ -280,12 +347,20 @@ class VaalTracer {
 
     for (const [id, trace] of this.traces.entries()) {
       if (trace.startTime < cutoff) {
+        // Clean up associated spans
+        if (trace.spans) {
+          trace.spans.forEach(spanId => this.spans.delete(spanId));
+        }
         this.traces.delete(id);
         removed++;
       }
     }
 
-    console.log(`🧹 Cleaned up ${removed} old traces`);
+    // SECURITY: Use structured logging
+    logStructured('info', 'cleanup_completed', {
+      removed,
+      cutoff: new Date(cutoff).toISOString()
+    });
   }
 }
 
