@@ -1,4 +1,3 @@
- digital-preeminence-fixes
 /**
  * Centralized log sanitization to prevent log injection attacks.
  * Strips control characters that could manipulate log parsers.
@@ -7,31 +6,6 @@
  * @module server/utils/sanitizeLog
  * @security Prevents log injection attacks from user-supplied data
  */
-
-/**
- * Sanitizes a value for safe logging by removing control characters.
- * 
- * @param {*} value - The value to sanitize
- * @returns {string} - Sanitized string safe for logging
- * 
- * @example
- * // Basic usage
- * sanitizeLog('normal text') // 'normal text'
- * 
- * @example
- * // Log injection prevention
- * sanitizeLog('user input\nFAKE LOG ENTRY') // 'user input_FAKE LOG ENTRY'
- * 
- * @example
- * // Object sanitization
- * sanitizeLog({ email: 'user@test.com', token: 'abc\nmalicious' })
- * // '{"email":"user@test.com","token":"abc_malicious"}'
- */
-function sanitizeLog(value) {
-
-// Vaal AI Empire - Log Sanitization Utility
-// Prevents log injection and property injection attacks
-// POPIA-compliant: Does not alter PII values, only strips control characters
 
 /**
  * Sanitize a string value by removing control characters
@@ -54,26 +28,10 @@ function sanitizeString(str) {
 function sanitizeLog(value, options = {}) {
   const { allowedKeys = null } = options;
   
- main
   // Handle null/undefined
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
   
- digital-preeminence-fixes
-  // Handle objects (including arrays)
-  if (typeof value === 'object') {
-    try {
-      // Recursively sanitize object values
-      const sanitized = sanitizeObject(value);
-      return JSON.stringify(sanitized).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    } catch (e) {
-      // Circular reference or other JSON error
-      return '[Object: non-serializable]';
-    }
-  }
-  
-  // Handle primitives
-
   // Handle primitives
   if (typeof value === 'string') {
     return sanitizeString(value);
@@ -93,20 +51,10 @@ function sanitizeLog(value, options = {}) {
   }
   
   // Fallback for other types
- main
   return String(value).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
 }
 
 /**
- digital-preeminence-fixes
- * Recursively sanitizes object properties.
- * 
- * @param {Object|Array} obj - Object to sanitize
- * @param {Set} seen - Set of seen objects (for circular reference detection)
- * @returns {Object|Array} - Sanitized object
- */
-function sanitizeObject(obj, seen = new Set()) {
-
  * Recursively sanitize object values with key whitelisting.
  * Uses Object.create(null) to prevent prototype pollution.
  * 
@@ -119,37 +67,12 @@ function sanitizeObject(obj, seen = new Set()) {
 function sanitizeObject(obj, seen = new Set(), options = {}) {
   const { allowedKeys = null } = options;
   
- main
   // Prevent circular references
   if (seen.has(obj)) return '[Circular]';
   seen.add(obj);
   
   // Handle arrays
   if (Array.isArray(obj)) {
- digital-preeminence-fixes
-    return obj.map(item => {
-      if (typeof item === 'object' && item !== null) {
-        return sanitizeObject(item, seen);
-      }
-      return typeof item === 'string' 
-        ? item.replace(/[\r\n\t\x00-\x1f\x7f]/g, '_')
-        : item;
-    });
-  }
-  
-  // Handle objects
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    // Sanitize key
-    const sanitizedKey = key.replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    
-    // Sanitize value
-    if (typeof value === 'string') {
-      result[sanitizedKey] = value.replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    } else if (typeof value === 'object' && value !== null) {
-      result[sanitizedKey] = sanitizeObject(value, seen);
-    } else {
-
     return obj.map(item => 
       typeof item === 'object' && item !== null 
         ? sanitizeObject(item, seen, options)
@@ -186,7 +109,6 @@ function sanitizeObject(obj, seen = new Set(), options = {}) {
       result[sanitizedKey] = sanitizeObject(value, seen, options);
     } else {
       // codeql[js/prototype-pollution-assignment] Key was sanitized and dangerous keys filtered
- main
       result[sanitizedKey] = value;
     }
   }
@@ -195,7 +117,6 @@ function sanitizeObject(obj, seen = new Set(), options = {}) {
 }
 
 /**
- digital-preeminence-fixes
  * Creates a sanitized log entry object.
  * POPIA-compliant: Hashes sensitive fields instead of logging raw values.
  * 
@@ -254,12 +175,7 @@ const safeLog = {
   }
 };
 
-module.exports = {
-  sanitizeLog,
-  sanitizeObject,
-  createLogEntry,
-  safeLog
-=======
+/**
  * Validate metadata against allowed keys
  * Returns only whitelisted keys to prevent property injection
  * 
@@ -327,7 +243,8 @@ module.exports = {
   sanitizeLog, 
   sanitizeObject, 
   sanitizeString,
+  createLogEntry,
+  safeLog,
   validateMetadata,
   logStructured 
- main
 };

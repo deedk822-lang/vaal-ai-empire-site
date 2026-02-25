@@ -156,33 +156,19 @@ const PAYFAST_CONFIG = {
  * mandated by the third-party payment provider.
  * 
  * @see https://developers.payfast.co.za/docs/secure-your-integration/
- main
  */
 function generatePayFastSignature(data, passphrase = '') {
     const paramString = Object.keys(data)
         .sort()
         .map(key => `${key}=${encodeURIComponent(String(data[key])).replace(/%20/g, '+')}`)
         .join('&');
- digital-preeminence-fixes
 
-    const stringToHash = passphrase
-        ? `${paramString}&passphrase=${encodeURIComponent(passphrase)}`
-        : paramString;
-
-    // MD5 is mandated by PayFast API spec for ITN signature generation.
-    // This is NOT password storage - it's HMAC-style request signing.
-    // PayFast explicitly requires MD5 and rejects other algorithms.
-    // See: https://developers.payfast.co.za/docs#signature-generation
-    return crypto.createHash('md5').update(stringToHash).digest('hex'); // codeql[js/insufficient-password-hash] This is PayFast API signature generation, not password hashing
-
-    
     // Add passphrase if provided
     const stringToHash = passphrase ? `${paramString}&passphrase=${encodeURIComponent(passphrase)}` : paramString;
     
     // codeql[js/insufficient-password-hash] PayFast API requires MD5 for signature generation (third-party requirement, not password storage)
     // codeql[js/weak-cryptographic-algorithm] PayFast API requires MD5 for signature generation (third-party requirement)
     return crypto.createHash('md5').update(stringToHash).digest('hex');
- main
 }
 
 /**
