@@ -151,7 +151,7 @@ const PAYFAST_CONFIG = {
  */
 // codeql[js/insufficient-password-hash] PayFast API signature generation (third-party requirement)
 // codeql[js/weak-cryptographic-algorithm] PayFast API requires MD5 per specification
-function generatePayFastSignature(data, passphrase = '') {
+function generatePayFastSignature(data, signingKey = '') {
     const paramString = Object.keys(data)
         .sort()
         .map(key => `${key}=${encodeURIComponent(String(data[key])).replace(/%20/g, '+')}`)
