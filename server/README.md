@@ -1,57 +1,10 @@
- feature/stripe-checkout
-# Vaal AI Empire - Checkout Server
-
-Node.js/Express server for handling Stripe subscription checkout.
-=======
 # Vaal AI Empire - Server
 
-Node.js/Express server handling Stripe subscription checkout.
- main
+Node.js/Express server handling Stripe subscription checkout with enterprise-grade security.
 
 ## Quick Start
 
 ```bash
- feature/stripe-checkout
-# Install dependencies
-npm install
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your Stripe keys
-
-# Start server
-npm start
-```
-
-## Environment Variables
-
-See `.env.example` for required configuration.
-
-## API Endpoints
-
-- `GET /` - Serve static files
-- `GET /config` - Get Stripe publishable key and price IDs
-- `POST /create-checkout-session` - Create Stripe Checkout session
-- `GET /checkout-session` - Retrieve session details
-- `POST /webhook` - Handle Stripe webhook events
-- `POST /create-portal-session` - Create customer portal session
-- `GET /health` - Health check endpoint
-
-## Deployment
-
-See `STRIPE_SETUP.md` for full deployment guide.
-
-## Testing
-
-Use Stripe test cards:
-- Success: `4242 4242 4242 4242`
-- 3D Secure: `4000 0025 0000 3155`
-- Declined: `4000 0000 0000 0002`
-
-## Support
-
-Email: founders@vaalai.co.za
-=======
 cd server
 npm install
 cp .env.example .env
@@ -67,27 +20,49 @@ npm start
 
 ## Environment Variables
 
-See `.env.example` for all required variables.
+See `.env.example` for all required variables including:
+- `STRIPE_SECRET_KEY` - Your Stripe secret key
+- `STRIPE_PUBLISHABLE_KEY` - Your Stripe publishable key
+- `STRIPE_WEBHOOK_SECRET` - Webhook endpoint secret
+- `STARTER_PRICE_ID` - Stripe price ID for Vaal Starter plan
+- `EMPIRE_PRICE_ID` - Stripe price ID for Vaal Empire plan
+- `DOMAIN` - Your domain (e.g., http://localhost:4242)
+- `JWT_SECRET` - Secret for JWT token generation
+- `MONGODB_URI` - MongoDB connection string
 
-## Endpoints
+## API Endpoints
 
-- `GET /` - Homepage
-- `GET /config` - Stripe configuration
-- `POST /create-checkout-session` - Create checkout
-- `GET /checkout-session` - Get session details
-- `POST /webhook` - Stripe webhooks
-- `POST /create-portal-session` - Customer portal
-- `GET /health` - Health check
+- `GET /` - Serve static files
+- `GET /health` - Health check endpoint
+- `GET /config` - Get Stripe publishable key and price IDs
+- `POST /create-checkout-session` - Create Stripe Checkout session
+- `GET /session-status` - Retrieve session details
+- `POST /webhook` - Handle Stripe webhook events
+- `/api/auth/*` - Authentication routes
+- `/api/payments/*` - Payment management routes
+- `/api/subscriptions/*` - Subscription management routes
+- `/api/analytics/*` - Analytics routes
+
+## Security Features
+
+- Helmet.js for security headers
+- Express rate limiting
+- CORS protection
+- MongoDB sanitization
+- XSS protection
+- HPP (HTTP Parameter Pollution) protection
 
 ## Testing
 
-Test card: `4242 4242 4242 4242`
+Use Stripe test cards:
+- Success: `4242 4242 4242 4242`
+- 3D Secure: `4000 0025 0000 3155`
+- Declined: `4000 0000 0000 0002`
 
-## Production
+## Deployment
 
-See main INSTALL.md for deployment instructions.
+See main `INSTALL.md` and `STRIPE_SETUP.md` for full deployment guide.
 
 ## Support
 
-founders@vaalai.co.za
- main
+Email: founders@vaalai.co.za

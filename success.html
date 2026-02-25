@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Success - Vaal AI Empire</title>
- feature/stripe-checkout
     <link rel="stylesheet" href="/css/styles.css">
     <style>
         .success-container {
@@ -183,20 +182,15 @@
                 <a href="/dashboard.html" class="btn-primary">Go to Dashboard →</a>
                 <a href="/" class="btn-secondary">Return Home</a>
             </div>
- main
         </div>
     </div>
 
     <script>
- feature/stripe-checkout
         // Get session ID from URL
-
- main
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session_id');
 
         if (sessionId) {
- feature/stripe-checkout
             // Fetch session details
             fetch(`/checkout-session?sessionId=${sessionId}`)
                 .then(response => response.json())
@@ -232,24 +226,11 @@
         }
     </script>
 
-            fetch(`/checkout-session?sessionId=${sessionId}`)
-                .then(res => res.json())
-                .then(session => {
-                    const planName = session.metadata?.product || 'Vaal Empire';
-                    const amount = (session.amount_total / 100).toFixed(2);
-                    document.getElementById('plan-name').textContent = planName;
-                    document.getElementById('amount').textContent = `R${amount}`;
-                })
-                .catch(err => console.error('Error:', err));
-        }
-    </script>
-
     <style>
         @keyframes scaleIn {
             from { transform: scale(0); }
             to { transform: scale(1); }
         }
     </style>
- main
 </body>
 </html>

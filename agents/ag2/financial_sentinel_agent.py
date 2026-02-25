@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 from autogen import ConversableAgent, LLMConfig, register_function
 
 from agents.lib.sars_knowledge_base import SARSKnowledgeBase
+from agents.lib.perplexity_financial_client import PerplexityFinancialClient
 
 
 class FinancialSentinelAgent:
@@ -25,23 +26,43 @@ class FinancialSentinelAgent:
     Can self-update when SARS publishes new regulations.
     """
 
-    def __init__(self, llm_config: LLMConfig):
+    def __init__(self, llm_config: LLMConfig, perplexity_api_key: str = None):
         self.llm_config = llm_config
         self.sars_kb = SARSKnowledgeBase()
+        
+        # Optional: Perplexity for market data
+        self.perplexity = None
+        if perplexity_api_key:
+            try:
+                self.perplexity = PerplexityFinancialClient(api_key=perplexity_api_key)
+            except Exception as e:
+                print(f"[Financial Sentinel] Perplexity not available: {e}")
+        
         self.initialized = False
 
+        # Build system message based on available tools
+        base_message = (
+            "You are the Financial Sentinel, a South African tax and financial expert. "
+            "You have complete knowledge of SARS regulations loaded from official sources. "
+            "Always cite official sources with URLs. Calculate exact ZAR amounts. "
+        )
+        
+        if self.perplexity:
+            base_message += (
+                "You also have access to real-time market data and financial metrics "
+                "via Perplexity for global companies. "
+            )
+        
+        base_message += (
+            "Format for tax calculations: 'Total Recovery: R[amount] | Tax Saving (28%): R[amount] | Source: [URL]'"
+        )
+        
         self.agent = ConversableAgent(
             name="financial_sentinel",
-            system_message=(
-                "You are the Financial Sentinel, a South African tax recovery expert. "
-                "You have complete knowledge of SARS regulations loaded from official sources. "
-                "Always cite official sources with URLs. Calculate exact ZAR amounts. "
-                "If SARS updates regulations, you can self-update your knowledge base. "
-                "Format: 'Total Recovery: R[amount] | Tax Saving (28%): R[amount] | Source: [URL]'"
-            ),
+            system_message=base_message,
             llm_config=llm_config,
             human_input_mode="NEVER",
-            description="SARS tax calculator with static knowledge base from official SARS documents.",
+            description="SARS tax calculator and financial analyst with market data access.",
         )
 
     def initialize(self):
@@ -183,4 +204,80 @@ class FinancialSentinelAgent:
             description="List all SARS regulations in knowledge base",
         )
 
-        print("[Financial Sentinel] 4 tools registered (all local - no API calls)")
+        # Register Perplexity tools if available
+        if self.perplexity:
+            def fetch_market_news(
+                company: Annotated[str, "Company name or ticker (e.g., 'AAPL' or 'Apple Inc')"],
+                max_results: Annotated[int, "Number of news articles (1-5)"] = 3
+            ) -> str:
+                """Fetch recent market news for a company using Perplexity."""
+                try:
+                    news = self.perplexity.batch_market_news([company], max_results=max_results)
+                    
+                    if not news or company not in news:
+                        return f"No news found for {company}"
+                    
+                    articles = news[company]
+                    if not articles:
+                        return f"No recent news for {company}"
+                    
+                    response_parts = [f"📰 Market News for {company}:\n"]
+                    for i, article in enumerate(articles, 1):
+                        response_parts.append(
+                            f"\n{i}. {article['headline']}\n"
+                            f"   Source: {article['source']}\n"
+                            f"   Summary: {article['summary'][:100]}...\n"
+                            f"   URL: {article['url'][:60]}..."
+                        )
+                    
+                    return "\n".join(response_parts)
+                    
+                except Exception as e:
+                    return f"❌ Error fetching news: {str(e)}"
+            
+            def fetch_company_financials(
+                company_name: Annotated[str, "Company name (e.g., 'Apple Inc')"],
+                ticker: Annotated[str, "Stock ticker (e.g., 'AAPL')"] = ""
+            ) -> str:
+                """Fetch financial metrics for a company using Perplexity."""
+                try:
+                    metrics = self.perplexity.extract_financial_metrics(company_name, ticker)
+                    
+                    if "error" in metrics:
+                        return f"❌ Error: {metrics['error']}"
+                    
+                    return (
+                        f"📊 Financial Metrics for {company_name}:\n"
+                        f"═══════════════════════════════════════════\n"
+                        f"P/E Ratio: {metrics.get('pe_ratio', 'N/A')}\n"
+                        f"Price-to-Book: {metrics.get('price_to_book', 'N/A')}\n"
+                        f"Market Cap: ${metrics.get('market_cap_billions', 'N/A')}B\n"
+                        f"Revenue Growth (YoY): {metrics.get('revenue_growth_yoy', 'N/A')}%\n"
+                        f"EPS: {metrics.get('earnings_per_share', 'N/A')}\n"
+                        f"Dividend Yield: {metrics.get('dividend_yield', 'N/A')}\n"
+                        f"52W High/Low: ${metrics.get('52week_high', 'N/A')} / ${metrics.get('52week_low', 'N/A')}\n"
+                        f"Data Quality: {metrics.get('data_quality', 'N/A')}\n"
+                    )
+                    
+                except Exception as e:
+                    return f"❌ Error fetching metrics: {str(e)}"
+            
+            register_function(
+                fetch_market_news,
+                caller=self.agent,
+                executor=self.agent,
+                name="fetch_market_news",
+                description="Fetch recent market news for a company or stock ticker",
+            )
+            
+            register_function(
+                fetch_company_financials,
+                caller=self.agent,
+                executor=self.agent,
+                name="fetch_company_financials",
+                description="Fetch financial metrics (P/E, market cap, etc.) for a company",
+            )
+            
+            print("[Financial Sentinel] 6 tools registered (4 local + 2 Perplexity market data)")
+        else:
+            print("[Financial Sentinel] 4 tools registered (all local - no API calls)")
