@@ -1,0 +1,29 @@
+title: Payment Endpoint Rate Limit Trigger
+id: apex-payment-002
+status: stable
+description: Detects potential brute force or DoS attempt on payment API
+author: Security Team
+date: 2026/02/26
+tags:
+  - attack.impact
+  - attack.t1499
+  - payment
+  - dos
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: express-server
+detection:
+  selection:
+    endpoint: /api/payment/process
+    status_code: 429
+  timeframe: 5m
+  condition: selection | count() by source_ip > 10
+falsepositives:
+  - Legitimate high-volume merchant testing
+  - Load testing with proper authorization
+level: medium
+---
+# APEX Compliance: Linked to FIX-002 rate limiting implementation
+# Alert threshold: >10 rate limit triggers in 5min from same source
+# Escalation: Slack #alerts-payment → PagerDuty P2 if sustained
