@@ -10,7 +10,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 // Ensure logs directory exists
 const logsDir = path.join(__dirname, '..', 'logs');
