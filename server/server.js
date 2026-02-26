@@ -137,9 +137,6 @@ const PAYFAST_CONFIG = {
  * @param {string} signingKey - Merchant signing key (empty string if not set)
  * @returns {string}          - MD5 hex signature required by PayFast
 
-// PayFast signature generator
-// lgtm[js/insufficient-password-hash] PayFast API requires MD5 for signature generation - third-party requirement, not password storage
-// lgtm[js/weak-cryptographic-algorithm] PayFast API requires MD5 for signature generation - third-party requirement
 /**
  * Generate PayFast signature per official API specification.
  * 
@@ -148,17 +145,6 @@ const PAYFAST_CONFIG = {
  * mandated by the third-party payment provider.
  * 
  * @see https://developers.payfast.co.za/docs/secure-your-integration/
- */
-/**
- * Generate PayFast signature per official API specification.
- * 
- * @security PayFast requires MD5 for ITN signature generation.
- * This is NOT password hashing — it's an HMAC-style request signing
- * mandated by the third-party payment provider.
- * 
- * @see https://developers.payfast.co.za/docs/secure-your-integration/
- * @see CodeQL: js/insufficient-password-hash (false positive)
- * @see CodeQL: js/weak-cryptographic-algorithm (false positive)
  */
 function generatePayFastSignature(data, signingKey = '') {
     const paramString = Object.keys(data)
@@ -170,8 +156,7 @@ function generatePayFastSignature(data, signingKey = '') {
     const stringToHash = signingKey 
         ? `${paramString}&passphrase=${encodeURIComponent(signingKey)}` 
         : paramString;
-
-    // codeql[js/insufficient-password-hash,js/weak-cryptographic-algorithm] PayFast API requires MD5 for ITN signature generation per https://developers.payfast.co.za/docs/secure-your-integration/. This is HMAC-style request signing, NOT password hashing or data integrity protection.
+    // codeql[js/insufficient-password-hash] PayFast API requires MD5 for signature generation - this is NOT password storage, it's third-party API compliance per https://developers.payfast.co.za/docs/secure-your-integration/
     return crypto.createHash('md5').update(stringToHash).digest('hex');
 }
 
