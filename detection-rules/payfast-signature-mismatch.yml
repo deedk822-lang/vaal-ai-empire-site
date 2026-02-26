@@ -1,26 +1,29 @@
 title: PayFast ITN Signature Mismatch
-description: Detects when PayFast ITN signature verification fails, indicating potential spoofing attempt
-status: experimental
-author: Vaal AI Empire Security Team
-logsource:
-    category: application
-    product: vaal-ai-empire
-    service: payment
-detection:
-    selection:
-        - message|contains: 'Invalid PayFast signature'
-        - message|contains: 'PayFast validation failed'
-        - message|contains: 'PayFast verification error'
-    condition: selection
-falsepositives:
-    - Misconfigured PayFast merchant credentials
-    - Network transmission errors causing signature corruption
-    - Testing in sandbox environment with incorrect keys
-level: high
+id: apex-payfast-001
+status: stable
+description: Detects potential PayFast webhook tampering or misconfiguration
+author: Security Team
+date: 2026/02/26
+modified: 2026/02/26
 tags:
-    - attack.financial
-    - attack.impact
-    - t1496.001
-references:
-    - https://developers.payfast.co.za/docs/secure-your-integration/
-    - https://github.com/deedk822-lang/vaal-ai-empire-site/blob/main/server/server.js
+  - attack.initial_access
+  - attack.t1190
+  - payment
+  - webhook
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: payfast-itn
+detection:
+  selection:
+    event_type: payfast_itn_received
+    signature_valid: false
+  condition: selection
+falsepositives:
+  - PayFast sandbox testing
+  - Signature rotation during key update
+level: high
+---
+# APEX Compliance: Linked to FIND-001 suppression
+# Owner: @security-team
+# Expiry: 2027-Q1 (review when PayFast v3 migration complete)
