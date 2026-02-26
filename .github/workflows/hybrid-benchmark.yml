@@ -210,7 +210,11 @@ jobs:
     if: always()
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
       - name: Download Ollama results
+        id: download-ollama
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ollama-benchmark-results
@@ -218,24 +222,30 @@ jobs:
         continue-on-error: true
 
       - name: Download Direct API results
+        id: download-direct
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: direct-api-benchmark-results
           path: results/direct
         continue-on-error: true
 
-      - name: Generate combined summary
+      - name: Create fallback results if artifacts missing
         run: |
-          # Create results directories if they don't exist
           mkdir -p results/ollama results/direct
           
-          # Check if results exist before processing
-          if [ ! -f "results/ollama/ollama_report.json" ] && [ ! -f "results/direct/direct_report.json" ]; then
-            echo "## Hybrid Benchmark Results\n"
-            echo "⚠️ No benchmark results available - this is expected for PRs without benchmark changes"
-            exit 0
+          # Create placeholder if download failed
+          if [ ! -f "results/ollama/ollama_report.json" ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"ollama","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[],"note":"Artifact unavailable"}' \
+              > results/ollama/ollama_report.json
           fi
           
+          if [ ! -f "results/direct/direct_report.json" ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"direct","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[],"note":"Artifact unavailable"}' \
+              > results/direct/direct_report.json
+          fi
+
+      - name: Generate combined summary
+        run: |
           python3 << 'PYEOF'
           import json, os, sys
           from pathlib import Path
@@ -253,6 +263,7 @@ jobs:
                   lines.append(f"⚠️ Could not parse results: {e}\n")
                   return
               s = data.get("summary", {})
+              note = data.get("note", "")
               lines += [
                   "| Metric | Value |",
                   "|--------|-------|",
@@ -260,8 +271,10 @@ jobs:
                   f"| Passed        | {s.get('passed_tests', 0)} ✅ |",
                   f"| Failed        | {s.get('failed_tests', 0)} ❌ |",
                   f"| Overall Score | {s.get('overall_score', 0):.1f}% |",
-                  "",
               ]
+              if note:
+                  lines.append(f"| Note | {note} |")
+              lines.append("")
 
           render_backend("Ollama Backend",      Path("results/ollama/ollama_report.json"))
           render_backend("Direct API Backend",  Path("results/direct/direct_report.json"))

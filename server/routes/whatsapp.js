@@ -10,6 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const {
   verifyWhatsAppSignature,
@@ -20,6 +21,24 @@ const {
 const { handleOptOut } = require('../middleware/whatsapp-consent');
 const logger = require('../utils/logger');
 
+// APEX: Rate limiting for webhook endpoints
+// Prevents DDoS and brute force attacks
+const whatsappVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window
+  message: 'Too many verification attempts',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const whatsappWebhookLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 1000, // 1000 requests per minute (Meta can be bursty)
+  message: 'Too many webhook requests',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // APEX: Use raw body for signature verification
 router.use(express.raw({ type: 'application/json', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
@@ -27,8 +46,11 @@ router.use(express.raw({ type: 'application/json', verify: (req, res, buf) => { 
  * GET /webhooks/whatsapp
  * Meta verification challenge handler
  * Used when configuring webhook in Meta Dashboard
+ * 
+ * APEX: Rate limited to prevent DDoS
+ * APEX: Response sanitized to prevent XSS
  */
-router.get('/', (req, res) => {
+router.get('/', whatsappVerificationLimiter, (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
@@ -43,18 +65,21 @@ router.get('/', (req, res) => {
   const response = verifyWebhookChallenge(mode, token, challenge);
   
   if (response) {
-    return res.status(200).send(response);
+    // APEX: Sanitize challenge to prevent reflected XSS
+    // Challenge should only contain alphanumeric characters
+    const sanitizedChallenge = String(response).replace(/[^a-zA-Z0-9]/g, '');
+    return res.status(200).type('text/plain').send(sanitizedChallenge);
   }
   
-  return res.status(403).send('Verification failed');
+  return res.status(403).type('text/plain').send('Verification failed');
 });
 
 /**
  * POST /webhooks/whatsapp
  * Incoming webhook event handler
- * APEX: Signature validation + sanitization + processing
+ * APEX: Rate limiting + Signature validation + sanitization + processing
  */
-router.post('/', async (req, res) => {
+router.post('/', whatsappWebhookLimiter, async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
   const payload = req.rawBody?.toString('utf-8') || '';
   

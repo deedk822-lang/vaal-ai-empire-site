@@ -112,23 +112,45 @@ function sanitizeWhatsAppContent(content, contentType = 'text') {
   // WhatsApp-specific threats
   if (contentType === 'text') {
     // Prevent injection attacks
+    // APEX: Comprehensive regex to catch various script tag variations
     sanitized = sanitized
-      .replace(/<script[^>]*>.*?<\/script>/gi, '[SCRIPT_REMOVED]')
-      .replace(/javascript:/gi, 'blocked:')
-      .replace(/data:/gi, 'blocked:')
-      .replace(/on\w+\s*=/gi, 'blocked='); // Block event handlers
+      // Match script tags with any whitespace variations (e.g., </script >)
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '[SCRIPT_REMOVED]')
+      // Block dangerous URL schemes (javascript, vbscript, data)
+      .replace(/(javascript|vbscript|data):/gi, 'blocked:')
+      // Block HTML event handlers
+      .replace(/on\w+\s*=\s*["']?/gi, 'blocked=')
+      // Block iframe and other dangerous tags
+      .replace(/<(iframe|object|embed|form)\b[^>]*>[\s\S]*?<\/\1\b[^>]*>/gi, '[TAG_REMOVED]');
   }
   
   if (contentType === 'media_url' || contentType === 'voice') {
     // APEX: Validate media URLs are from trusted domains only
+    // APEX: Also validate URL scheme to prevent javascript:, vbscript:, data: attacks
     const allowedDomains = [
       'whatsapp.net',
       'fbcdn.net',
       'facebook.com'
     ];
     
+    // Block dangerous URL schemes
+    const dangerousSchemes = /^(javascript|vbscript|data|file|ftp):/i;
+    if (dangerousSchemes.test(sanitized)) {
+      logger.warn('WhatsApp media URL uses dangerous scheme', { 
+        scheme: sanitized.split(':')[0]
+      });
+      return null;
+    }
+    
     try {
       const url = new URL(sanitized);
+      
+      // Only allow HTTPS URLs
+      if (url.protocol !== 'https:') {
+        logger.warn('WhatsApp media URL not HTTPS', { protocol: url.protocol });
+        return null;
+      }
+      
       const isTrusted = allowedDomains.some(domain => 
         url.hostname.endsWith(domain)
       );
