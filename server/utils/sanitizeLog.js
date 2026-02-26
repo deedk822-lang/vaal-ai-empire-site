@@ -1,6 +1,11 @@
-// Vaal AI Empire - Log Sanitization Utility
-// Prevents log injection and property injection attacks
-// POPIA-compliant: Does not alter PII values, only strips control characters
+/**
+ * Centralized log sanitization to prevent log injection attacks.
+ * Strips control characters that could manipulate log parsers.
+ * POPIA-compliant: Does not alter PII, only control characters.
+ * 
+ * @module server/utils/sanitizeLog
+ * @security Prevents log injection attacks from user-supplied data
+ */
 
 /**
  * Sanitize a string value by removing control characters
@@ -112,6 +117,65 @@ function sanitizeObject(obj, seen = new Set(), options = {}) {
 }
 
 /**
+ * Creates a sanitized log entry object.
+ * POPIA-compliant: Hashes sensitive fields instead of logging raw values.
+ * 
+ * @param {string} level - Log level (info, warn, error, debug)
+ * @param {string} message - Log message
+ * @param {Object} meta - Additional metadata
+ * @returns {Object} - Sanitized log entry ready for JSON serialization
+ */
+function createLogEntry(level, message, meta = {}) {
+  const crypto = require('crypto');
+  
+  // Fields to hash for POPIA compliance
+  const sensitiveFields = ['email', 'phone', 'ip', 'address', 'idNumber', 'password', 'token'];
+  
+  const sanitizedMeta = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (sensitiveFields.includes(key) && typeof value === 'string') {
+      // Hash sensitive values (first 8 chars for debugging)
+      const hash = crypto.createHash('sha256').update(value).digest('hex');
+      sanitizedMeta[key] = `HASH:${hash.slice(0, 8)}...`;
+    } else {
+      sanitizedMeta[key] = sanitizeLog(value);
+    }
+  }
+  
+  return {
+    timestamp: new Date().toISOString(),
+    level,
+    message: sanitizeLog(message),
+    meta: sanitizedMeta,
+    service: 'vaal-ai-empire',
+    environment: process.env.NODE_ENV || 'development'
+  };
+}
+
+/**
+ * Safe logging functions that automatically sanitize all inputs.
+ */
+const safeLog = {
+  info: (message, meta = {}) => {
+    console.log(JSON.stringify(createLogEntry('info', message, meta)));
+  },
+  
+  warn: (message, meta = {}) => {
+    console.warn(JSON.stringify(createLogEntry('warn', message, meta)));
+  },
+  
+  error: (message, meta = {}) => {
+    console.error(JSON.stringify(createLogEntry('error', message, meta)));
+  },
+  
+  debug: (message, meta = {}) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug(JSON.stringify(createLogEntry('debug', message, meta)));
+    }
+  }
+};
+
+/**
  * Validate metadata against allowed keys
  * Returns only whitelisted keys to prevent property injection
  * 
@@ -179,6 +243,8 @@ module.exports = {
   sanitizeLog, 
   sanitizeObject, 
   sanitizeString,
+  createLogEntry,
+  safeLog,
   validateMetadata,
   logStructured 
 };

@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 """
-Multilingual Voice Agent - Production Integration
+Multilingual Voice Agent - Production Integration with Ollama
 
 This is the KEY differentiator: One agent that handles 
 CODE-SWITCHING South African speech, not language silos.
 
 Competitors build: isiZulu bot, isiXhosa bot, English bot (separate)
 We build: One bot that understands "I'm going ekhaya now"
+
+Features:
+- Ollama primary (free, unlimited, low latency)
+- DashScope fallback (cloud backup with free tier)
+- Automatic language detection and code-switching support
+- Qwen2.5 native multilingual support (100+ languages)
 """
 
 import asyncio
 import base64
 import io
-import json
+import os
+import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import ClassVar, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 
@@ -23,6 +30,17 @@ import torchaudio
 from transformers import pipeline
 
 from .base_agent import BaseAgent
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Import ModelRouter for Ollama + DashScope fallback
+try:
+    from agents.lib.model_router import ModelRouter, classify_task
+    MODEL_ROUTER_AVAILABLE = True
+except ImportError:
+    MODEL_ROUTER_AVAILABLE = False
+    logger.warning("ModelRouter not available - using default LLM client")
 
 
 @dataclass
@@ -60,7 +78,7 @@ class MultilingualVoiceAgent(BaseAgent):
     """
     
     # Language configuration
-    SUPPORTED_LANGUAGES = {
+    SUPPORTED_LANGUAGES: ClassVar[Dict[str, Dict[str, str]]] = {
         "zu": {"name": "isiZulu", "greeting": "Sawubona"},
         "xh": {"name": "isiXhosa", "greeting": "Molo"},
         "af": {"name": "Afrikaans", "greeting": "Hallo"},
@@ -69,7 +87,7 @@ class MultilingualVoiceAgent(BaseAgent):
     }
     
     # Code-switching patterns we expect
-    COMMON_MIXES = [
+    COMMON_MIXES: ClassVar[List[Tuple[str, str]]] = [
         ("en", "zu"),  # English + isiZulu (most common in urban SA)
         ("zu", "en"),
         ("en", "xh"),  # English + isiXhosa
@@ -83,7 +101,8 @@ class MultilingualVoiceAgent(BaseAgent):
                  metrics=None, 
                  tracer=None,
                  asr_model_path: Optional[Path] = None,
-                 tts_model_path: Optional[Path] = None):
+                 tts_model_path: Optional[Path] = None,
+                 use_ollama: bool = True):
         super().__init__("MultilingualVoice", llm_client, metrics, tracer)
         
         # Model paths
@@ -95,36 +114,72 @@ class MultilingualVoiceAgent(BaseAgent):
         self._tts_model = None
         self._audio_processor = None
         
+        # Thread-safe lazy loading locks
+        self._asr_lock = asyncio.Lock()
+        self._tts_lock = asyncio.Lock()
+        
         # Language detection thresholds
         self.CODESWITCH_THRESHOLD = 0.3  # If secondary language > 30%, it's code-switched
         
+        # Initialize ModelRouter for Ollama + DashScope fallback
+        self.use_ollama = use_ollama and MODEL_ROUTER_AVAILABLE
+        self._model_router = None
+        
+        if self.use_ollama and MODEL_ROUTER_AVAILABLE:
+            try:
+                self._model_router = ModelRouter()
+                logger.info("MultilingualVoiceAgent initialized with Ollama + DashScope fallback")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ModelRouter: {e}")
+                self._model_router = None
+        else:
+            logger.info("MultilingualVoiceAgent initialized (using default LLM client)")
+        
         self.log("MultilingualVoiceAgent initialized (code-switching enabled)")
     
-    def _load_asr(self):
-        """Lazy-load ASR model."""
-        if self._asr_pipeline is None:
-            self.log(f"Loading ASR model from {self.asr_model_path}")
-            
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            self._asr_pipeline = pipeline(
-                "automatic-speech-recognition",
-                model=str(self.asr_model_path),
-                tokenizer=str(self.asr_model_path),
-                feature_extractor=str(self.asr_model_path),
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                device=device,
-            )
-            
-            self.log(f"ASR model loaded on {device}")
+    async def _load_asr(self):
+        """Lazy-load ASR model with thread-safe locking."""
+        async with self._asr_lock:
+            if self._asr_pipeline is None:
+                self.log(f"Loading ASR model from {self.asr_model_path}")
+                
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                
+                # Load model in thread pool to avoid blocking event loop
+                def _load_model():
+                    return pipeline(
+                        "automatic-speech-recognition",
+                        model=str(self.asr_model_path),
+                        tokenizer=str(self.asr_model_path),
+                        feature_extractor=str(self.asr_model_path),
+                        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                        device=device,
+                    )
+                
+                self._asr_pipeline = await asyncio.to_thread(_load_model)
+                self.log(f"ASR model loaded on {device}")
     
-    def _load_tts(self):
-        """Lazy-load TTS model."""
-        if self._tts_model is None:
-            self.log(f"Loading TTS model from {self.tts_model_path}")
-            # Would load TTS model here
-            # For now, placeholder
-            self._tts_model = "loaded"
+    async def _load_tts(self):
+        """Lazy-load TTS model with thread-safe locking."""
+        async with self._tts_lock:
+            if self._tts_model is None:
+                try:
+                    device = 0 if torch.cuda.is_available() else -1
+                    self.log(f"Loading TTS model from {self.tts_model_path}")
+
+                    def _load_tts_model():
+                        return pipeline(
+                            "text-to-speech",
+                            model=str(self.tts_model_path) if self.tts_model_path.exists() else "facebook/mms-tts-eng",
+                            device=device
+                        )
+
+                    self._tts_model = await asyncio.to_thread(_load_tts_model)
+                    self.log("TTS model loaded successfully")
+                except (OSError, RuntimeError) as e:
+                    self.log(f"TTS model load failed: {e!s}", level="error")
+                    self._tts_model = None
+                    raise
     
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -159,7 +214,7 @@ class MultilingualVoiceAgent(BaseAgent):
         Key feature: Handles code-switching naturally.
         Returns both transcription AND language analysis.
         """
-        self._load_asr()
+        await self._load_asr()
         
         audio_b64 = context.get("audio_base64")
         if not audio_b64:
@@ -182,8 +237,8 @@ class MultilingualVoiceAgent(BaseAgent):
                 resampler = torchaudio.transforms.Resample(sample_rate, 16000)
                 waveform = resampler(waveform)
             
-        except Exception as e:
-            return {"error": f"Audio decoding failed: {str(e)}"}
+        except (ValueError, OSError) as e:
+            return {"error": f"Audio decoding failed: {e!s}"}
         
         # Transcribe
         try:
@@ -208,45 +263,67 @@ class MultilingualVoiceAgent(BaseAgent):
                 "chunks": result.get("chunks", []),  # Word-level timestamps
             }
             
-        except Exception as e:
-            return {"error": f"Transcription failed: {str(e)}"}
+        except (RuntimeError, ValueError) as e:
+            return {"error": f"Transcription failed: {e!s}"}
     
     async def _text_to_speech(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert text to speech.
-        
+
         Handles code-switched text by:
         1. Detecting language switches in text
         2. Using appropriate prosody for each segment
         3. Or using multilingual model that handles mixing naturally
         """
-        self._load_tts()
-        
         text = context.get("text")
         if not text:
             return {"error": "No text provided"}
-        
+
         # Detect primary language
         lang_detection = self._analyze_language_mix(text)
         primary_lang = lang_detection.primary_language
-        
+
         # Synthesize
         try:
-            # In full implementation, would call TTS model
-            # For now, placeholder
-            audio_data = b"placeholder_audio_data"
-            audio_b64 = base64.b64encode(audio_data).decode()
-            
+            await self._load_tts()
+
+            if self._tts_model is None:
+                return {"error": "TTS model unavailable"}
+
+            # Run TTS in thread pool to avoid blocking
+            result = await asyncio.to_thread(self._tts_model, text)
+
+            # Extract audio data
+            audio_array = result.get("audio", result.get("waveform", np.array([])))
+            sample_rate = result.get("sampling_rate", result.get("sample_rate", 22050))
+
+            # Convert numpy array to base64 WAV
+            import wave
+            buf = io.BytesIO()
+            if isinstance(audio_array, np.ndarray):
+                audio_int16 = (audio_array * 32767).astype(np.int16)
+            else:
+                audio_int16 = np.array(audio_array, dtype=np.int16)
+
+            with wave.open(buf, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio_int16.tobytes())
+
+            audio_b64 = base64.b64encode(buf.getvalue()).decode()
+
             return {
                 "audio_base64": audio_b64,
                 "format": "wav",
-                "sample_rate": 22050,
+                "sample_rate": sample_rate,
                 "primary_language": primary_lang,
                 "detected_mix": lang_detection.language_mix,
             }
-            
-        except Exception as e:
-            return {"error": f"Synthesis failed: {str(e)}"}
+
+        except (RuntimeError, ValueError) as e:
+            self.log(f"TTS synthesis error: {e!s}", level="error")
+            return {"error": f"{e!s}"}
     
     async def _voice_chat(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -281,12 +358,18 @@ class MultilingualVoiceAgent(BaseAgent):
             "language_hint": lang_info["primary"],
         }
         tts_result = await self._text_to_speech(tts_context)
-        
+
+        # Log TTS errors but don't fail the whole interaction
+        tts_error = tts_result.get("error")
+        if tts_error:
+            self.log(f"TTS synthesis failed: {tts_error}", level="warning")
+
         # Combine results
         return {
             "query_text": query_text,
             "response_text": llm_response,
             "response_audio": tts_result.get("audio_base64"),
+            "tts_error": tts_error,  # Propagate TTS error to caller
             "detected_languages": list(lang_info["mix"].keys()),
             "is_code_switched": lang_info["is_code_switched"],
             "confidence": lang_info["confidence"],
@@ -344,9 +427,14 @@ class MultilingualVoiceAgent(BaseAgent):
         }
         
         # Count markers for each language
+        # Use hybrid matching: word-boundary for single tokens, substring for phrases
         scores = {}
         for lang, markers in language_markers.items():
-            matches = sum(1 for marker in markers if marker in text_lower)
+            matches = sum(
+                1 for marker in markers
+                if (' ' in marker and marker in text_lower)  # phrase: substring OK
+                or (' ' not in marker and marker in words)   # single word: exact match
+            )
             # Normalize by number of markers to avoid bias
             scores[lang] = matches / max(len(markers), 1)
         
@@ -413,18 +501,55 @@ class MultilingualVoiceAgent(BaseAgent):
         return base_prompt
     
     async def _get_llm_response(self, query: str, system_prompt: str, context: str) -> str:
-        """Get response from LLM."""
+        """
+        Get response from LLM with Ollama primary + DashScope fallback.
+        
+        Strategy:
+        - Use ModelRouter for automatic failover (Ollama -> DashScope)
+        - Select optimal model based on task type
+        - Qwen2.5 for multilingual support (100+ languages)
+        """
+        # Try ModelRouter first (Ollama primary with DashScope fallback)
+        if self._model_router is not None:
+            try:
+                # Classify task for optimal model selection
+                task_type = classify_task(query) if 'classify_task' in dir() else 'multilingual'
+                model = self._model_router.get_model_for_task('multilingual')
+                
+                # Build messages
+                enriched_prompt = f"{system_prompt}\n\nContext: {context}" if context else system_prompt
+                messages = [
+                    {"role": "system", "content": enriched_prompt},
+                    {"role": "user", "content": query}
+                ]
+                
+                # Get response with automatic failover
+                response = self._model_router.chat_completion(
+                    messages=messages,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=500
+                )
+                
+                return response["choices"][0]["message"]["content"].strip()
+                
+            except Exception as e:
+                logger.warning(f"ModelRouter failed: {e}, falling back to default LLM")
+                # Fall through to default LLM
+        
+        # Fallback to default LLM client
         if self.llm:
+            enriched_prompt = f"{system_prompt}\n\nContext: {context}" if context else system_prompt
             response = await self.llm.generate(
                 prompt=query,
-                system_message=system_prompt,
+                system_message=enriched_prompt,
                 temperature=0.7,
                 max_tokens=500
             )
             return response.content
         
-        # Fallback
-        return "LLM not available. Query: " + query
+        # No LLM available
+        return "Ngiyaxolisa, akuwazi ukuphendula. (Sorry, I cannot respond at this time.)"
 
 
 # API endpoint examples

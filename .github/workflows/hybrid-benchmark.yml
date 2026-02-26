@@ -1,0 +1,275 @@
+name: Hybrid Benchmark
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: 'Backend mode'
+        required: false
+        default: 'auto'
+        type: choice
+        options: [auto, ollama, direct]
+      category:
+        description: 'Test category (empty = all)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', security, efficiency, code_generation, debugging, financial]
+      models:
+        description: 'Models to test (comma-separated)'
+        required: false
+        default: 'kimi-k2.5,glm-5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hybrid-benchmark-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  # Only cancel in-progress for the same event type and ref
+  # This prevents PR runs from being cancelled when new commits are pushed
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  ollama-benchmark:
+    name: Ollama Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Run unless backend is explicitly set to 'direct'
+    # For workflow_dispatch: use inputs.backend
+    # For push/pull_request: inputs.backend is empty, so run by default
+    if: ${{ inputs.backend != 'direct' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio requests
+
+      - name: Install and start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh || true
+          ollama serve &
+
+          # Wait up to 30s for Ollama to be ready — same pattern as benchmark-performance.yml
+          echo "Waiting for Ollama to be ready..."
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+          # Record whether Ollama actually came up so downstream steps can gate on it
+          if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+            echo "OLLAMA_READY=true"  >> "$GITHUB_ENV"
+          else
+            echo "::warning::Ollama did not become ready within 30s"
+            echo "OLLAMA_READY=false" >> "$GITHUB_ENV"
+          fi
+        continue-on-error: true
+
+      - name: Pull available models
+        # llama3.2:latest is ~2 GB and reliably exhausts CI runner bandwidth/time.
+        # llama3.2:1b is ~1.3 GB — smallest variant that still exercises the stack.
+        # qwen2.5-coder:1.5b is used by benchmark-performance.yml for consistency.
+        # Both pulls are given a hard 5-minute wall-clock timeout via `timeout`.
+        run: |
+          if [ "$OLLAMA_READY" != "true" ]; then
+            echo "::notice::Skipping model pull — Ollama not ready"
+            exit 0
+          fi
+          timeout 300 ollama pull qwen2.5-coder:1.5b \
+            || echo "::warning::qwen2.5-coder:1.5b pull failed or timed out"
+          timeout 300 ollama pull llama3.2:1b \
+            || echo "::warning::llama3.2:1b pull failed or timed out"
+          ollama list || true
+        continue-on-error: true
+
+      - name: Create results directory
+        if: always()
+        run: mkdir -p benchmark_results
+
+      - name: Ensure placeholder artifact exists
+        if: always()
+        run: |
+          # Always create a placeholder to ensure artifact upload succeeds
+          if [ ! -f benchmark_results/ollama_report.json ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"ollama","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[],"note":"Job may have been cancelled or failed early"}' \
+              > benchmark_results/ollama_report.json
+          fi
+
+      - name: Run Ollama benchmarks
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_HOST: "127.0.0.1:11434"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          if [ -f "agents/benchmark_executor.py" ]; then
+            python agents/benchmark_executor.py \
+              --run-all --report \
+              --backend ollama \
+              --output benchmark_results/ollama_report.json || true
+          else
+            echo "::notice::benchmark_executor.py not found"
+          fi
+
+          # Guarantee an artifact exists even if the executor produced nothing
+          if [ ! -f benchmark_results/ollama_report.json ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"ollama","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[]}' \
+              > benchmark_results/ollama_report.json
+          fi
+        continue-on-error: true
+
+      - name: Upload Ollama results
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        with:
+          name: ollama-benchmark-results
+          path: benchmark_results/
+          retention-days: 30
+
+  direct-api-benchmark:
+    name: Direct API Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: ollama-benchmark
+    if: always()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio requests
+
+      - name: Create results directory
+        run: mkdir -p benchmark_results
+
+      - name: Run Direct API benchmarks
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          GLM5_API_KEY: ${{ secrets.GLM5_API_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          if [ -f "agents/benchmark_executor.py" ]; then
+            python agents/benchmark_executor.py \
+              --run-all --report \
+              --backend direct \
+              --output benchmark_results/direct_report.json || true
+          else
+            echo "::notice::benchmark_executor.py not found"
+          fi
+
+          if [ ! -f benchmark_results/direct_report.json ]; then
+            echo '{"timestamp":"'$(date -Iseconds)'","backend":"direct","summary":{"total_tests":0,"passed_tests":0,"failed_tests":0,"overall_score":0},"results":[]}' \
+              > benchmark_results/direct_report.json
+          fi
+        continue-on-error: true
+
+      - name: Upload Direct API results
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
+        with:
+          name: direct-api-benchmark-results
+          path: benchmark_results/
+          retention-days: 30
+
+  summary:
+    name: Generate Benchmark Summary
+    runs-on: ubuntu-latest
+    needs: [ollama-benchmark, direct-api-benchmark]
+    if: always()
+
+    steps:
+      - name: Download Ollama results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ollama-benchmark-results
+          path: results/ollama
+        continue-on-error: true
+
+      - name: Download Direct API results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: direct-api-benchmark-results
+          path: results/direct
+        continue-on-error: true
+
+      - name: Generate combined summary
+        run: |
+          # Create results directories if they don't exist
+          mkdir -p results/ollama results/direct
+          
+          # Check if results exist before processing
+          if [ ! -f "results/ollama/ollama_report.json" ] && [ ! -f "results/direct/direct_report.json" ]; then
+            echo "## Hybrid Benchmark Results\n"
+            echo "⚠️ No benchmark results available - this is expected for PRs without benchmark changes"
+            exit 0
+          fi
+          
+          python3 << 'PYEOF'
+          import json, os, sys
+          from pathlib import Path
+
+          lines = ["## Hybrid Benchmark Results\n"]
+
+          def render_backend(label, path_obj):
+              lines.append(f"### {label}\n")
+              if not path_obj.exists():
+                  lines.append(f"⚠️ {label} results unavailable\n")
+                  return
+              try:
+                  data = json.loads(path_obj.read_text())
+              except Exception as e:
+                  lines.append(f"⚠️ Could not parse results: {e}\n")
+                  return
+              s = data.get("summary", {})
+              lines += [
+                  "| Metric | Value |",
+                  "|--------|-------|",
+                  f"| Total Tests   | {s.get('total_tests', 0)} |",
+                  f"| Passed        | {s.get('passed_tests', 0)} ✅ |",
+                  f"| Failed        | {s.get('failed_tests', 0)} ❌ |",
+                  f"| Overall Score | {s.get('overall_score', 0):.1f}% |",
+                  "",
+              ]
+
+          render_backend("Ollama Backend",      Path("results/ollama/ollama_report.json"))
+          render_backend("Direct API Backend",  Path("results/direct/direct_report.json"))
+
+          output = "\n".join(lines)
+          print(output)
+
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(sf, "a") as f:
+              f.write(output + "\n")
+          PYEOF

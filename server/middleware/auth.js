@@ -4,8 +4,16 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { AppError, catchAsync } = require('./errorHandler');
 
-// JWT Configuration
-const JWT_SECRET = process.env.JWT_SECRET || 'vaal-ai-empire-jwt-secret-key-change-in-production';
+// JWT Configuration - Fail fast if JWT_SECRET is not set
+if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+        console.warn('⚠️  WARNING: JWT_SECRET not set. Using insecure development fallback.');
+        console.warn('⚠️  This should NEVER happen in production!');
+    } else {
+        throw new Error('JWT_SECRET environment variable must be set');
+    }
+}
+const JWT_SECRET = process.env.JWT_SECRET || 'development-insecure-jwt-secret-do-not-use-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const JWT_COOKIE_EXPIRES_IN = process.env.JWT_COOKIE_EXPIRES_IN || 7;
 
@@ -292,8 +300,14 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
 exports.verifyEmail = catchAsync(async (req, res, next) => {
     const { token } = req.params;
 
+    // Hash the token to compare with stored hash
+    const hashedToken = crypto
+        .createHash('sha256')
+        .update(token)
+        .digest('hex');
+
     const user = await User.findOne({
-        verificationToken: token,
+        verificationToken: hashedToken,
         isVerified: false
     });
 
@@ -305,6 +319,7 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
 
     user.isVerified = true;
     user.verificationToken = undefined;
+    user.verificationTokenExpires = undefined;
     await user.save({ validateBeforeSave: false });
 
     res.status(200).json({
@@ -316,6 +331,10 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
 // Get current user
 exports.getMe = catchAsync(async (req, res, next) => {
     const user = await User.findById(req.user.id);
+    
+    if (!user) {
+        return next(new AppError('User not found', 404));
+    }
 
     res.status(200).json({
         status: 'success',

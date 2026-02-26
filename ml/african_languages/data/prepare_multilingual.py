@@ -105,12 +105,18 @@ class MultilingualDataBuilder:
         - "Ngiyabonga" + "very much" -> "Ngiyabonga very much"
         """
         patterns = [
-            # Pattern 1: Insert word/phrase from lang2 into lang1
+            # Pattern 1: Insert first word of lang2 into lang1
             lambda t1, t2: f"{t1} {t2.split()[0] if t2 else ''}",
-            # Pattern 2: Start with lang2, finish with lang1
+            # Pattern 2: Start with lang2 particle, finish with lang1
             lambda t1, t2: f"{t2.split()[0] if t2 else ''}, {t1}",
-            # Pattern 3: Lang1, lang2 particle, lang1
-            lambda t1, t2: f"{t1} {t2} {t1.split()[-1] if t1 else ''}",
+            # Pattern 3: First half of lang1, lang2 particle, second half of lang1
+            lambda t1, t2: (
+                f"{' '.join(t1.split()[:len(t1.split())//2])} "
+                f"{t2.split()[0] if t2 else ''} "
+                f"{' '.join(t1.split()[len(t1.split())//2:])}"
+                if len(t1.split()) > 1
+                else f"{t1} {t2.split()[0] if t2 else ''}"
+            ),
         ]
         
         pattern = random.choice(patterns)
@@ -137,8 +143,8 @@ class MultilingualDataBuilder:
         print(f"Creating {num_synthetic} synthetic code-switched examples...")
         
         for _ in tqdm(range(num_synthetic)):
-            # Pick two random languages
-            lang1, lang2 = random.sample(["zu", "xh", "af", "st"], 2)
+            # Pick two random languages (including Setswana "tn")
+            lang1, lang2 = random.sample(["zu", "xh", "af", "st", "tn"], 2)
             
             if not data[lang1] or not data[lang2]:
                 continue
@@ -180,10 +186,10 @@ class MultilingualDataBuilder:
         
         scores = {}
         for lang_code, markers in LANGUAGE_MARKERS.items():
-            matches = sum(1 for marker in markers if marker in text_lower)
+            matches = sum(1 for marker in markers if marker in words)
             scores[lang_code] = matches / max(len(words), 1)
         
-        # Detect slang
+        # Detect slang (substring match is appropriate for slang phrases)
         slang_matches = sum(1 for slang in SLANG_TERMS if slang in text_lower)
         scores["slang"] = slang_matches / max(len(words), 1)
         
@@ -219,12 +225,16 @@ class MultilingualDataBuilder:
                 
                 mix_scores = self.detect_language_mix(text)
                 
+                # Only mark as code-switched if there's actual detection and no dominant language
+                max_score = max(mix_scores.values()) if mix_scores else 0
+                is_code_switched = (max_score > 0) and (max_score < 0.8)
+                
                 manifest.append({
                     "audio_path": clip.get("path"),
                     "text": text,
                     "primary_language": lang_code,
                     "language_mix": mix_scores,
-                    "is_code_switched": max(mix_scores.values()) < 0.8,
+                    "is_code_switched": is_code_switched,
                 })
         
         # Add synthetic code-switched data
@@ -251,7 +261,10 @@ class MultilingualDataBuilder:
         
         # Stats
         codeswitch_count = sum(1 for m in manifest if m["is_code_switched"])
-        print(f"  - Total code-switched: {codeswitch_count} ({100*codeswitch_count/len(manifest):.1f}%)")
+        if len(manifest) > 0:
+            print(f"  - Total code-switched: {codeswitch_count} ({100*codeswitch_count/len(manifest):.1f}%)")
+        else:
+            print("  - No samples in manifest")
         
         return manifest
     

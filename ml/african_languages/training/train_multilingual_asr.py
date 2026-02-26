@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 
-logging.basicConfig(level=logging.INFO)
+# Module-level logger (avoid global basicConfig to respect parent config)
 logger = logging.getLogger(__name__)
 
 
@@ -71,8 +71,13 @@ class MultilingualASRDataset(Dataset):
     
     def _log_language_stats(self):
         """Log statistics about language distribution."""
+        total = len(self.manifest)
+        if total == 0:
+            logger.warning("No samples in manifest after filtering")
+            return
+        
         codeswitch_count = sum(1 for m in self.manifest if m.get("is_code_switched", False))
-        logger.info(f"Code-switched samples: {codeswitch_count} ({100*codeswitch_count/len(self.manifest):.1f}%)")
+        logger.info(f"Code-switched samples: {codeswitch_count} ({100*codeswitch_count/total:.1f}%)")
         
         # Primary language distribution
         lang_counts = {}
@@ -82,7 +87,7 @@ class MultilingualASRDataset(Dataset):
         
         logger.info("Primary language distribution:")
         for lang, count in sorted(lang_counts.items(), key=lambda x: -x[1]):
-            logger.info(f"  {lang}: {count} ({100*count/len(self.manifest):.1f}%)")
+            logger.info(f"  {lang}: {count} ({100*count/total:.1f}%)")
     
     def __len__(self):
         return len(self.manifest)
@@ -106,9 +111,8 @@ class MultilingualASRDataset(Dataset):
                 waveform = torch.mean(waveform, dim=0, keepdim=True)
             
         except Exception as e:
-            logger.warning(f"Error loading {audio_path}: {e}")
-            # Return dummy data
-            waveform = torch.zeros(1, 16000)
+            logger.error(f"Failed to load audio {audio_path}: {e}")
+            raise RuntimeError(f"Audio loading failed for {audio_path}: {e}") from e
         
         # Process audio
         input_features = self.processor.feature_extractor(
@@ -166,9 +170,8 @@ class MultilingualASRTrainer:
     def create_dataloaders(self,
                           train_manifest: Path,
                           eval_manifest: Path,
-                          audio_dir: Path,
-                          batch_size: int = 16) -> tuple:
-        """Create training and evaluation dataloaders."""
+                          audio_dir: Path) -> tuple:
+        """Create training and evaluation datasets and collator."""
         
         train_dataset = MultilingualASRDataset(
             train_manifest, self.processor, audio_dir
@@ -185,7 +188,7 @@ class MultilingualASRTrainer:
             
             # Pad labels
             labels = [f["labels"] for f in features]
-            max_label_len = max(len(l) for l in labels)
+            max_label_len = max(len(lab) for lab in labels)
             
             # Whisper uses -100 for padding
             padded_labels = torch.full(
@@ -207,29 +210,30 @@ class MultilingualASRTrainer:
     def compute_metrics(self, pred) -> Dict[str, float]:
         """
         Compute WER (Word Error Rate) with special handling for code-switching.
+
+        Note: Only returns scalar values - HuggingFace Trainer cannot log lists.
+        Sample predictions/references are logged separately.
         """
         pred_ids = pred.predictions
         label_ids = pred.label_ids
-        
+
         # Replace -100 with pad token id
         label_ids[label_ids == -100] = self.processor.tokenizer.pad_token_id
-        
+
         # Decode
         pred_str = self.processor.batch_decode(pred_ids, skip_special_tokens=True)
         label_str = self.processor.batch_decode(label_ids, skip_special_tokens=True)
-        
+
         # Compute WER
         import jiwer
-        wer = jiwer.wer(label_str, pred_str)
-        
-        # Also compute per-language WER if we have that info
-        # (Would need to track language in eval dataset)
-        
-        return {
-            "wer": wer,
-            "predictions": pred_str[:3],  # Log first 3 for debugging
-            "references": label_str[:3],
-        }
+        wer_score = jiwer.wer(label_str, pred_str)
+
+        # Log samples separately — do NOT return lists to Trainer
+        logger.info(f"Sample predictions: %s", pred_str[:3])
+        logger.info(f"Sample references: %s", label_str[:3])
+
+        # Return only scalar metrics
+        return {"wer": wer_score}
     
     def train(self,
               train_manifest: Path,
@@ -242,7 +246,7 @@ class MultilingualASRTrainer:
         Fine-tune the model.
         
         Training strategy:
-        - Use LoRA for parameter-efficient fine-tuning
+        - Full-model fine-tuning (all parameters updated)
         - Mixed precision (fp16) for speed
         - Gradient accumulation for larger effective batch size
         - Early stopping based on WER
@@ -263,7 +267,7 @@ class MultilingualASRTrainer:
             gradient_accumulation_steps=2,  # Effective batch size = 32
             learning_rate=learning_rate,
             warmup_steps=500,
-            max_steps=10000,
+            num_train_epochs=num_epochs,  # Use the epochs parameter
             gradient_checkpointing=True,
             fp16=True,
             eval_strategy="steps",

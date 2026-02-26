@@ -49,12 +49,13 @@ BASE_URL = "https://storage.googleapis.com/common-voice-prod-prod"
 
 
 def download_file(url: str, output_path: Path, chunk_size: int = 8192) -> bool:
-    """Download file with progress bar."""
+    """Download file with progress bar and integrity verification."""
     try:
         response = requests.get(url, stream=True, timeout=300)
         response.raise_for_status()
         
         total_size = int(response.headers.get("content-length", 0))
+        bytes_written = 0
         
         with open(output_path, "wb") as f, tqdm(
             desc=output_path.name,
@@ -66,7 +67,14 @@ def download_file(url: str, output_path: Path, chunk_size: int = 8192) -> bool:
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if chunk:
                     f.write(chunk)
+                    bytes_written += len(chunk)
                     pbar.update(len(chunk))
+        
+        # Verify downloaded size matches Content-Length when available
+        if total_size > 0 and bytes_written != total_size:
+            print(f"Error: Downloaded file size ({bytes_written} bytes) does not match Content-Length ({total_size} bytes)")
+            output_path.unlink()
+            return False
         
         return True
     except Exception as e:
@@ -76,36 +84,17 @@ def download_file(url: str, output_path: Path, chunk_size: int = 8192) -> bool:
         return False
 
 
-def is_safe_tar_member(member: tarfile.TarInfo, extract_dir: Path) -> bool:
-    """Validate tar member to prevent path traversal attacks."""
-    member_path = Path(member.name)
-    # Check for absolute paths
-    if member_path.is_absolute():
-        return False
-    # Check for parent directory references (path traversal)
-    resolved_path = (extract_dir / member_path).resolve()
-    extract_dir_resolved = extract_dir.resolve()
-    try:
-        # Ensure the resolved path is within the extract directory
-        resolved_path.relative_to(extract_dir_resolved)
-        return True
-    except ValueError:
-        return False
-
-
 def extract_archive(archive_path: Path, extract_dir: Path) -> bool:
-    """Extract tar.gz archive safely with member validation."""
+    """Extract tar.gz archive safely using filter='data' to prevent path traversal.
+
+    Uses Python 3.12+ built-in protection against CVE-2007-4559.
+    The filter='data' parameter prevents extraction of files outside the target
+    directory by rejecting absolute paths and path traversal sequences.
+    """
     try:
         print(f"Extracting {archive_path}...")
         with tarfile.open(archive_path, "r:gz") as tar:
-            # Validate each member before extraction
-            for member in tar.getmembers():
-                if not is_safe_tar_member(member, extract_dir):
-                    print(f"  ⚠️  Skipping dangerous member: {member.name}")
-                    continue
-            # Safe extraction with validated members only
-            tar.extractall(extract_dir, members=[m for m in tar.getmembers() 
-                          if is_safe_tar_member(m, extract_dir)])
+            tar.extractall(extract_dir, filter="data")
         return True
     except Exception as e:
         print(f"Error extracting {archive_path}: {e}")
@@ -184,10 +173,16 @@ def verify_dataset(lang_dir: Path) -> dict:
     import csv
     with open(validated_tsv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
+        has_duration = False
         for row in reader:
             stats["validated_clips"] += 1
             if "duration" in row:
+                has_duration = True
                 stats["total_hours"] += float(row["duration"]) / 3600
+        
+        # Warn if duration column is missing
+        if not has_duration and stats["validated_clips"] > 0:
+            print(f"Warning: 'duration' column not found in {validated_tsv}. Total hours will be unknown.")
     
     stats["valid"] = True
     return stats
