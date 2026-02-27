@@ -53,7 +53,7 @@ class TestXRPLLiquidityEngine:
         print("✅ XRPL Engine default URL verified")
 
 
-class TestXRLPWalletOperations:
+class TestXRPLWalletOperations:
     """Test XRPL wallet operations (requires seed)."""
 
     def test_wallet_initialization(self):

@@ -300,21 +300,36 @@ jobs:
     name: XRPL Integration Test (APEX Section 4)
     runs-on: ubuntu-latest
     needs: [security-scan]
-    if: ${{ secrets.XRPL_AGENT_SEED != '' }}
+    # Note: Secrets cannot be accessed in job-level if conditions
+    # We use step-level checks instead
     steps:
+      - name: Check XRPL secrets
+        id: check-secrets
+        run: |
+          if [ -n "${{ secrets.XRPL_AGENT_SEED }}" ]; then
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+            echo "✅ XRPL integration test skipped (no XRPL_AGENT_SEED secret configured)"
+          fi
+
       - name: Checkout repository
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Python
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install XRPL dependencies
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         run: |
           pip install xrpl-py
 
       - name: Test XRPL client connection
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         run: |
           python -c "
           import sys

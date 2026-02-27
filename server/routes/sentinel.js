@@ -34,11 +34,7 @@ async function executeSentinel(command, data) {
             '--json-input', JSON.stringify(data)
         ];
 
- optimal-performance
-        const process = spawn('python3', args, {
-
         const pythonProcess = spawn('python3', args, {
- digital-preeminence-fixes
             env: {
                 ...process.env,
                 PYTHONUNBUFFERED: '1'
@@ -47,17 +43,6 @@ async function executeSentinel(command, data) {
 
         let stdout = '';
         let stderr = '';
-
- optimal-performance
-        process.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-
-        process.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-
-        process.on('close', (code) => {
 
         pythonProcess.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
@@ -68,7 +53,6 @@ async function executeSentinel(command, data) {
         });
 
         pythonProcess.on('close', (code) => {
- digital-preeminence-fixes
             if (code === 0) {
                 try {
                     resolve(JSON.parse(stdout));
@@ -80,23 +64,14 @@ async function executeSentinel(command, data) {
             }
         });
 
- optimal-performance
-        process.on('error', (err) => {
-
         pythonProcess.on('error', (err) => {
- digital-preeminence-fixes
             reject(err);
         });
 
         // Send data via stdin
         if (data.stdin) {
- optimal-performance
-            process.stdin.write(JSON.stringify(data.stdin));
-            process.stdin.end();
-
             pythonProcess.stdin.write(JSON.stringify(data.stdin));
             pythonProcess.stdin.end();
- digital-preeminence-fixes
         }
     });
 }
@@ -437,6 +412,15 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             });
         }
 
+        // Validate principal is a positive number
+        const principalNum = parseFloat(principal);
+        if (isNaN(principalNum) || principalNum <= 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'principal must be a positive number'
+            });
+        }
+
         // Validate currency
         const validCurrencies = ['XRP', 'RLUSD'];
         if (!validCurrencies.includes(currency.toUpperCase())) {
@@ -475,7 +459,7 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
                 duration_days: duration_days,
                 collateral_ratio: collateral_ratio || 1.5,
                 status: 'pending',
-                total_repayment: (principal * (1 + interest_bps / 10000)).toFixed(2)
+                total_repayment: (principalNum * (1 + interest_bps / 10000)).toFixed(2)
             },
             consent_ref: consent_ref,
             audit: {

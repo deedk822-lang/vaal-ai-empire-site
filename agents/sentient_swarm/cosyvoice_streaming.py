@@ -105,6 +105,7 @@ class CosyVoiceStreamingProcessor:
         self.total_asr_requests = 0
         self.total_tts_latency_ms = 0
         self.total_asr_latency_ms = 0
+        self._metrics_lock = asyncio.Lock()  # Thread-safe metrics updates
 
         if not self.api_key:
             logger.warning("DASHSCOPE_API_KEY not set - voice features disabled")
@@ -199,8 +200,9 @@ class CosyVoiceStreamingProcessor:
 
         finally:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.total_tts_requests += 1
-            self.total_tts_latency_ms += duration_ms
+            async with self._metrics_lock:
+                self.total_tts_requests += 1
+                self.total_tts_latency_ms += duration_ms
 
             logger.info("Streaming TTS completed", extra={
                 "request_id": request_id,
@@ -278,8 +280,9 @@ class CosyVoiceStreamingProcessor:
                         audio_data = await response.read()
                         duration_ms = int((time.time() - start_time) * 1000)
 
-                        self.total_tts_requests += 1
-                        self.total_tts_latency_ms += duration_ms
+                        async with self._metrics_lock:
+                            self.total_tts_requests += 1
+                            self.total_tts_latency_ms += duration_ms
 
                         audit["status"] = "success"
                         audit["duration_ms"] = duration_ms
@@ -392,8 +395,9 @@ class CosyVoiceStreamingProcessor:
 
         finally:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.total_asr_requests += 1
-            self.total_asr_latency_ms += duration_ms
+            async with self._metrics_lock:
+                self.total_asr_requests += 1
+                self.total_asr_latency_ms += duration_ms
 
             logger.info("Streaming ASR completed", extra={
                 "request_id": request_id,
@@ -477,8 +481,9 @@ class CosyVoiceStreamingProcessor:
                         detected_language = result.get("output", {}).get("detected_language", lang)
                         words = result.get("output", {}).get("words", [])
 
-                        self.total_asr_requests += 1
-                        self.total_asr_latency_ms += duration_ms
+                        async with self._metrics_lock:
+                            self.total_asr_requests += 1
+                            self.total_asr_latency_ms += duration_ms
 
                         audit["status"] = "success"
                         audit["duration_ms"] = duration_ms
@@ -541,7 +546,15 @@ class CosyVoiceStreamingProcessor:
         Returns:
             Transcription result
         """
-        audio_data = base64.b64decode(audio_base64)
+        import binascii
+        try:
+            audio_data = base64.b64decode(audio_base64)
+        except binascii.Error as e:
+            logger.error(f"Invalid base64 audio data: {e}")
+            return {
+                "status": "error",
+                "message": f"Invalid base64 audio data: {str(e)[:100]}"
+            }
         return await self.transcribe_complete(audio_data, language, consent_ref)
 
     def _split_text_for_streaming(self, text: str) -> List[str]:
@@ -597,6 +610,10 @@ class VoiceCommandProcessor:
     real-time voice-based financial interactions.
     """
 
+    # LRU configuration for unbounded session contexts
+    MAX_SESSIONS = 100
+    MAX_HISTORY_PER_SESSION = 50
+
     def __init__(
         self,
         cosyvoice: CosyVoiceStreamingProcessor,
@@ -604,7 +621,16 @@ class VoiceCommandProcessor:
     ):
         self.cosyvoice = cosyvoice
         self.consent_manager = consent_manager
-        self._session_contexts: Dict[str, Dict[str, Any]] = {}
+        self._session_contexts: OrderedDict = OrderedDict()
+        self._session_timestamps: Dict[str, float] = {}
+
+    def _prune_sessions(self):
+        """LRU prune oldest sessions when over limit."""
+        while len(self._session_contexts) > self.MAX_SESSIONS:
+            oldest_key = next(iter(self._session_contexts.keys()))
+            del self._session_contexts[oldest_key]
+            self._session_timestamps.pop(oldest_key, None)
+            logger.debug(f"Pruned session: {oldest_key}")
 
     async def process_voice_input(
         self,
@@ -636,6 +662,11 @@ class VoiceCommandProcessor:
                 "turn_count": 0,
                 "history": []
             }
+            self._session_timestamps[session_id] = time.time()
+            self._prune_sessions()
+
+        # Update LRU timestamp
+        self._session_timestamps[session_id] = time.time()
 
         context = self._session_contexts[session_id]
 
@@ -654,6 +685,10 @@ class VoiceCommandProcessor:
                 "text": result["text"],
                 "timestamp": datetime.utcnow().isoformat()
             })
+            
+            # Cap history to prevent unbounded growth
+            if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
+                context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
 
             result["session_id"] = session_id
             result["turn_count"] = context["turn_count"]
@@ -769,10 +804,17 @@ async def main():
 
     if args.tts:
         print(f"Synthesizing: {args.tts[:50]}...")
+        try:
+            voice_model = VoiceModel(args.voice)
+        except ValueError as e:
+            print(f"Error: Invalid voice model '{args.voice}': {e}")
+            print("Valid voices: zhiyan, zhichu, zhiyan_emo, zhichu_emo")
+            sys.exit(1)
+
         result = await processor.synthesize_complete(
             text=args.tts,
             language=args.language,
-            voice=VoiceModel(args.voice)
+            voice=voice_model
         )
 
         if result["status"] == "success":
@@ -788,8 +830,18 @@ async def main():
 
     elif args.asr:
         print(f"Transcribing: {args.asr}")
-        with open(args.asr, "rb") as f:
-            audio_data = f.read()
+        try:
+            with open(args.asr, "rb") as f:
+                audio_data = f.read()
+        except FileNotFoundError:
+            print(f"Error: Audio file not found: {args.asr}")
+            sys.exit(1)
+        except PermissionError:
+            print(f"Error: Permission denied reading: {args.asr}")
+            sys.exit(1)
+        except IsADirectoryError:
+            print(f"Error: Expected a file but got a directory: {args.asr}")
+            sys.exit(1)
 
         result = await processor.transcribe_complete(
             audio_data=audio_data,
