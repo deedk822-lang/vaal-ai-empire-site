@@ -12,10 +12,11 @@ const { catchAsync } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
 
 // PayFast Configuration
+// APEX: PAYFAST_PASSPHRASE is the correct env var name per PayFast spec
 const PAYFAST_CONFIG = {
     merchant_id: process.env.PAYFAST_MERCHANT_ID,
     merchant_key: process.env.PAYFAST_MERCHANT_KEY,
-    signing_key: process.env.PAYFAST_SIGNING_KEY,
+    signing_key: process.env.PAYFAST_PASSPHRASE,  // APEX-FIX: Renamed from PAYFAST_SIGNING_KEY
     sandbox: process.env.PAYFAST_SANDBOX === 'true',
     get baseUrl() {
         return this.sandbox 
@@ -124,7 +125,7 @@ exports.createPayment = catchAsync(async (req, res, next) => {
  * Verify PayFast ITN (Instant Transaction Notification)
  * APEX: Signature validation + server-side verification
  */
-exports.verifyITN = catchAsync(async (req, res, next) => {
+exports.verifyITN = catchAsync(async (req, res) => {  // APEX-FIX: Removed unused 'next' param
     // PayFast sends POST data as form-urlencoded
     const data = req.body;
     

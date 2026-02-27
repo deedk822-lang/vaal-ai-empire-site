@@ -16,14 +16,12 @@ License: Proprietary
 
 import os
 import json
-import hmac
-import hashlib
 import logging
 import asyncio
 import time
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4

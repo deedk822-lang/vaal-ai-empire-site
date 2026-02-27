@@ -114,23 +114,46 @@ if (process.env.NODE_ENV === 'production') {
     }
 }
 
-// APEX-AUDIT-FIND-004: Validate DOMAIN environment variable
-const ALLOWED_DOMAINS = [
+// APEX-AUDIT-FIND-004: SECURE DOMAIN VALIDATION (Fail-Closed)
+// Static allowed domains - known safe origins
+const STATIC_ALLOWED_DOMAINS = [
     'https://vaal-ai-empire-site.vercel.app',
     'https://vaal-ai-empire-site-1dpo.vercel.app', 
-    'https://vaal-ai-empire-site-zzen.vercel.app',
-    process.env.DOMAIN
-].filter(Boolean);
+    'https://vaal-ai-empire-site-zzen.vercel.app'
+];
 
-const DOMAIN = ALLOWED_DOMAINS.includes(process.env.DOMAIN) 
-    ? process.env.DOMAIN 
-    : (process.env.NODE_ENV === 'production' 
-        ? null  // Fail in production
-        : (process.env.DOMAIN || 'http://localhost:3000'));  // Default for dev
+// Build ALLOWED_DOMAINS with strict validation
+// APEX Section 0: Defense in Depth - validate domain format before trusting
+const ALLOWED_DOMAINS = [...STATIC_ALLOWED_DOMAINS];
+const domainRegex = /^https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-if (process.env.NODE_ENV === 'production' && !DOMAIN) {
-    throw new Error('Invalid or missing DOMAIN environment variable');
+if (process.env.DOMAIN) {
+    const domain = process.env.DOMAIN.trim();
+    if (domain && !ALLOWED_DOMAINS.includes(domain)) {
+        if (domainRegex.test(domain)) {
+            ALLOWED_DOMAINS.unshift(domain);
+        } else {
+            console.warn(`⚠️ Invalid DOMAIN env var format: ${domain} - ignoring (security)`);
+        }
+    }
 }
+
+// Freeze to prevent runtime modification (APEX Security)
+Object.freeze(ALLOWED_DOMAINS);
+
+// Determine primary DOMAIN (fail-closed in production)
+const DOMAIN = (() => {
+    const envDomain = process.env.DOMAIN?.trim();
+    if (envDomain && ALLOWED_DOMAINS.includes(envDomain)) {
+        return envDomain;
+    }
+    // Fail-closed: In production, require valid DOMAIN
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('APEX Security: Invalid or missing DOMAIN environment variable. Must match pattern: https://domain.tld');
+    }
+    // Development fallback
+    return process.env.DOMAIN || 'http://localhost:3000';
+})();
 
 const PAYFAST_CONFIG = {
     merchant_id:  process.env.PAYFAST_MERCHANT_ID  || '10000100',

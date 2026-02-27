@@ -176,12 +176,16 @@ function sanitizeWhatsAppContent(content, contentType = 'text') {
   
   // APEX: Length limits to prevent DoS
   const MAX_LENGTH = 4096;
+  const TRUNCATE_SUFFIX = '...[TRUNCATED]';
+  const TRUNCATE_SUFFIX_LEN = TRUNCATE_SUFFIX.length;  // 14 chars
+
   if (sanitized.length > MAX_LENGTH) {
     logger.warn('WhatsApp content truncated (length limit)', { 
       original_length: sanitized.length,
       max_length: MAX_LENGTH
     });
-    sanitized = sanitized.substring(0, MAX_LENGTH) + '...[TRUNCATED]';
+    // APEX-FIX: Account for suffix length to stay within MAX_LENGTH
+    sanitized = sanitized.substring(0, MAX_LENGTH - TRUNCATE_SUFFIX_LEN) + TRUNCATE_SUFFIX;
   }
   
   return sanitized;
