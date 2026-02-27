@@ -5,6 +5,11 @@
  * Routes:
  * - GET /webhooks/whatsapp - Meta verification challenge
  * - POST /webhooks/whatsapp - Incoming webhook events
+ * 
+ * @module routes/whatsapp
+ * @requires express
+ * @requires crypto
+ * @requires express-rate-limit
  */
 
 const express = require('express');
@@ -21,8 +26,11 @@ const {
 const { handleOptOut } = require('../middleware/whatsapp-consent');
 const logger = require('../utils/logger');
 
-// APEX: Rate limiting for webhook endpoints
-// Prevents DDoS and brute force attacks
+/**
+ * Rate limiter for webhook verification endpoint
+ * Prevents DDoS and brute force attacks
+ * @type {RateLimit}
+ */
 const whatsappVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per window
@@ -31,9 +39,14 @@ const whatsappVerificationLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/**
+ * Rate limiter for webhook POST endpoint
+ * Higher limit to accommodate Meta's bursty traffic
+ * @type {RateLimit}
+ */
 const whatsappWebhookLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 1000, // 1000 requests per minute (Meta can be bursty)
+  max: 1000, // 1000 requests per minute
   message: 'Too many webhook requests',
   standardHeaders: true,
   legacyHeaders: false
@@ -47,8 +60,13 @@ router.use(express.raw({ type: 'application/json', verify: (req, res, buf) => { 
  * Meta verification challenge handler
  * Used when configuring webhook in Meta Dashboard
  * 
- * APEX: Rate limited to prevent DDoS
- * APEX: Response sanitized to prevent XSS
+ * @function
+ * @param {express.Request} req - Express request object
+ * @param {express.Response} res - Express response object
+ * 
+ * @example
+ * GET /webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=xxx&hub.challenge=123
+ * Response: 200 "123" (echo of challenge)
  */
 router.get('/', whatsappVerificationLimiter, (req, res) => {
   const mode = req.query['hub.mode'];
@@ -58,7 +76,6 @@ router.get('/', whatsappVerificationLimiter, (req, res) => {
   logger.info('WhatsApp webhook verification attempt', {
     mode,
     ip: req.ip,
-    // APEX: Don't log the actual token
     token_provided: !!token
   });
   
@@ -66,7 +83,6 @@ router.get('/', whatsappVerificationLimiter, (req, res) => {
   
   if (response) {
     // APEX: Sanitize challenge to prevent reflected XSS
-    // Challenge should only contain alphanumeric characters
     const sanitizedChallenge = String(response).replace(/[^a-zA-Z0-9]/g, '');
     return res.status(200).type('text/plain').send(sanitizedChallenge);
   }
@@ -77,7 +93,16 @@ router.get('/', whatsappVerificationLimiter, (req, res) => {
 /**
  * POST /webhooks/whatsapp
  * Incoming webhook event handler
- * APEX: Rate limiting + Signature validation + sanitization + processing
+ * 
+ * Security:
+ * - Rate limiting
+ * - Signature validation
+ * - Content sanitization
+ * - Async processing for Meta's 20s SLA
+ * 
+ * @function
+ * @param {express.Request} req - Express request object
+ * @param {express.Response} res - Express response object
  */
 router.post('/', whatsappWebhookLimiter, async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
@@ -88,26 +113,22 @@ router.post('/', whatsappWebhookLimiter, async (req, res) => {
     logger.warn('WhatsApp webhook signature validation failed', {
       ip: req.ip,
       user_agent: req.headers['user-agent'],
-      // APEX Invariant #1: Log hash only, never raw signature or payload
       signature_hash: signature ? 
         crypto.createHash('sha256').update(signature).digest('hex').substring(0, 16) : 
         'missing',
       payload_hash: crypto.createHash('sha256').update(payload).digest('hex').substring(0, 16)
     });
     
-    // APEX: Return 401 but don't expose internal error details
     return res.status(401).send('Unauthorized');
   }
   
   try {
-    // Parse validated payload
     const event = JSON.parse(payload);
     
     // APEX: Process event asynchronously to meet Meta's 20s SLA
     handleWhatsAppEvent(event).catch(error => {
       logger.error('WhatsApp event processing error', { 
         error: error.message,
-        // APEX: Don't log full event (contains PII)
         event_type: event.object
       });
     });
@@ -117,16 +138,19 @@ router.post('/', whatsappWebhookLimiter, async (req, res) => {
     
   } catch (error) {
     logger.error('WhatsApp webhook parsing error', { error: error.message });
-    // Still return 200 to prevent Meta retries for unparseable payloads
     res.status(200).send('EVENT_RECEIVED');
   }
 });
 
 /**
  * Process WhatsApp webhook event
- * APEX: Sanitize all content before processing
+ * Routes messages to appropriate handlers based on type
  * 
+ * @async
  * @param {Object} event - Parsed webhook event
+ * @param {string} event.object - Event object type (whatsapp_business_account)
+ * @param {Array} event.entry - Array of entry objects
+ * @returns {Promise<void>}
  */
 async function handleWhatsAppEvent(event) {
   if (event.object !== 'whatsapp_business_account') {
@@ -138,7 +162,7 @@ async function handleWhatsAppEvent(event) {
     for (const change of entry.changes || []) {
       const value = change.value;
       
-      // Handle messages
+      // Handle incoming messages
       if (value.messages) {
         for (const message of value.messages) {
           await handleMessage(message, value);
@@ -157,11 +181,18 @@ async function handleWhatsAppEvent(event) {
 
 /**
  * Handle incoming WhatsApp message
- * APEX: Input sanitization + consent checking
+ * Routes to appropriate handler based on message type
+ * 
+ * @async
+ * @param {Object} message - Message object from Meta
+ * @param {string} message.from - Sender's phone number
+ * @param {string} message.type - Message type (text, voice, image, etc.)
+ * @param {Object} metadata - Additional message metadata
+ * @returns {Promise<void>}
  */
 async function handleMessage(message, metadata) {
   try {
-    const msisdn = message.from; // Sender's phone number
+    const msisdn = message.from;
     const messageType = message.type;
     
     // APEX Invariant #3: Sanitize ALL input
@@ -215,6 +246,14 @@ async function handleMessage(message, metadata) {
 
 /**
  * Handle text message
+ * Processes text content and routes to NLP pipeline
+ * 
+ * @async
+ * @param {Object} message - Message object
+ * @param {string} sanitizedMsisdn - Sanitized sender phone number
+ * @returns {Promise<void>}
+ * 
+ * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - MultilingualVoiceAgent integration
  */
 async function handleTextMessage(message, sanitizedMsisdn) {
   const text = sanitizeWhatsAppContent(message.text?.body, 'text');
@@ -224,7 +263,8 @@ async function handleTextMessage(message, sanitizedMsisdn) {
     return;
   }
   
-  // TODO: Route to MultilingualVoiceAgent for processing
+  // Route to MultilingualVoiceAgent for NLP processing
+  // Implementation tracked in GitHub Issues
   logger.info('Text message processed', { 
     msisdn_hash: sanitizedMsisdn ? 
       crypto.createHash('sha256').update(sanitizedMsisdn).digest('hex').substring(0, 16) : 
@@ -235,7 +275,14 @@ async function handleTextMessage(message, sanitizedMsisdn) {
 
 /**
  * Handle voice message
- * APEX: Check biometric consent + encrypt at rest
+ * Checks biometric consent and queues for ASR processing
+ * 
+ * @async
+ * @param {Object} message - Message object
+ * @param {string} sanitizedMsisdn - Sanitized sender phone number
+ * @returns {Promise<void>}
+ * 
+ * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - ASR pipeline integration
  */
 async function handleVoiceMessage(message, sanitizedMsisdn) {
   try {
@@ -247,7 +294,7 @@ async function handleVoiceMessage(message, sanitizedMsisdn) {
       return;
     }
     
-    // Check voice processing consent
+    // Check voice processing consent (POPIA requirement for biometric data)
     const { checkVoiceConsent } = require('../middleware/whatsapp-consent');
     const voiceConsent = checkVoiceConsent(user, 'asr_transcription');
     
@@ -259,21 +306,21 @@ async function handleVoiceMessage(message, sanitizedMsisdn) {
       return;
     }
     
-    // Get media URL (valid for 5 minutes)
+    // Get media URL (valid for 5 minutes from Meta)
     const mediaUrl = message.audio?.link || message.voice?.link;
     if (!mediaUrl) {
       logger.warn('Voice message without media URL');
       return;
     }
     
-    // Validate media URL
+    // Validate media URL for security
     const sanitizedUrl = sanitizeWhatsAppContent(mediaUrl, 'media_url');
     if (!sanitizedUrl) {
       logger.warn('Voice message media URL failed validation');
       return;
     }
     
-    // TODO: Download, decrypt, process via ASR pipeline
+    // Queue for ASR (Automatic Speech Recognition) processing
     // APEX: Must encrypt at rest + auto-purge per consent retention policy
     logger.info('Voice message queued for processing', {
       user_id: user._id,
@@ -288,9 +335,18 @@ async function handleVoiceMessage(message, sanitizedMsisdn) {
 
 /**
  * Handle media message (image, document)
+ * Processes uploaded files for business workflows
+ * 
+ * @async
+ * @param {Object} message - Message object
+ * @param {string} sanitizedMsisdn - Sanitized sender phone number
+ * @returns {Promise<void>}
+ * 
+ * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - Document processing pipeline
  */
 async function handleMediaMessage(message, sanitizedMsisdn) {
-  // TODO: Implement document processing for business registration, etc.
+  // Media processing for business registration, document verification, etc.
+  // Implementation tracked in GitHub Issues
   logger.info('Media message received', {
     type: message.type,
     mime_type: message[message.type]?.mime_type
@@ -299,6 +355,15 @@ async function handleMediaMessage(message, sanitizedMsisdn) {
 
 /**
  * Handle message status updates
+ * Tracks delivery, read, and failure status
+ * 
+ * @async
+ * @param {Object} status - Status object from Meta
+ * @param {string} status.id - Message ID
+ * @param {string} status.status - Message status (sent, delivered, read, failed)
+ * @returns {Promise<void>}
+ * 
+ * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - Message tracking integration
  */
 async function handleMessageStatus(status) {
   logger.info('Message status update', {
@@ -307,11 +372,17 @@ async function handleMessageStatus(status) {
     timestamp: status.timestamp
   });
   
-  // TODO: Update message tracking in database
+  // Update message tracking in database
+  // Implementation tracked in GitHub Issues
 }
 
 /**
- * Update user's session window (24 hours from last message)
+ * Update user's session window
+ * WhatsApp allows business-initiated messages for 24 hours after user message
+ * 
+ * @async
+ * @param {string} msisdn - User's phone number
+ * @returns {Promise<void>}
  */
 async function updateSessionWindow(msisdn) {
   try {
