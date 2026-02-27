@@ -5,11 +5,16 @@ APEX Security Framework v2.0 Compliant
 
 Uses Qwen 3.5-Plus via Alibaba Cloud DashScope API for intelligent code fixing.
 Designed for GitHub Actions integration in hybrid-swarm-autofixer.yml
+
+APEX Invariants:
+- No PII logging (Invariant #1)
+- Auth verified per-request (Invariant #2)
+- Input validation at trust boundaries (Invariant #3)
 """
 
 import asyncio
-import hashlib
 import json
+import logging
 import os
 import sys
 import time
@@ -25,6 +30,13 @@ except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "aiohttp"], check=True)
     import aiohttp
 
+# APEX Invariant: Structured logging without PII
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 # ═══════════════════════════════════════════════════════════════════
 # APEX Configuration
@@ -32,7 +44,19 @@ except ImportError:
 
 @dataclass
 class APEXConfig:
-    """APEX-compliant configuration for Swarm Auto-Fixer."""
+    """
+    APEX-compliant configuration for Swarm Auto-Fixer.
+    
+    Attributes:
+        api_key: DashScope API key (from DASHSCOPE_API_KEY env var)
+        api_url: DashScope API endpoint
+        model: Qwen model identifier
+        max_tokens: Maximum tokens in response
+        temperature: Generation temperature (lower = more deterministic)
+        timeout_seconds: Request timeout
+        max_retries: Maximum retry attempts
+        retry_delay_seconds: Base delay between retries
+    """
     api_key: str = ""
     api_url: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
     model: str = "qwen3-235b-a22b"  # Qwen 3.5-Plus model
@@ -54,7 +78,19 @@ class APEXConfig:
 
 @dataclass
 class CodeIssue:
-    """Represents a code issue to fix."""
+    """
+    Represents a code issue to fix.
+    
+    Attributes:
+        file_path: Path to the file containing the issue
+        line_start: Starting line number
+        line_end: Ending line number
+        severity: Issue severity (error, warning, info)
+        rule_id: Identifier for the rule that triggered the issue
+        message: Human-readable description of the issue
+        suggestion: Optional suggested fix
+        source: Source of the issue detection (codeql, eslint, bandit, etc.)
+    """
     file_path: str
     line_start: int
     line_end: int
@@ -67,7 +103,19 @@ class CodeIssue:
 
 @dataclass
 class FixResult:
-    """Result of a fix operation."""
+    """
+    Result of a fix operation.
+    
+    Attributes:
+        success: Whether the fix was applied successfully
+        file_path: Path to the file that was fixed
+        original_content: Original file content (for rollback)
+        fixed_content: Fixed file content
+        issues_addressed: List of issue IDs that were addressed
+        explanation: Human-readable explanation of the fix
+        error: Error message if fix failed
+        duration_ms: Duration of the fix operation in milliseconds
+    """
     success: bool
     file_path: str
     original_content: str = ""
@@ -83,19 +131,32 @@ class FixResult:
 # ═══════════════════════════════════════════════════════════════════
 
 class QwenClient:
-    """Client for Qwen 3.5-Plus via DashScope API."""
+    """
+    Client for Qwen 3.5-Plus via DashScope API.
+    
+    Handles authentication, request formatting, and response parsing
+    for the Qwen 3.5-Plus model via Alibaba Cloud DashScope.
+    """
 
     def __init__(self, config: APEXConfig):
+        """
+        Initialize the Qwen client.
+        
+        Args:
+            config: APEX configuration containing API credentials
+        """
         self.config = config
         self._session: Optional[aiohttp.ClientSession] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "QwenClient":
+        """Create async context with HTTP session."""
         self._session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds)
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Clean up HTTP session."""
         if self._session:
             await self._session.close()
 
@@ -110,11 +171,24 @@ class QwenClient:
         Generate a fix for the given code issues using Qwen 3.5-Plus.
 
         APEX: No PII is logged. Only file paths and issue types are recorded.
+        
+        Args:
+            code: Original source code
+            issues: List of issues to fix
+            file_path: Path to the file (for context)
+            language: Programming language of the code
+            
+        Returns:
+            Dictionary containing fixed_code, raw_response, and model info
+            
+        Raises:
+            ValueError: If API key is not configured
+            Exception: If all retry attempts fail
         """
         if not self.config.api_key:
             raise ValueError("DASHSCOPE_API_KEY not configured")
 
-        # Build the prompt
+        # Build the prompt with issue details
         issues_text = "\n".join([
             f"- Line {i.line_start}: [{i.severity.upper()}] {i.rule_id}: {i.message}"
             for i in issues
@@ -164,7 +238,7 @@ Fixed code:"""
             }
         }
 
-        last_error = None
+        last_error: Optional[str] = None
         for attempt in range(self.config.max_retries):
             try:
                 async with self._session.post(
@@ -174,25 +248,42 @@ Fixed code:"""
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
+                        logger.info(f"✅ Fix generated successfully for {file_path}")
                         return self._parse_response(result)
                     elif response.status == 429:
-                        # Rate limited - wait and retry
-                        await asyncio.sleep(self.config.retry_delay_seconds * (attempt + 1))
+                        # Rate limited - exponential backoff
+                        delay = self.config.retry_delay_seconds * (attempt + 1)
+                        logger.warning(f"Rate limited, retrying in {delay}s...")
+                        await asyncio.sleep(delay)
                         continue
                     else:
                         error_text = await response.text()
                         last_error = f"API error {response.status}: {error_text[:200]}"
+                        logger.error(f"API error: {last_error}")
             except asyncio.TimeoutError:
                 last_error = "Request timed out"
+                logger.warning(f"Request timed out, attempt {attempt + 1}/{self.config.max_retries}")
                 continue
             except Exception as e:
                 last_error = str(e)
+                logger.error(f"Request failed: {last_error}")
                 continue
 
         raise Exception(f"Failed after {self.config.max_retries} retries: {last_error}")
 
     def _parse_response(self, response: Dict) -> Dict[str, Any]:
-        """Parse the API response."""
+        """
+        Parse the API response and extract fixed code.
+        
+        Args:
+            response: Raw API response dictionary
+            
+        Returns:
+            Dictionary with fixed_code, raw_response, and model
+            
+        Raises:
+            ValueError: If response parsing fails
+        """
         try:
             content = response.get("output", {}).get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -205,7 +296,8 @@ Fixed code:"""
                     # Remove language identifier if present
                     lines = code_block.split("\n")
                     if lines[0].startswith("```"):
-                        lines[0] = lines[0].split("\n")[0]  # Keep just ```
+                        # Remove language identifier (e.g., ```python)
+                        lines[0] = "```"
                     content = "\n".join(lines[1:-1] if len(lines) > 2 else lines)
 
             return {
@@ -224,24 +316,45 @@ Fixed code:"""
 class SwarmAutoFixer:
     """
     Main Auto-Fixer engine.
-    APEX: No PII logging, full audit trail, error handling.
+    
+    APEX: No PII logging, full audit trail, comprehensive error handling.
+    
+    Processes code issues from SARIF files and generates fixes using
+    Qwen 3.5-Plus via DashScope API.
     """
 
     def __init__(self, config: Optional[APEXConfig] = None):
+        """
+        Initialize the Swarm Auto-Fixer.
+        
+        Args:
+            config: Optional APEX configuration (defaults to env-based config)
+        """
         self.config = config or APEXConfig.from_env()
         self.results: List[FixResult] = []
         self.start_time: float = 0
+        logger.info(f"Swarm Auto-Fixer initialized with model: {self.config.model}")
 
     async def fix_file(
         self,
         file_path: Path,
         issues: List[CodeIssue]
     ) -> FixResult:
-        """Fix issues in a single file."""
+        """
+        Fix issues in a single file.
+        
+        Args:
+            file_path: Path to the file to fix
+            issues: List of issues to address
+            
+        Returns:
+            FixResult containing the outcome of the fix operation
+        """
         start = time.time()
 
         try:
             if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
                 return FixResult(
                     success=False,
                     file_path=str(file_path),
@@ -251,7 +364,7 @@ class SwarmAutoFixer:
             original_content = file_path.read_text(encoding="utf-8")
 
             # Determine language from file extension
-            ext_map = {
+            ext_map: Dict[str, str] = {
                 ".js": "javascript",
                 ".ts": "typescript",
                 ".py": "python",
@@ -272,6 +385,7 @@ class SwarmAutoFixer:
             fixed_code = result.get("fixed_code", "")
 
             if not fixed_code or fixed_code == original_content:
+                logger.warning(f"No changes generated for {file_path}")
                 return FixResult(
                     success=False,
                     file_path=str(file_path),
@@ -281,6 +395,7 @@ class SwarmAutoFixer:
 
             # Write the fix
             file_path.write_text(fixed_code, encoding="utf-8")
+            logger.info(f"✅ Fixed {file_path}: {len(issues)} issue(s)")
 
             duration_ms = int((time.time() - start) * 1000)
 
@@ -296,6 +411,7 @@ class SwarmAutoFixer:
 
         except Exception as e:
             duration_ms = int((time.time() - start) * 1000)
+            logger.error(f"Failed to fix {file_path}: {e}")
             return FixResult(
                 success=False,
                 file_path=str(file_path),
@@ -311,11 +427,18 @@ class SwarmAutoFixer:
         Run the auto-fixer on all provided issues.
 
         APEX: Returns structured result with full audit trail.
+        
+        Args:
+            issues_by_file: Dictionary mapping file paths to lists of issues
+            
+        Returns:
+            Dictionary containing fix results and summary statistics
         """
         self.start_time = time.time()
         self.results = []
 
         total_files = len(issues_by_file)
+        logger.info(f"Starting fix run for {total_files} file(s)")
 
         for file_path_str, issues in issues_by_file.items():
             file_path = Path(file_path_str)
@@ -323,14 +446,14 @@ class SwarmAutoFixer:
             self.results.append(result)
 
             # APEX: Log progress (no PII)
-            print(f"[{'✅' if result.success else '❌'}] {file_path.name}: "
-                  f"{len(issues)} issue(s) in {result.duration_ms}ms")
+            status = "✅" if result.success else "❌"
+            logger.info(f"{status} {file_path.name}: {len(issues)} issue(s) in {result.duration_ms}ms")
 
         # Compile summary
         success_count = sum(1 for r in self.results if r.success)
         total_issues = sum(len(issues) for issues in issues_by_file.values())
 
-        return {
+        summary = {
             "success": success_count > 0,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "duration_ms": int((time.time() - self.start_time) * 1000),
@@ -349,6 +472,9 @@ class SwarmAutoFixer:
                 for r in self.results
             ]
         }
+        
+        logger.info(f"Fix run complete: {success_count}/{total_files} files fixed")
+        return summary
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -356,10 +482,19 @@ class SwarmAutoFixer:
 # ═══════════════════════════════════════════════════════════════════
 
 def parse_sarif_issues(sarif_path: Path) -> Dict[str, List[CodeIssue]]:
-    """Parse SARIF file to extract issues grouped by file."""
+    """
+    Parse SARIF file to extract issues grouped by file.
+    
+    Args:
+        sarif_path: Path to the SARIF file
+        
+    Returns:
+        Dictionary mapping file paths to lists of CodeIssue objects
+    """
     issues_by_file: Dict[str, List[CodeIssue]] = {}
 
     if not sarif_path.exists():
+        logger.warning(f"SARIF file not found: {sarif_path}")
         return issues_by_file
 
     try:
@@ -390,19 +525,25 @@ def parse_sarif_issues(sarif_path: Path) -> Dict[str, List[CodeIssue]]:
                         message=message,
                         source="codeql"
                     ))
+        
+        logger.info(f"Parsed {sum(len(v) for v in issues_by_file.values())} issues from {sarif_path}")
     except Exception as e:
-        print(f"Warning: Failed to parse SARIF: {e}", file=sys.stderr)
+        logger.error(f"Failed to parse SARIF {sarif_path}: {e}")
 
     return issues_by_file
 
 
-async def main():
-    """Main entry point for GitHub Actions."""
+async def main() -> int:
+    """
+    Main entry point for GitHub Actions.
+    
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
     config = APEXConfig.from_env()
 
     if not config.api_key:
-        print("Warning: DASHSCOPE_API_KEY not set - using placeholder mode")
-        # Output placeholder result
+        logger.warning("DASHSCOPE_API_KEY not set - using placeholder mode")
         result = {
             "success": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -419,7 +560,7 @@ async def main():
         sarif_files = list(Path(".").glob("**/*.sarif"))
 
         if not sarif_files:
-            print("No SARIF files found - creating placeholder result")
+            logger.info("No SARIF files found - creating placeholder result")
             result = {
                 "success": True,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -461,14 +602,16 @@ async def main():
     # Write results for GitHub Actions
     output_path = Path("swarm-results.json")
     output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"\nResults written to: {output_path}")
+    logger.info(f"Results written to: {output_path}")
 
-    # Write to GITHUB_OUTPUT if available
+    # Write to GITHUB_OUTPUT if available (modern GitHub Actions syntax)
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
-        with open(github_output, "a") as f:
+        with open(github_output, "a", encoding="utf-8") as f:
             f.write(f"success={str(result['success']).lower()}\n")
             f.write(f"files_fixed={result['files_fixed']}\n")
+            f.write(f"issues_total={result['issues_total']}\n")
+            f.write(f"duration_ms={result['duration_ms']}\n")
 
     return 0 if result["success"] else 1
 
