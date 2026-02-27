@@ -157,7 +157,7 @@ jobs:
           node-version: '20'
 
       - name: Install OpenAPI Generator
-        run: npm install -g @openapitools/openapi-generator-cli@7.2.0 js-yaml
+        run: npm install -g @openapitools/openapi-generator-cli@2.13.4 js-yaml
 
       - name: Validate OpenAPI spec structure
         run: |

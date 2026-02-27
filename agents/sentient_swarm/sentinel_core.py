@@ -279,8 +279,13 @@ class XRPLLiquidityEngine:
         wallet_seed: Optional[str] = None,
         network_type: str = "testnet"  # testnet or mainnet
     ):
+ optimal-performance
         default_network_url = "https://s.altnet.rippletest.net:51234"
         self.network_url = network_url or os.getenv("XRPL_NETWORK_URL", default_network_url)
+
+        # Default to XRPL Testnet if no URL provided
+        self.network_url = network_url or os.getenv("XRPL_NETWORK_URL", "https://s.altnet.rippletest.net:51234")
+ digital-preeminence-fixes
         self.network_type = network_type
         self.wallet = None
         self._client = None
