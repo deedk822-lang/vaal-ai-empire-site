@@ -4,6 +4,8 @@
 
 require('dotenv').config();
 const express = require('express');
+const { URL } = require('url');
+const { URLSearchParams } = require('url');
 // REMOVED: const bodyParser = require('body-parser');
 // bodyParser was imported but never used anywhere in this file.
 // express.json() and express.urlencoded() replace it entirely.

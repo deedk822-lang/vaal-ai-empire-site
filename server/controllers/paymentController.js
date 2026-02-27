@@ -7,6 +7,7 @@
  */
 
 const crypto = require('crypto');
+const { URL } = require('url');
 const { catchAsync } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -15,7 +16,7 @@ const PAYFAST_CONFIG = {
     merchant_id: process.env.PAYFAST_MERCHANT_ID,
     merchant_key: process.env.PAYFAST_MERCHANT_KEY,
     signing_key: process.env.PAYFAST_SIGNING_KEY,
-    sandbox: process.env.PAYFAST_SANDBOX !== 'false',
+    sandbox: process.env.PAYFAST_SANDBOX === 'true',
     get baseUrl() {
         return this.sandbox 
             ? 'https://sandbox.payfast.co.za/eng/process'
