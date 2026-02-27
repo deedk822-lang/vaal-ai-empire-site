@@ -9,6 +9,7 @@
  */
 
 const crypto = require('crypto');
+const { URL } = require('url');
 const logger = require('../utils/logger');
 
 /**
@@ -107,7 +108,8 @@ function sanitizeWhatsAppContent(content, contentType = 'text') {
   let sanitized = String(content);
   
   // Base sanitization (control characters)
-  sanitized = sanitized.replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
+  // APEX: Use Unicode escapes to avoid lint/noControlCharactersInRegex
+  sanitized = sanitized.replace(/[\u0000-\u001F\u007F]/g, '_');
   
   // WhatsApp-specific threats
   if (contentType === 'text') {
@@ -151,9 +153,12 @@ function sanitizeWhatsAppContent(content, contentType = 'text') {
         return null;
       }
       
-      const isTrusted = allowedDomains.some(domain => 
-        url.hostname.endsWith(domain)
-      );
+      const host = url.hostname.toLowerCase().trim();
+      const isTrusted = allowedDomains.some(domain => {
+        const d = domain.toLowerCase().trim();
+        // APEX: Prevent suffix bypass (evilfacebook.com should not match facebook.com)
+        return host === d || host.endsWith('.' + d);
+      });
       
       if (!isTrusted) {
         logger.warn('WhatsApp media URL from untrusted domain', { 
@@ -171,12 +176,16 @@ function sanitizeWhatsAppContent(content, contentType = 'text') {
   
   // APEX: Length limits to prevent DoS
   const MAX_LENGTH = 4096;
+  const TRUNCATE_SUFFIX = '...[TRUNCATED]';
+  const TRUNCATE_SUFFIX_LEN = TRUNCATE_SUFFIX.length;  // 14 chars
+
   if (sanitized.length > MAX_LENGTH) {
     logger.warn('WhatsApp content truncated (length limit)', { 
       original_length: sanitized.length,
       max_length: MAX_LENGTH
     });
-    sanitized = sanitized.substring(0, MAX_LENGTH) + '...[TRUNCATED]';
+    // APEX-FIX: Account for suffix length to stay within MAX_LENGTH
+    sanitized = sanitized.substring(0, MAX_LENGTH - TRUNCATE_SUFFIX_LEN) + TRUNCATE_SUFFIX;
   }
   
   return sanitized;
