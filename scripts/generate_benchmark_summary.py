@@ -17,11 +17,16 @@ from typing import Any, Dict, List, Optional
 
 
 def load_json_file(path: Path) -> Optional[Dict[str, Any]]:
-    """Load and parse a JSON file, returning None on error."""
+    """Load and parse a JSON file, returning None on error or if not a dict."""
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding='utf-8'))
+        parsed = json.loads(path.read_text(encoding='utf-8'))
+        # APEX: Verify the parsed JSON is actually a dictionary
+        if not isinstance(parsed, dict):
+            print(f"Warning: {path} is not a dict (got {type(parsed).__name__})", file=sys.stderr)
+            return None
+        return parsed
     except (json.JSONDecodeError, IOError) as e:
         print(f"Warning: Could not parse {path}: {e}", file=sys.stderr)
         return None
