@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
+const { protect } = require('../middleware/auth');
 const {
     getPayFastConfig,
     createPayment,
@@ -52,6 +53,6 @@ router.post('/payfast/notify', verifyITN);
  * @desc    Get payment status
  * @access  Private (authenticated users)
  */
-router.get('/status/:paymentId', getPaymentStatus);
+router.get('/status/:paymentId', protect, getPaymentStatus);
 
 module.exports = router;

@@ -286,6 +286,7 @@ components:
           enum: [whatsapp_stop, web_form, support_agent, auto_expired]
         audit_trail:
           type: array
+          maxItems: 50
           items:
             $ref: '#/components/schemas/ConsentAuditEntry'
 

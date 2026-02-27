@@ -158,8 +158,9 @@ exports.verifyITN = catchAsync(async (req, res, next) => {
             }
         );
         
-        if (verifyResponse.data !== 'VALID') {
-            console.error('❌ PayFast validation failed');
+        const status = verifyResponse.data?.toString().trim().toUpperCase();
+        if (status !== 'VALID') {
+            console.error('❌ PayFast validation failed:', status || 'empty response');
             return res.status(400).send('Validation failed');
         }
         

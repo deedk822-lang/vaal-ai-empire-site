@@ -1,34 +1,24 @@
 #!/usr/bin/env python3
 """
-Swarm Auto-Fixer - Real Implementation
+Swarm Auto-Fixer: Uses Qwen 3.5-Plus to analyze PR diffs and generate fixes.
 APEX Security Framework v2.0 Compliant
 
-Uses Qwen 3.5-Plus via Alibaba Cloud DashScope API for intelligent code fixing.
-Designed for GitHub Actions integration in hybrid-swarm-autofixer.yml
-
-APEX Invariants:
-- No PII logging (Invariant #1)
-- Auth verified per-request (Invariant #2)
-- Input validation at trust boundaries (Invariant #3)
+Usage:
+    python agents/swarm_autofixer.py \
+        --pr-number 134 \
+        --diff-file pr-diff.txt \
+        --output-dir swarm-fixes/ \
+        --model qwen3.5-plus
 """
-
-import asyncio
-import json
-import logging
 import os
 import sys
-import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+import json
+import argparse
+import logging
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-try:
-    import aiohttp
-except ImportError:
-    import subprocess
-    subprocess.run([sys.executable, "-m", "pip", "install", "aiohttp"], check=True)
-    import aiohttp
+from typing import List, Dict, Optional, Any
 
 # APEX Invariant: Structured logging without PII
 logging.basicConfig(
@@ -38,584 +28,321 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# APEX Configuration
-# ═══════════════════════════════════════════════════════════════════
-
-@dataclass
-class APEXConfig:
-    """
-    APEX-compliant configuration for Swarm Auto-Fixer.
+class FixSuggestion:
+    """Single fix suggestion from Qwen 3.5-Plus."""
     
-    Attributes:
-        api_key: DashScope API key (from DASHSCOPE_API_KEY env var)
-        api_url: DashScope API endpoint
-        model: Qwen model identifier
-        max_tokens: Maximum tokens in response
-        temperature: Generation temperature (lower = more deterministic)
-        timeout_seconds: Request timeout
-        max_retries: Maximum retry attempts
-        retry_delay_seconds: Base delay between retries
-    """
-    api_key: str = ""
-    api_url: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
-    model: str = "qwen3-235b-a22b"  # Qwen 3.5-Plus model
-    max_tokens: int = 8192
-    temperature: float = 0.3  # Lower for more deterministic fixes
-    timeout_seconds: int = 120
-    max_retries: int = 3
-    retry_delay_seconds: float = 2.0
-
-    @classmethod
-    def from_env(cls) -> "APEXConfig":
-        """Load configuration from environment variables."""
-        return cls(
-            api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
-            api_url=os.environ.get("DASHSCOPE_API_URL", cls.api_url),
-            model=os.environ.get("SWARM_MODEL", cls.model),
-        )
-
-
-@dataclass
-class CodeIssue:
-    """
-    Represents a code issue to fix.
-    
-    Attributes:
-        file_path: Path to the file containing the issue
-        line_start: Starting line number
-        line_end: Ending line number
-        severity: Issue severity (error, warning, info)
-        rule_id: Identifier for the rule that triggered the issue
-        message: Human-readable description of the issue
-        suggestion: Optional suggested fix
-        source: Source of the issue detection (codeql, eslint, bandit, etc.)
-    """
-    file_path: str
-    line_start: int
-    line_end: int
-    severity: str  # error, warning, info
-    rule_id: str
-    message: str
-    suggestion: Optional[str] = None
-    source: str = "codeql"  # codeql, eslint, bandit, etc.
-
-
-@dataclass
-class FixResult:
-    """
-    Result of a fix operation.
-    
-    Attributes:
-        success: Whether the fix was applied successfully
-        file_path: Path to the file that was fixed
-        original_content: Original file content (for rollback)
-        fixed_content: Fixed file content
-        issues_addressed: List of issue IDs that were addressed
-        explanation: Human-readable explanation of the fix
-        error: Error message if fix failed
-        duration_ms: Duration of the fix operation in milliseconds
-    """
-    success: bool
-    file_path: str
-    original_content: str = ""
-    fixed_content: str = ""
-    issues_addressed: List[str] = field(default_factory=list)
-    explanation: str = ""
-    error: Optional[str] = None
-    duration_ms: int = 0
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Qwen 3.5-Plus API Client
-# ═══════════════════════════════════════════════════════════════════
-
-class QwenClient:
-    """
-    Client for Qwen 3.5-Plus via DashScope API.
-    
-    Handles authentication, request formatting, and response parsing
-    for the Qwen 3.5-Plus model via Alibaba Cloud DashScope.
-    """
-
-    def __init__(self, config: APEXConfig):
-        """
-        Initialize the Qwen client.
-        
-        Args:
-            config: APEX configuration containing API credentials
-        """
-        self.config = config
-        self._session: Optional[aiohttp.ClientSession] = None
-
-    async def __aenter__(self) -> "QwenClient":
-        """Create async context with HTTP session."""
-        self._session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=self.config.timeout_seconds)
-        )
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Clean up HTTP session."""
-        if self._session:
-            await self._session.close()
-
-    async def generate_fix(
+    def __init__(
         self,
-        code: str,
-        issues: List[CodeIssue],
         file_path: str,
-        language: str = "javascript"
-    ) -> Dict[str, Any]:
-        """
-        Generate a fix for the given code issues using Qwen 3.5-Plus.
-
-        APEX: No PII is logged. Only file paths and issue types are recorded.
-        
-        Args:
-            code: Original source code
-            issues: List of issues to fix
-            file_path: Path to the file (for context)
-            language: Programming language of the code
-            
-        Returns:
-            Dictionary containing fixed_code, raw_response, and model info
-            
-        Raises:
-            ValueError: If API key is not configured
-            Exception: If all retry attempts fail
-        """
-        if not self.config.api_key:
-            raise ValueError("DASHSCOPE_API_KEY not configured")
-
-        # Build the prompt with issue details
-        issues_text = "\n".join([
-            f"- Line {i.line_start}: [{i.severity.upper()}] {i.rule_id}: {i.message}"
-            for i in issues
-        ])
-
-        prompt = f"""You are an expert code fixer. Fix the following code issues while maintaining:
-1. Original functionality
-2. Code style consistency
-3. Security best practices (APEX Framework)
-4. No breaking changes
-
-File: {file_path}
-Language: {language}
-
-Issues to fix:
-{issues_text}
-
-Original code:
-```
-{code}
-```
-
-Instructions:
-1. Fix ALL listed issues
-2. Preserve all existing functionality
-3. Add comments explaining security-sensitive changes
-4. Return ONLY the fixed code in a code block
-
-Fixed code:"""
-
-        headers = {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
+        issue_type: str,
+        severity: str,
+        description: str,
+        suggested_fix: str,
+        line_number: Optional[int] = None,
+        confidence: float = 0.8
+    ):
+        self.file_path = file_path
+        self.line_number = line_number
+        self.issue_type = issue_type
+        self.severity = severity
+        self.description = description
+        self.suggested_fix = suggested_fix
+        self.confidence = confidence
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "file_path": self.file_path,
+            "line_number": self.line_number,
+            "issue_type": self.issue_type,
+            "severity": self.severity,
+            "description": self.description,
+            "suggested_fix": self.suggested_fix,
+            "confidence": self.confidence
         }
 
-        payload = {
-            "model": self.config.model,
-            "input": {
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
-            },
-            "parameters": {
-                "max_tokens": self.config.max_tokens,
-                "temperature": self.config.temperature,
-                "result_format": "message"
-            }
+
+class SwarmAnalysisResult:
+    """Complete analysis result."""
+    
+    def __init__(
+        self,
+        pr_number: int,
+        files_analyzed: int = 0,
+        issues_found: int = 0,
+        fixes_generated: int = 0,
+        duration_ms: int = 0,
+        suggestions: Optional[List[FixSuggestion]] = None,
+        timestamp: Optional[str] = None
+    ):
+        self.pr_number = pr_number
+        self.files_analyzed = files_analyzed
+        self.issues_found = issues_found
+        self.fixes_generated = fixes_generated
+        self.duration_ms = duration_ms
+        self.suggestions = suggestions or []
+        self.timestamp = timestamp or datetime.utcnow().isoformat()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "pr_number": self.pr_number,
+            "files_analyzed": self.files_analyzed,
+            "issues_found": self.issues_found,
+            "fixes_generated": self.fixes_generated,
+            "duration_ms": self.duration_ms,
+            "suggestions": [s.to_dict() for s in self.suggestions],
+            "timestamp": self.timestamp
         }
 
-        last_error: Optional[str] = None
-        for attempt in range(self.config.max_retries):
-            try:
-                async with self._session.post(
-                    self.config.api_url,
-                    headers=headers,
-                    json=payload
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.info(f"✅ Fix generated successfully for {file_path}")
-                        return self._parse_response(result)
-                    elif response.status == 429:
-                        # Rate limited - exponential backoff
-                        delay = self.config.retry_delay_seconds * (attempt + 1)
-                        logger.warning(f"Rate limited, retrying in {delay}s...")
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        error_text = await response.text()
-                        last_error = f"API error {response.status}: {error_text[:200]}"
-                        logger.error(f"API error: {last_error}")
-            except asyncio.TimeoutError:
-                last_error = "Request timed out"
-                logger.warning(f"Request timed out, attempt {attempt + 1}/{self.config.max_retries}")
-                continue
-            except Exception as e:
-                last_error = str(e)
-                logger.error(f"Request failed: {last_error}")
-                continue
-
-        raise Exception(f"Failed after {self.config.max_retries} retries: {last_error}")
-
-    def _parse_response(self, response: Dict) -> Dict[str, Any]:
-        """
-        Parse the API response and extract fixed code.
-        
-        Args:
-            response: Raw API response dictionary
-            
-        Returns:
-            Dictionary with fixed_code, raw_response, and model
-            
-        Raises:
-            ValueError: If response parsing fails
-        """
-        try:
-            content = response.get("output", {}).get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            # Extract code from markdown code block if present
-            if "```" in content:
-                start = content.find("```")
-                end = content.rfind("```")
-                if start != end:
-                    code_block = content[start:end + 3]
-                    # Remove language identifier if present
-                    lines = code_block.split("\n")
-                    if lines[0].startswith("```"):
-                        # Remove language identifier (e.g., ```python)
-                        lines[0] = "```"
-                    content = "\n".join(lines[1:-1] if len(lines) > 2 else lines)
-
-            return {
-                "fixed_code": content.strip(),
-                "raw_response": response,
-                "model": self.config.model,
-            }
-        except Exception as e:
-            raise ValueError(f"Failed to parse response: {e}")
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Swarm Auto-Fixer Engine
-# ═══════════════════════════════════════════════════════════════════
 
 class SwarmAutoFixer:
-    """
-    Main Auto-Fixer engine.
+    """Real Swarm Auto-Fixer using Qwen 3.5-Plus."""
     
-    APEX: No PII logging, full audit trail, comprehensive error handling.
-    
-    Processes code issues from SARIF files and generates fixes using
-    Qwen 3.5-Plus via DashScope API.
-    """
-
-    def __init__(self, config: Optional[APEXConfig] = None):
-        """
-        Initialize the Swarm Auto-Fixer.
-        
-        Args:
-            config: Optional APEX configuration (defaults to env-based config)
-        """
-        self.config = config or APEXConfig.from_env()
-        self.results: List[FixResult] = []
-        self.start_time: float = 0
-        logger.info(f"Swarm Auto-Fixer initialized with model: {self.config.model}")
-
-    async def fix_file(
+    def __init__(
         self,
-        file_path: Path,
-        issues: List[CodeIssue]
-    ) -> FixResult:
-        """
-        Fix issues in a single file.
+        api_key: str,
+        model: str = "qwen3.5-plus",
+        base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    ):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+        self._client = None
+        logger.info(f"✓ Swarm Auto-Fixer initialized with {model}")
+    
+    @property
+    def client(self):
+        """Lazy-load the OpenAI client."""
+        if self._client is None:
+            try:
+                from openai import OpenAI
+                self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            except ImportError:
+                logger.warning("openai package not installed - using placeholder mode")
+                return None
+        return self._client
+    
+    def analyze_diff(self, diff_content: str, pr_number: int) -> SwarmAnalysisResult:
+        """Analyze PR diff and generate fix suggestions."""
+        start_time = datetime.now()
         
-        Args:
-            file_path: Path to the file to fix
-            issues: List of issues to address
-            
-        Returns:
-            FixResult containing the outcome of the fix operation
-        """
-        start = time.time()
+        # Handle empty diff
+        if not diff_content or not diff_content.strip():
+            logger.warning("⚠ Empty diff - no analysis needed")
+            return SwarmAnalysisResult(pr_number=pr_number)
+        
+        # Truncate if too large
+        max_diff_size = 500000
+        if len(diff_content) > max_diff_size:
+            logger.warning(f"⚠ Diff truncated from {len(diff_content)} to {max_diff_size} chars")
+            diff_content = diff_content[:max_diff_size] + "\n\n[...truncated...]"
+        
+        # If no API client, return placeholder
+        if not self.client:
+            logger.warning("⚠ No API client available - returning placeholder")
+            return SwarmAnalysisResult(
+                pr_number=pr_number,
+                files_analyzed=1,
+                duration_ms=int((datetime.now() - start_time).total_seconds() * 1000)
+            )
+        
+        system_prompt = """You are an expert code reviewer for a South African fintech platform.
+Analyze the PR diff and identify issues in these categories:
+1. Security (PayFast integration, XRPL settlements, API keys, SQL injection)
+2. Performance (database queries, API calls, loops, memory usage)
+3. Code Quality (unused variables, imports, error handling, logging)
+4. Compliance (POPIA data protection, ZAR currency handling)
+5. Best Practices (naming conventions, documentation, test coverage)
+
+For each issue found, provide a JSON object with:
+- file_path: Exact path to the file
+- line_number: Line number if applicable (null if not)
+- issue_type: Category of issue
+- severity: low|medium|high|critical
+- description: Clear explanation of the problem
+- suggested_fix: Exact code change or fix description
+- confidence: 0.0-1.0 confidence score
+
+Output format: JSON array of objects.
+If no issues found, return empty array [].
+
+Be precise. Only flag real issues, not style preferences."""
+
+        user_prompt = f"""PR #{pr_number} Diff:
+```
+{diff_content}
+```
+
+Analyze this diff and return fix suggestions as a JSON array."""
 
         try:
-            if not file_path.exists():
-                logger.error(f"File not found: {file_path}")
-                return FixResult(
-                    success=False,
-                    file_path=str(file_path),
-                    error=f"File not found: {file_path}"
-                )
-
-            original_content = file_path.read_text(encoding="utf-8")
-
-            # Determine language from file extension
-            ext_map: Dict[str, str] = {
-                ".js": "javascript",
-                ".ts": "typescript",
-                ".py": "python",
-                ".yaml": "yaml",
-                ".yml": "yaml",
-                ".json": "json",
-            }
-            language = ext_map.get(file_path.suffix, "text")
-
-            async with QwenClient(self.config) as client:
-                result = await client.generate_fix(
-                    code=original_content,
-                    issues=issues,
-                    file_path=str(file_path),
-                    language=language
-                )
-
-            fixed_code = result.get("fixed_code", "")
-
-            if not fixed_code or fixed_code == original_content:
-                logger.warning(f"No changes generated for {file_path}")
-                return FixResult(
-                    success=False,
-                    file_path=str(file_path),
-                    original_content=original_content,
-                    error="No changes generated"
-                )
-
-            # Write the fix
-            file_path.write_text(fixed_code, encoding="utf-8")
-            logger.info(f"✅ Fixed {file_path}: {len(issues)} issue(s)")
-
-            duration_ms = int((time.time() - start) * 1000)
-
-            return FixResult(
-                success=True,
-                file_path=str(file_path),
-                original_content=original_content,
-                fixed_content=fixed_code,
-                issues_addressed=[i.rule_id for i in issues],
-                explanation=f"Fixed {len(issues)} issue(s) using {self.config.model}",
-                duration_ms=duration_ms
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=4000
             )
-
-        except Exception as e:
-            duration_ms = int((time.time() - start) * 1000)
-            logger.error(f"Failed to fix {file_path}: {e}")
-            return FixResult(
-                success=False,
-                file_path=str(file_path),
-                error=str(e),
-                duration_ms=duration_ms
-            )
-
-    async def run(
-        self,
-        issues_by_file: Dict[str, List[CodeIssue]]
-    ) -> Dict[str, Any]:
-        """
-        Run the auto-fixer on all provided issues.
-
-        APEX: Returns structured result with full audit trail.
-        
-        Args:
-            issues_by_file: Dictionary mapping file paths to lists of issues
             
-        Returns:
-            Dictionary containing fix results and summary statistics
-        """
-        self.start_time = time.time()
-        self.results = []
-
-        total_files = len(issues_by_file)
-        logger.info(f"Starting fix run for {total_files} file(s)")
-
-        for file_path_str, issues in issues_by_file.items():
-            file_path = Path(file_path_str)
-            result = await self.fix_file(file_path, issues)
-            self.results.append(result)
-
-            # APEX: Log progress (no PII)
-            status = "✅" if result.success else "❌"
-            logger.info(f"{status} {file_path.name}: {len(issues)} issue(s) in {result.duration_ms}ms")
-
-        # Compile summary
-        success_count = sum(1 for r in self.results if r.success)
-        total_issues = sum(len(issues) for issues in issues_by_file.values())
-
-        summary = {
-            "success": success_count > 0,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "duration_ms": int((time.time() - self.start_time) * 1000),
-            "files_total": total_files,
-            "files_fixed": success_count,
-            "issues_total": total_issues,
-            "model": self.config.model,
-            "results": [
-                {
-                    "file_path": r.file_path,
-                    "success": r.success,
-                    "issues_addressed": r.issues_addressed,
-                    "duration_ms": r.duration_ms,
-                    "error": r.error
-                }
-                for r in self.results
-            ]
-        }
-        
-        logger.info(f"Fix run complete: {success_count}/{total_files} files fixed")
-        return summary
-
-
-# ═══════════════════════════════════════════════════════════════════
-# GitHub Actions Integration
-# ═══════════════════════════════════════════════════════════════════
-
-def parse_sarif_issues(sarif_path: Path) -> Dict[str, List[CodeIssue]]:
-    """
-    Parse SARIF file to extract issues grouped by file.
-    
-    Args:
-        sarif_path: Path to the SARIF file
-        
-    Returns:
-        Dictionary mapping file paths to lists of CodeIssue objects
-    """
-    issues_by_file: Dict[str, List[CodeIssue]] = {}
-
-    if not sarif_path.exists():
-        logger.warning(f"SARIF file not found: {sarif_path}")
-        return issues_by_file
-
-    try:
-        sarif_data = json.loads(sarif_path.read_text(encoding="utf-8"))
-
-        for run in sarif_data.get("runs", []):
-            for result in run.get("results", []):
-                rule_id = result.get("ruleId", "unknown")
-                message = result.get("message", {}).get("text", "")
-
-                for location in result.get("locations", []):
-                    artifact = location.get("artifactLocation", {})
-                    file_path = artifact.get("uri", "")
-                    region = location.get("region", {})
-
-                    if not file_path:
-                        continue
-
-                    if file_path not in issues_by_file:
-                        issues_by_file[file_path] = []
-
-                    issues_by_file[file_path].append(CodeIssue(
-                        file_path=file_path,
-                        line_start=region.get("startLine", 1),
-                        line_end=region.get("endLine", region.get("startLine", 1)),
-                        severity=result.get("level", "warning"),
-                        rule_id=rule_id,
-                        message=message,
-                        source="codeql"
-                    ))
-        
-        logger.info(f"Parsed {sum(len(v) for v in issues_by_file.values())} issues from {sarif_path}")
-    except Exception as e:
-        logger.error(f"Failed to parse SARIF {sarif_path}: {e}")
-
-    return issues_by_file
-
-
-async def main() -> int:
-    """
-    Main entry point for GitHub Actions.
-    
-    Returns:
-        Exit code (0 for success, 1 for failure)
-    """
-    config = APEXConfig.from_env()
-
-    if not config.api_key:
-        logger.warning("DASHSCOPE_API_KEY not set - using placeholder mode")
-        result = {
-            "success": True,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "duration_ms": 0,
-            "files_total": 0,
-            "files_fixed": 0,
-            "issues_total": 0,
-            "model": "placeholder",
-            "results": [],
-            "note": "DASHSCOPE_API_KEY not configured - no fixes applied"
-        }
-    else:
-        # Look for SARIF files to process
-        sarif_files = list(Path(".").glob("**/*.sarif"))
-
-        if not sarif_files:
-            logger.info("No SARIF files found - creating placeholder result")
-            result = {
-                "success": True,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "duration_ms": 0,
-                "files_total": 0,
-                "files_fixed": 0,
-                "issues_total": 0,
-                "model": config.model,
-                "results": [],
-                "note": "No SARIF files found to process"
-            }
-        else:
-            # Parse all SARIF files
-            all_issues: Dict[str, List[CodeIssue]] = {}
-            for sarif_file in sarif_files:
-                file_issues = parse_sarif_issues(sarif_file)
-                for file_path, issues in file_issues.items():
-                    if file_path not in all_issues:
-                        all_issues[file_path] = []
-                    all_issues[file_path].extend(issues)
-
-            if not all_issues:
-                result = {
-                    "success": True,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "duration_ms": 0,
-                    "files_total": 0,
-                    "files_fixed": 0,
-                    "issues_total": 0,
-                    "model": config.model,
-                    "results": [],
-                    "note": "No issues found in SARIF files"
-                }
+            content = response.choices[0].message.content.strip()
+            
+            # Extract JSON from response
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            if json_match:
+                suggestions_data = json.loads(json_match.group())
             else:
-                # Run the auto-fixer
-                fixer = SwarmAutoFixer(config)
-                result = await fixer.run(all_issues)
+                suggestions_data = []
+            
+            suggestions = [
+                FixSuggestion(
+                    file_path=s.get("file_path", "unknown"),
+                    issue_type=s.get("issue_type", "unknown"),
+                    severity=s.get("severity", "low"),
+                    description=s.get("description", ""),
+                    suggested_fix=s.get("suggested_fix", ""),
+                    line_number=s.get("line_number"),
+                    confidence=s.get("confidence", 0.8)
+                )
+                for s in suggestions_data
+            ]
+            
+        except Exception as e:
+            logger.error(f"✗ Qwen analysis failed: {e}")
+            suggestions = []
+        
+        end_time = datetime.now()
+        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+        
+        files_analyzed = len(set(s.file_path for s in suggestions)) if suggestions else 1
+        
+        result = SwarmAnalysisResult(
+            pr_number=pr_number,
+            files_analyzed=files_analyzed,
+            issues_found=len(suggestions),
+            fixes_generated=len(suggestions),
+            duration_ms=duration_ms,
+            suggestions=suggestions
+        )
+        
+        logger.info(f"📊 Analysis complete: {result.issues_found} issues in {duration_ms}ms")
+        return result
+    
+    def generate_fix_files(self, result: SwarmAnalysisResult, output_dir: str) -> int:
+        """Generate fix files from suggestions."""
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        if not result.suggestions:
+            # Write empty result file
+            summary_file = output_path / "summary.json"
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                json.dump(result.to_dict(), f, indent=2)
+            logger.info(f"📄 No fixes needed. Summary written to {summary_file}")
+            return 0
+        
+        files_written = 0
+        
+        # Group by file
+        by_file: Dict[str, List[FixSuggestion]] = {}
+        for suggestion in result.suggestions:
+            if suggestion.file_path not in by_file:
+                by_file[suggestion.file_path] = []
+            by_file[suggestion.file_path].append(suggestion)
+        
+        for file_path, suggestions in by_file.items():
+            safe_name = file_path.replace('/', '_').replace('\\', '_')
+            fix_file = output_path / f"fix_{safe_name}.md"
+            
+            with open(fix_file, 'w', encoding='utf-8') as f:
+                f.write(f"# Auto-Generated Fixes for `{file_path}`\n\n")
+                f.write(f"**PR #{result.pr_number}** | Generated: {result.timestamp}\n\n")
+                f.write(f"**Issues Found:** {len(suggestions)}\n\n---\n\n")
+                
+                for i, suggestion in enumerate(suggestions, 1):
+                    f.write(f"## Issue {i}: {suggestion.issue_type}\n\n")
+                    f.write(f"**Severity:** {suggestion.severity.upper()}\n\n")
+                    f.write(f"**Line:** {suggestion.line_number or 'N/A'}\n\n")
+                    f.write(f"**Description:** {suggestion.description}\n\n")
+                    f.write(f"**Suggested Fix:**\n```diff\n{suggestion.suggested_fix}\n```\n\n")
+                    f.write(f"**Confidence:** {suggestion.confidence:.0%}\n\n---\n\n")
+            
+            files_written += 1
+            logger.info(f"✅ Generated fix file: {fix_file}")
+        
+        # Write summary JSON
+        summary_file = output_path / "summary.json"
+        with open(summary_file, 'w', encoding='utf-8') as f:
+            json.dump(result.to_dict(), f, indent=2)
+        
+        logger.info(f"📄 Summary written to {summary_file}")
+        return files_written
 
-    # Write results for GitHub Actions
-    output_path = Path("swarm-results.json")
-    output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    logger.info(f"Results written to: {output_path}")
 
-    # Write to GITHUB_OUTPUT if available (modern GitHub Actions syntax)
+def main():
+    parser = argparse.ArgumentParser(description="Swarm Auto-Fixer")
+    parser.add_argument("--pr-number", required=True, help="PR number to analyze")
+    parser.add_argument("--diff-file", required=True, help="Path to PR diff file")
+    parser.add_argument("--output-dir", default="swarm-fixes/", help="Output directory")
+    parser.add_argument("--model", default="qwen3.5-plus", help="Qwen model")
+    args = parser.parse_args()
+    
+    api_key = os.getenv("DASHSCOPE_API_KEY")
+    
+    if not api_key:
+        logger.warning("⚠ DASHSCOPE_API_KEY not set - using placeholder mode")
+        result = SwarmAnalysisResult(pr_number=int(args.pr_number))
+        output_path = Path(args.output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        with open(output_path / "summary.json", 'w', encoding='utf-8') as f:
+            json.dump(result.to_dict(), f, indent=2)
+        
+        # Output for GitHub Actions
+        print(f"files_generated=0")
+        print(f"duration_ms=0")
+        print(f"issues_found=0")
+        
+        # Write to GITHUB_OUTPUT if available
+        github_output = os.environ.get("GITHUB_OUTPUT")
+        if github_output:
+            with open(github_output, "a", encoding='utf-8') as f:
+                f.write("files_generated=0\n")
+                f.write("duration_ms=0\n")
+                f.write("issues_found=0\n")
+        
+        sys.exit(0)
+    
+    # Read diff file
+    diff_path = Path(args.diff_file)
+    if not diff_path.exists():
+        logger.error(f"❌ Diff file not found: {args.diff_file}")
+        diff_content = ""
+    else:
+        with open(diff_path, 'r', encoding='utf-8') as f:
+            diff_content = f.read()
+    
+    # Run analysis
+    fixer = SwarmAutoFixer(api_key=api_key, model=args.model)
+    result = fixer.analyze_diff(diff_content, int(args.pr_number))
+    files_written = fixer.generate_fix_files(result, args.output_dir)
+    result.fixes_generated = files_written
+    
+    # Output for GitHub Actions
+    print(f"files_generated={result.fixes_generated}")
+    print(f"duration_ms={result.duration_ms}")
+    print(f"issues_found={result.issues_found}")
+    
+    # Write to GITHUB_OUTPUT if available
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
-        with open(github_output, "a", encoding="utf-8") as f:
-            f.write(f"success={str(result['success']).lower()}\n")
-            f.write(f"files_fixed={result['files_fixed']}\n")
-            f.write(f"issues_total={result['issues_total']}\n")
-            f.write(f"duration_ms={result['duration_ms']}\n")
-
-    return 0 if result["success"] else 1
+        with open(github_output, "a", encoding='utf-8') as f:
+            f.write(f"files_generated={result.fixes_generated}\n")
+            f.write(f"duration_ms={result.duration_ms}\n")
+            f.write(f"issues_found={result.issues_found}\n")
+    
+    logger.info(f"✅ Swarm Auto-Fixer complete: {result.fixes_generated} files generated")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    main()

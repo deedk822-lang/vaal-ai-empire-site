@@ -51,12 +51,7 @@ openapi-generator-cli generate \
     -i "$SPEC_FILE" \
     -g nodejs-express-server \
     -o "$OUTPUT_DIR" \
-    --additional-properties=\
-usePromises=true,
-escapeQuotationsInStringLiteral=true,
-serverPort=3000,
-apiPackage=whatsapp,
-modelPackage=models \
+    --additional-properties="usePromises=true,escapeQuotationsInStringLiteral=true,serverPort=3000,apiPackage=whatsapp,modelPackage=models" \
     --git-user-id deedk822-lang \
     --git-repo-id vaal-ai-empire-site
 
@@ -69,10 +64,7 @@ openapi-generator-cli generate \
     -i "$SPEC_FILE" \
     -g typescript-fetch \
     -o "${OUTPUT_DIR}/client" \
-    --additional-properties=\
-npmName=@vaal-ai/whatsapp-client,
-supportsES6=true,
-typescriptThreePlus=true
+    --additional-properties="npmName=@vaal-ai/whatsapp-client,supportsES6=true,typescriptThreePlus=true"
 
 echo "✅ Client SDK generated"
 echo ""
@@ -231,9 +223,10 @@ echo "✅ Security tests added"
 echo ""
 
 # Generate summary
-echo "═".repeat(70)
+printf '═%.0s' {1..70}
+echo ""
 echo "GENERATION SUMMARY"
-echo "═".repeat(70)
+printf '═%.0s' {1..70}
 echo ""
 echo "📁 Output Directory: $OUTPUT_DIR"
 echo ""

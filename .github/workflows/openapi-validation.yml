@@ -76,8 +76,11 @@ jobs:
           echo "## OpenAPI Lint Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
+          # APEX: Enable nullglob to handle empty directories correctly
+          shopt -s nullglob
+          
           EXIT_CODE=0
-          for spec in openapi/*.yaml openapi/*.yml 2>/dev/null; do
+          for spec in openapi/*.yaml openapi/*.yml; do
             if [ -f "$spec" ]; then
               echo "Linting: $spec"
               if spectral lint "$spec" --format stylish --ruleset .spectral.yaml; then
@@ -89,6 +92,7 @@ jobs:
             fi
           done
           
+          shopt -u nullglob
           exit $EXIT_CODE
         continue-on-error: true
 
