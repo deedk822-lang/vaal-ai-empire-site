@@ -16,6 +16,7 @@ License: Proprietary
 
 import os
 import json
+import hashlib  # APEX: For POPIA-compliant user_id hashing
 import logging
 import asyncio
 import time
@@ -878,6 +879,15 @@ class SentientFinancialSentinel:
             Response with audio and metadata
         """
         start_time = time.time()
+        
+        # APEX Section 0 & 7: POPIA Consent Logging (no PII in logs)
+        request_id = f"voice-{uuid4().hex[:8]}"
+        logger.info("POPIA consent check", extra={
+            "request_id": request_id,
+            "user_id_hash": hashlib.sha256(user_id.encode()).hexdigest()[:16],
+            "consent_scope": ConsentScope.VOICE_PROCESSING.value,
+            "language": language
+        })
         
         # Step 1: Verify consent
         has_consent, consent_ref = self.consent_manager.verify_consent(
