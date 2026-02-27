@@ -27,6 +27,17 @@ const paymentLimiter = rateLimit({
     legacyHeaders: false
 });
 
+// APEX: Rate limiting for status checks (prevents DoS on database)
+const statusLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 30, // 30 requests per minute
+    message: {
+        error: 'Too many status requests. Please try again later.'
+    },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
 /**
  * @route   GET /api/payments/config
  * @desc    Get PayFast configuration (non-sensitive)
@@ -53,6 +64,6 @@ router.post('/payfast/notify', verifyITN);
  * @desc    Get payment status
  * @access  Private (authenticated users)
  */
-router.get('/status/:paymentId', protect, getPaymentStatus);
+router.get('/status/:paymentId', statusLimiter, protect, getPaymentStatus);
 
 module.exports = router;
