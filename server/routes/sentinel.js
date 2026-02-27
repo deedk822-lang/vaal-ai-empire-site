@@ -34,7 +34,11 @@ async function executeSentinel(command, data) {
             '--json-input', JSON.stringify(data)
         ];
 
+ optimal-performance
         const process = spawn('python3', args, {
+
+        const pythonProcess = spawn('python3', args, {
+ digital-preeminence-fixes
             env: {
                 ...process.env,
                 PYTHONUNBUFFERED: '1'
@@ -44,6 +48,7 @@ async function executeSentinel(command, data) {
         let stdout = '';
         let stderr = '';
 
+ optimal-performance
         process.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
         });
@@ -53,6 +58,17 @@ async function executeSentinel(command, data) {
         });
 
         process.on('close', (code) => {
+
+        pythonProcess.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+
+        pythonProcess.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+
+        pythonProcess.on('close', (code) => {
+ digital-preeminence-fixes
             if (code === 0) {
                 try {
                     resolve(JSON.parse(stdout));
@@ -64,14 +80,23 @@ async function executeSentinel(command, data) {
             }
         });
 
+ optimal-performance
         process.on('error', (err) => {
+
+        pythonProcess.on('error', (err) => {
+ digital-preeminence-fixes
             reject(err);
         });
 
         // Send data via stdin
         if (data.stdin) {
+ optimal-performance
             process.stdin.write(JSON.stringify(data.stdin));
             process.stdin.end();
+
+            pythonProcess.stdin.write(JSON.stringify(data.stdin));
+            pythonProcess.stdin.end();
+ digital-preeminence-fixes
         }
     });
 }

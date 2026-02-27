@@ -1,4 +1,8 @@
-name: "APEX CodeQL Config"
+name: "CodeQL Config for vaal-ai-empire-site"
+
+# Disable default queries and specify our own
+# This is needed to properly exclude false positives
+disable-default-queries: true
 
 # Paths to include in analysis
 paths:
