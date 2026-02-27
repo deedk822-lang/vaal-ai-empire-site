@@ -300,6 +300,7 @@ jobs:
     name: XRPL Integration Test (APEX Section 4)
     runs-on: ubuntu-latest
     needs: [security-scan]
+    if: ${{ secrets.XRPL_AGENT_SEED != '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
