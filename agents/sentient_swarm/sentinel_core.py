@@ -275,11 +275,12 @@ class XRPLLiquidityEngine:
     
     def __init__(
         self,
-        network_url: str,
+        network_url: Optional[str] = None,
         wallet_seed: Optional[str] = None,
         network_type: str = "testnet"  # testnet or mainnet
     ):
-        self.network_url = network_url
+        # Default to XRPL Testnet if no URL provided
+        self.network_url = network_url or os.getenv("XRPL_NETWORK_URL", "https://s.altnet.rippletest.net:51234")
         self.network_type = network_type
         self.wallet = None
         self._client = None
