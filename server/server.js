@@ -63,7 +63,7 @@ try {
 }
 
 // Import routes
-let authRoutes, paymentRoutes, subscriptionRoutes, analyticsRoutes, observabilityRoutes, whatsappRoutes;
+let authRoutes, paymentRoutes, subscriptionRoutes, analyticsRoutes, observabilityRoutes, whatsappRoutes, sentinelRoutes;
 try {
     authRoutes = require('./routes/auth');
 } catch (_e) { console.log('ℹ️  Auth routes not found'); }
@@ -82,6 +82,9 @@ try {
 try {
     whatsappRoutes = require('./routes/whatsapp');
 } catch (_e) { console.log('ℹ️  WhatsApp routes not found'); }
+try {
+    sentinelRoutes = require('./routes/sentinel');
+} catch (_e) { console.log('ℹ️  Sentinel routes not found'); }
 
 // Import tracer if available
 let tracer;
@@ -306,6 +309,7 @@ if (subscriptionRoutes)  app.use('/api/subscriptions', subscriptionRoutes);
 if (analyticsRoutes)     app.use('/api/analytics',     analyticsRoutes);
 if (observabilityRoutes) app.use('/api/observability', observabilityRoutes);
 if (whatsappRoutes)      app.use('/webhooks/whatsapp', whatsappRoutes);
+if (sentinelRoutes)      app.use('/api/sentinel',      sentinelRoutes);
 
 // =============================
 // PAYFAST ROUTES
