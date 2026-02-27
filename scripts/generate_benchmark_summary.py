@@ -9,6 +9,7 @@ Used by .github/workflows/hybrid-benchmark.yml
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -165,7 +166,7 @@ def main():
         print(output)
     
     # Write to GitHub step summary if available
-    github_summary = Path.environ.get("GITHUB_STEP_SUMMARY")
+    github_summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if github_summary:
         Path(github_summary).write_text(output, encoding='utf-8')
     

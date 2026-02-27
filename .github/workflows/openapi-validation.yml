@@ -82,6 +82,11 @@ jobs:
           EXIT_CODE=0
           for spec in openapi/*.yaml openapi/*.yml; do
             if [ -f "$spec" ]; then
+              if [[ "$spec" == openapi/sentinel* ]]; then
+                echo "Skipping sentinel placeholder spec: $spec"
+                echo "⚠️ $spec: skipped (placeholder spec)" >> "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
               echo "Linting: $spec"
               if spectral lint "$spec" --format stylish --ruleset .spectral.yaml; then
                 echo "✅ $spec: passed" >> "$GITHUB_STEP_SUMMARY"
