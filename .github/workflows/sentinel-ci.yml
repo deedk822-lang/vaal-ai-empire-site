@@ -108,23 +108,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: test-python
-    # Only run if XRPL secrets are configured
-    if: ${{ secrets.XRPL_AGENT_SEED != '' }}
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check XRPL secrets
+        id: check-secrets
+        run: |
+          if [ -n "${{ secrets.XRPL_AGENT_SEED }}" ]; then
+            echo "has_secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_secrets=false" >> $GITHUB_OUTPUT
+            echo "✅ XRPL tests skipped (no XRPL_AGENT_SEED secret configured)"
+          fi
+
       - name: Set up Python
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install XRPL dependencies
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         run: |
           pip install xrpl-py pytest pytest-asyncio
 
       - name: Run XRPL tests (Testnet)
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         run: |
           python -c "
           from xrpl.clients import JsonRpcClient
@@ -135,6 +146,7 @@ jobs:
           XRPL_NETWORK_URL: https://s.altnet.rippletest.net:51234
 
       - name: Test XRPL Liquidity Engine
+        if: steps.check-secrets.outputs.has_secrets == 'true'
         run: |
           pytest agents/sentient_swarm/test_xrpl.py -v || echo "XRPL tests passed (or no tests found)"
         continue-on-error: true
