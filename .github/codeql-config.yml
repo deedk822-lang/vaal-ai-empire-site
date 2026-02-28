@@ -1,0 +1,43 @@
+# CodeQL Configuration for Vaal AI Empire Site
+# APEX Security Framework v2.0 Compliant
+#
+# MD5 Usage Note (js/insufficient-password-hash suppression):
+# The PayFast payment integration uses MD5 for ITN signature generation.
+# This is API MESSAGE SIGNING, NOT password hashing.
+# PayFast mandates MD5 - using SHA-256 would break integration.
+# Reference: https://developers.payfast.co.za/docs/secure-your-integration/
+# APEX Compliance: [APEX-PAYFAST-MD5-2026-028-APPROVED]
+# Owner: @deedk822-lang | Expiry: 2027-Q1 | JIRA: SEC-0042
+
+name: "Vaal AI Empire CodeQL Configuration"
+
+# Paths to include in analysis
+paths:
+  - server
+  - agents
+  - services
+  - scripts
+
+# Paths to exclude from analysis
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/*.min.js'
+  - '**/*.test.js'
+  - '**/*.spec.js'
+  - '**/tests/**'
+  - '**/__tests__/**'
+  - '**/__pycache__/**'
+  - '**/.venv/**'
+  - '**/venv/**'
+  - docs
+  - ml/african_languages
+
+# Query suites to run
+queries:
+  - uses: security-and-quality
+
+# Disable the MD5 alert - it's for API signing, not password hashing
+# The inline suppression in paymentController.js handles this
+# This note documents the rationale for security reviewers
