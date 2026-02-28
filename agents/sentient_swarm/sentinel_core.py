@@ -450,7 +450,8 @@ class XRPLLiquidityEngine:
                 except ImportError:
                     # Fallback for older xrpl-py versions
                     import re
-                    is_valid_classic_address = lambda addr: bool(re.match(r'^r[1-9A-HJ-NP-Za-km-z]{25,34}$', addr))
+                    # APEX: {24,34} allows 'r' + 24-34 chars = 25-35 total (valid XRPL classic addresses)
+                    is_valid_classic_address = lambda addr: bool(re.match(r'^r[1-9A-HJ-NP-Za-km-z]{24,34}$', addr))
                     is_valid_xaddress = lambda addr: bool(re.match(r'^X[1-9A-HJ-NP-Za-km-z]{46,58}$', addr))
 
                 # APEX INV-SEC-03: Input validation using xrpl-py validators

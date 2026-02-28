@@ -212,9 +212,26 @@ exports.verifyITN = catchAsync(async (req, res) => {  // APEX-FIX: Removed unuse
     const { signature, ...rest } = data;
     const calculatedSignature = generatePayFastSignature(rest, PAYFAST_CONFIG.signing_key);
     
-    if (signature !== calculatedSignature) {
-        console.error('❌ Invalid PayFast signature');
-        return res.status(400).send('Invalid signature');
+    // APEX: Constant-time comparison to prevent timing attacks
+    // Both signatures are 32-character hex strings (MD5 output)
+    try {
+        const signatureBuffer = Buffer.from(signature || '', 'hex');
+        const calculatedBuffer = Buffer.from(calculatedSignature, 'hex');
+        
+        // Ensure buffers are same length before comparison
+        if (signatureBuffer.length !== calculatedBuffer.length) {
+            console.error('❌ Invalid PayFast signature (length mismatch)');
+            return res.status(400).send('Invalid signature');
+        }
+        
+        if (!crypto.timingSafeEqual(signatureBuffer, calculatedBuffer)) {
+            console.error('❌ Invalid PayFast signature');
+            return res.status(400).send('Invalid signature');
+        }
+    } catch (err) {
+        // Handle invalid hex encoding
+        console.error('❌ PayFast signature validation error:', err.message);
+        return res.status(400).send('Invalid signature format');
     }
     
     // APEX: Verify with PayFast server (SSRF protection)
