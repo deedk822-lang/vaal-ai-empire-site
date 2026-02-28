@@ -71,7 +71,7 @@ class TestXRPLLiquidityEngine:
 
     def test_engine_initialization_no_seed(self):
         """Test engine initialization without wallet seed."""
-        from sentinel_core import XRPLLiquidityEngine
+        from .sentinel_core import XRPLLiquidityEngine
         
         engine = XRPLLiquidityEngine()
         assert engine.network_url is not None
@@ -81,7 +81,7 @@ class TestXRPLLiquidityEngine:
 
     def test_engine_default_url(self):
         """Test engine uses correct default URL with proper hostname validation."""
-        from sentinel_core import XRPLLiquidityEngine
+        from .sentinel_core import XRPLLiquidityEngine
         
         engine = XRPLLiquidityEngine()
         # APEX: Use proper hostname validation instead of substring check
