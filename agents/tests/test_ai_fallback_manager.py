@@ -4,6 +4,30 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from datetime import datetime, timedelta
+import types
+
+# Provide a minimal requests stub so tests run without external dependency install
+if "requests" not in sys.modules:
+    requests_stub = types.ModuleType("requests")
+
+    class _RequestException(Exception):
+        pass
+
+    class _Timeout(_RequestException):
+        pass
+
+    class _ConnectionError(_RequestException):
+        pass
+
+    requests_stub.exceptions = types.SimpleNamespace(
+        Timeout=_Timeout,
+        RequestException=_RequestException,
+        ConnectionError=_ConnectionError,
+    )
+    requests_stub.post = lambda *args, **kwargs: None
+    requests_stub.get = lambda *args, **kwargs: None
+    sys.modules["requests"] = requests_stub
+
 from unittest.mock import Mock, patch
 
 from agents.lib.ai_fallback_manager import (
