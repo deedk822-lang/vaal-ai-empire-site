@@ -2,9 +2,9 @@ name: Hybrid Benchmark
 
 on:
   push:
-    branches: [main, master, digital-preeminence-fixes]
+    branches: [m[m[main, master, digital-preeminence-fixes]
   pull_request:
-    branches: [main, master, develop]
+    branches: [m[m[main, master, develop]
   workflow_dispatch:
     inputs:
       backend:

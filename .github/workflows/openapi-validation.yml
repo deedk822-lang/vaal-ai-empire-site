@@ -5,14 +5,14 @@ name: OpenAPI Contract Validation
 
 on:
   push:
-    branches: [main, optimal-performance]
+    branches: [m[m[main, optimal-performance]
     paths:
       - 'openapi/**.yaml'
       - 'openapi/**.yml'
       - 'openapi/**.json'
       - '.github/workflows/openapi-validation.yml'
   pull_request:
-    branches: [main]
+    branches: [m[m[main]
     paths:
       - 'openapi/**.yaml'
       - 'openapi/**.yml'

@@ -2,13 +2,13 @@ name: Sentient Financial Sentinel - Phase 1 CI/CD
 
 on:
   push:
-    branches: [main, optimal-performance]
+    branches: [m[m[main, optimal-performance]
     paths:
       - 'agents/sentient_swarm/**'
       - 'server/routes/sentinel.js'
       - '.github/workflows/sentinel-phase1.yml'
   pull_request:
-    branches: [main]
+    branches: [m[m[main]
     paths:
       - 'agents/sentient_swarm/**'
       - 'server/routes/sentinel.js'

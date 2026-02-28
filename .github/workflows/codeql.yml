@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, master, digital-preeminence-fixes, optimal-performance]
+    branches: [m[m[main, master, digital-preeminence-fixes, optimal-performance]
   pull_request:
-    branches: [main, master]
+    branches: [m[m[main, master]
   schedule:
     - cron: '0 0 * * 1'
   workflow_dispatch:

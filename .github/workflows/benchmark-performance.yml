@@ -2,9 +2,9 @@ name: Benchmark Performance
 
 on:
   push:
-    branches: [main, master]
+    branches: [m[m[main, master]
   pull_request:
-    branches: [main, master]
+    branches: [m[m[main, master]
   workflow_dispatch:
     inputs:
       category:

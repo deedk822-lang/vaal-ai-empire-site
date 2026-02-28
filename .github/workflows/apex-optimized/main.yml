@@ -5,9 +5,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, master]
+    branches: [m[main, master]
   pull_request:
-    branches: [main, master]
+    branches: [m[main, master]
 
 permissions:
   contents: read
