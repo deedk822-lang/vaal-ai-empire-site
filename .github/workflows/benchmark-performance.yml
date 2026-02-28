@@ -226,7 +226,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42 # v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Build benchmark image
         run: |
