@@ -154,10 +154,11 @@ class SentinelModelClient:
         start_time = time.time()
         request_id = f"sentinel-{uuid4().hex[:8]}"
         
+        # APEX: Hash user_id for POPIA-compliant logging
         logger.info(f"Model request started", extra={
             "request_id": request_id,
             "model": self.model,
-            "user_id": user_id,
+            "user_id_hash": hashlib.sha256(user_id.encode()).hexdigest()[:16],
             "message_count": len(messages)
         })
         
