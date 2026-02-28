@@ -2,9 +2,9 @@ name: Hybrid Benchmark
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, digital-preeminence-fixes, optimal-performance]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, develop]
   workflow_dispatch:
     inputs:
       backend:
@@ -43,10 +43,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload Ollama results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ollama-benchmark-results
           path: benchmark_results/
@@ -107,10 +107,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload Direct API results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: direct-api-benchmark-results
           path: benchmark_results/
@@ -155,21 +155,28 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Download Ollama results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ollama-benchmark-results
           path: results/ollama
         continue-on-error: true
 
       - name: Download Direct API results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: direct-api-benchmark-results
           path: results/direct
         continue-on-error: true
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded files ==="
+          ls -la results/ || echo "results/ directory not found"
+          ls -la results/ollama/ 2>/dev/null || echo "ollama results not found"
+          ls -la results/direct/ 2>/dev/null || echo "direct results not found"
 
       - name: Generate combined summary
         run: |
@@ -180,18 +187,18 @@ jobs:
           lines = ["## Hybrid Benchmark Results\n"]
           
           def render_backend(label, path_obj):
+              lines.append(f"### {label}\n")
               if not path_obj.exists():
-                  lines.append(f"### {label}\n")
                   lines.append(f"⚠️ {label} benchmark not run or results unavailable\n")
+                  lines.append(f"Expected path: {path_obj.absolute()}\n")
                   return
               try:
                   data = json.loads(path_obj.read_text())
               except Exception as e:
-                  lines.append(f"### {label}\n⚠️ Could not parse results: {e}\n")
+                  lines.append(f"⚠️ Could not parse results: {e}\n")
                   return
               summary = data.get("summary", {})
               
-              lines.append(f"### {label}\n")
               lines.append("| Metric | Value |")
               lines.append("|--------|-------|")
               lines.append(f"| Total Tests    | {summary.get('total_tests', 0)} |")
@@ -203,8 +210,24 @@ jobs:
           Path("results/ollama").mkdir(parents=True, exist_ok=True)
           Path("results/direct").mkdir(parents=True, exist_ok=True)
           
-          render_backend("Ollama Backend", Path("results/ollama/ollama_report.json"))
-          render_backend("Direct API Backend", Path("results/direct/direct_report.json"))
+          # Also check for files in root of download directories
+          ollama_path = Path("results/ollama/ollama_report.json")
+          if not ollama_path.exists():
+              # Try alternative paths
+              alt_paths = list(Path("results/ollama").glob("*.json"))
+              if alt_paths:
+                  ollama_path = alt_paths[0]
+                  lines.append(f"⚠️ Using alternative Ollama result file: {ollama_path.name}\n")
+          
+          direct_path = Path("results/direct/direct_report.json")
+          if not direct_path.exists():
+              alt_paths = list(Path("results/direct").glob("*.json"))
+              if alt_paths:
+                  direct_path = alt_paths[0]
+                  lines.append(f"⚠️ Using alternative Direct API result file: {direct_path.name}\n")
+          
+          render_backend("Ollama Backend", ollama_path)
+          render_backend("Direct API Backend", direct_path)
           
           output = "\n".join(lines)
           print(output)

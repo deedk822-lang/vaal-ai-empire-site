@@ -18,16 +18,23 @@ Features:
 import asyncio
 import base64
 import io
-import os
 import logging
 from pathlib import Path
 from typing import ClassVar, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import numpy as np
 
-import torch
-import torchaudio
-from transformers import pipeline
+# APEX: Optional heavy ML dependencies - gracefully degrade in CI/test environments
+try:
+    import torch
+    import torchaudio
+    from transformers import pipeline
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+    torch = None
+    torchaudio = None
+    pipeline = None
 
 from .base_agent import BaseAgent
 
@@ -141,6 +148,8 @@ class MultilingualVoiceAgent(BaseAgent):
         """Lazy-load ASR model with thread-safe locking."""
         async with self._asr_lock:
             if self._asr_pipeline is None:
+                if not _TORCH_AVAILABLE:
+                    raise RuntimeError("torch/torchaudio not installed. Install with: pip install torch torchaudio transformers")
                 self.log(f"Loading ASR model from {self.asr_model_path}")
                 
                 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -163,6 +172,8 @@ class MultilingualVoiceAgent(BaseAgent):
         """Lazy-load TTS model with thread-safe locking."""
         async with self._tts_lock:
             if self._tts_model is None:
+                if not _TORCH_AVAILABLE:
+                    raise RuntimeError("torch not installed. Install with: pip install torch torchaudio transformers")
                 try:
                     device = 0 if torch.cuda.is_available() else -1
                     self.log(f"Loading TTS model from {self.tts_model_path}")
@@ -512,8 +523,7 @@ class MultilingualVoiceAgent(BaseAgent):
         # Try ModelRouter first (Ollama primary with DashScope fallback)
         if self._model_router is not None:
             try:
-                # Classify task for optimal model selection
-                task_type = classify_task(query) if 'classify_task' in dir() else 'multilingual'
+                # Use multilingual task type for optimal model selection
                 model = self._model_router.get_model_for_task('multilingual')
                 
                 # Build messages

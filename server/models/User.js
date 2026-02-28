@@ -92,6 +92,10 @@ const userSchema = new mongoose.Schema(
     passwordResetToken: String,
     passwordResetExpires: Date,
 
+    // APEX: Account locking mechanism for brute-force protection
+    loginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date },
+
     isVerified: { type: Boolean, default: false },
     verificationToken:        String,
     verificationTokenExpires: Date,

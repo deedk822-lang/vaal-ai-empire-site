@@ -86,7 +86,7 @@ const extractToken = (req) => {
 // Auth handlers
 // ─────────────────────────────────────────────
 
-exports.signup = catchAsync(async (req, res, next) => {
+exports.signup = catchAsync(async (req, res, _next) => {
   const { name, email, password, passwordConfirm } = req.body;
 
   const newUser = await User.create({ name, email, password, passwordConfirm });
@@ -239,7 +239,7 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
     await sendPasswordResetEmail(user.email, resetURL);
 
     res.status(200).json({ status: 'success', message: 'Token sent to email.' });
-  } catch (err) {
+  } catch (_err) {
     user.passwordResetToken   = undefined;
     user.passwordResetExpires = undefined;
     await user.save({ validateBeforeSave: false });
