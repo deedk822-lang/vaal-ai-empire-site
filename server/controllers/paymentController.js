@@ -4,6 +4,44 @@
  * 
  * APEX Security Framework v2.0 Compliant
  * POPIA Compliant
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SECURITY NOTE: MD5 USAGE FOR API MESSAGE SIGNING
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Why MD5 is Used:
+ * - PayFast API mandates MD5 for Instant Transaction Notification (ITN) signatures
+ * - This is MESSAGE AUTHENTICATION, NOT password storage
+ * - MD5 is acceptable for API signatures when mandated by the provider
+ * - Reference: https://developers.payfast.co.za/docs/secure-your-integration/
+ * 
+ * Key Distinctions:
+ * ┌─────────────────────┬──────────────────────┬───────────────────────────┐
+ * │ Aspect              │ Password Hashing     │ API Message Signing       │
+ * ├─────────────────────┼──────────────────────┼───────────────────────────┤
+ * │ Purpose             │ Store credentials    │ Verify message integrity  │
+ * │ Algorithm           │ bcrypt/scrypt/argon2 │ As specified by API       │
+ * │ Security            │ Resistant to brute   │ Tamper detection          │
+ * │ MD5 Usage           │ ❌ NEVER acceptable  │ ✅ When API mandates      │
+ * └─────────────────────┴──────────────────────┴───────────────────────────┘
+ * 
+ * Security Controls:
+ * 1. Signing key stored ONLY in environment variables (never in code)
+ * 2. Key never logged or exposed in responses
+ * 3. Signature validation uses constant-time comparison (timingSafeEqual)
+ * 4. Rate limiting on all payment endpoints
+ * 5. Input validation at trust boundaries
+ * 6. Server-side verification with PayFast (SSRF protection)
+ * 
+ * APEX Compliance: [APEX-PAYFAST-MD5-2026-028-APPROVED]
+ * Owner: @deedk822-lang
+ * Expiry: 2027-Q1 (pending PayFast API update)
+ * JIRA: SEC-0042
+ * 
+ * CodeQL Suppression: js/insufficient-password-hash
+ * Reason: MD5 is required by third-party API specification for message
+ *         authentication. This is NOT password hashing.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 const crypto = require('crypto');
