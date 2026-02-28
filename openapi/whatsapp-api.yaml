@@ -1,0 +1,830 @@
+# OpenAPI 3.1.0 Specification for Vaal AI WhatsApp Business API
+# APEX Security Framework v2.0 Compliant
+
+openapi: 3.1.0
+info:
+  title: Vaal AI WhatsApp Business API
+  version: 1.0.0
+  description: |
+    APEX-compliant WhatsApp Business API integration with POPIA consent enforcement,
+    webhook signature validation, and multilingual voice processing.
+    
+    Security Contact: security@vaal-ai.com
+    APEX Audit Reference: APEX-WHATSAPP-2026-028
+    
+  contact:
+    name: Vaal AI Security Team
+    email: security@vaal-ai.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://api.vaal-ai.com/v1
+    description: Production
+    x-apeX-environment: production
+  - url: https://staging.vaal-ai.com/v1
+    description: Staging
+    x-apeX-environment: staging
+
+# ═══════════════════════════════════════════════════════════════════
+# APEX SECURITY SCHEMES
+# ═══════════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    WhatsAppBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Meta-provided access token for WhatsApp Business API.
+        Stored in GitHub Secrets (WHATSAPP_ACCESS_TOKEN).
+        Rotated every 90 days per APEX policy.
+      x-apeX-secret-rotation: 90_days
+      x-apeX-storage: github_secrets
+    
+    WebhookSignature:
+      type: apiKey
+      in: header
+      name: X-Hub-Signature-256
+      description: |
+        HMAC-SHA256 signature for webhook verification.
+        APEX Invariant #2: Verified on EVERY request.
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Internal API key for service-to-service communication
+
+  # ═════════════════════════════════════════════════════════════════
+  # APEX SCHEMAS WITH VALIDATION ANNOTATIONS
+  # ═════════════════════════════════════════════════════════════════
+  schemas:
+    WhatsAppMessageRequest:
+      type: object
+      required: [messaging_product, to, type]
+      additionalProperties: false
+      properties:
+        messaging_product:
+          type: string
+          enum: [whatsapp]
+          description: Must be 'whatsapp' for WhatsApp Business API
+        to:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          description: Recipient phone number in E.164 format
+          example: "+27821234567"
+        type:
+          type: string
+          enum: [text, template, interactive, media, voice]
+          description: Message content type
+        text:
+          $ref: '#/components/schemas/TextContent'
+        template:
+          $ref: '#/components/schemas/TemplateContent'
+        interactive:
+          $ref: '#/components/schemas/InteractiveContent'
+        media:
+          $ref: '#/components/schemas/MediaContent'
+        
+      # APEX Extensions for Security
+      x-apeX-validation:
+        sanitize_input: true
+        log_pii: false
+        require_consent_for: [marketing, utility]
+        rate_limit: "50_per_15min_per_user"
+        
+      x-apeX-observability:
+        emit_metric: whatsapp_message_sent
+        log_level: info
+        trace_span: whatsapp.send_message
+
+    TextContent:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: Message text content
+          example: "Hello from Vaal AI!"
+          x-apeX-sanitize:
+            strip_html: true
+            strip_control_chars: true
+            block_javascript_protocols: true
+            max_length: 4096
+            encoding: utf-8
+
+    TemplateContent:
+      type: object
+      required: [name, language]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+          description: Pre-approved template name
+          example: "payment_confirmation"
+        language:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              pattern: '^[a-z]{2}_[A-Z]{2}$'
+              description: Language code (e.g., en_US, zu_ZA)
+              example: "en_US"
+            policy:
+              type: string
+              enum: [deterministic]
+              default: deterministic
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateComponent'
+
+    TemplateComponent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [header, body, button]
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateParameter'
+
+    TemplateParameter:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, currency, date_time, image, document, video]
+        text:
+          type: string
+          maxLength: 1024
+
+    InteractiveContent:
+      type: object
+      required: [type, action]
+      properties:
+        type:
+          type: string
+          enum: [button, list, product, product_list]
+        header:
+          $ref: '#/components/schemas/InteractiveHeader'
+        body:
+          $ref: '#/components/schemas/InteractiveBody'
+        footer:
+          $ref: '#/components/schemas/InteractiveFooter'
+        action:
+          $ref: '#/components/schemas/InteractiveAction'
+
+    InteractiveHeader:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, video, image, document]
+        text:
+          type: string
+          maxLength: 60
+
+    InteractiveBody:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          maxLength: 1024
+
+    InteractiveFooter:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          maxLength: 60
+
+    InteractiveAction:
+      type: object
+      required: [buttons]
+      properties:
+        buttons:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required: [type, reply]
+            properties:
+              type:
+                type: string
+                enum: [reply]
+              reply:
+                type: object
+                required: [id, title]
+                properties:
+                  id:
+                    type: string
+                    maxLength: 256
+                  title:
+                    type: string
+                    maxLength: 20
+
+    MediaContent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [image, document, audio, video, voice]
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          description: HTTPS URL of media file
+        caption:
+          type: string
+          maxLength: 1024
+        filename:
+          type: string
+          maxLength: 255
+
+    # POPIA Consent Tracking Schemas
+    ConsentStatus:
+      type: object
+      required: [msisdn, granted, scope]
+      properties:
+        msisdn:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          description: User phone number
+        granted:
+          type: boolean
+          description: Whether consent is currently granted
+        scope:
+          type: array
+          items:
+            type: string
+            enum: [session, marketing, utility, authentication, voice_processing]
+        granted_at:
+          type: string
+          format: date-time
+          description: When consent was granted
+        expires_at:
+          type: string
+          format: date-time
+          description: POPIA requires time-limited consent (max 2 years)
+        revoked_at:
+          type: string
+          format: date-time
+        revoked_via:
+          type: string
+          enum: [whatsapp_stop, web_form, support_agent, auto_expired]
+        audit_trail:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/ConsentAuditEntry'
+
+    ConsentAuditEntry:
+      type: object
+      required: [action, timestamp]
+      properties:
+        action:
+          type: string
+          enum: [granted, revoked, expired, renewed, scope_changed]
+        timestamp:
+          type: string
+          format: date-time
+        ip_address:
+          type: string
+          format: ipv4
+        user_agent:
+          type: string
+          maxLength: 512
+        reference:
+          type: string
+          description: Unique reference for this action
+        performed_by:
+          type: string
+          description: user_id or 'system'
+
+    # Webhook Event Schemas
+    WhatsAppWebhookEvent:
+      type: object
+      required: [object, entry]
+      properties:
+        object:
+          type: string
+          enum: [whatsapp_business_account]
+        entry:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEntry'
+
+    WebhookEntry:
+      type: object
+      required: [id, changes]
+      properties:
+        id:
+          type: string
+          description: Business account ID
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookChange'
+
+    WebhookChange:
+      type: object
+      required: [value, field]
+      properties:
+        value:
+          $ref: '#/components/schemas/WebhookValue'
+        field:
+          type: string
+          enum: [messages]
+
+    WebhookValue:
+      type: object
+      properties:
+        messaging_product:
+          type: string
+          enum: [whatsapp]
+        metadata:
+          type: object
+          properties:
+            display_phone_number:
+              type: string
+            phone_number_id:
+              type: string
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookContact'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookMessage'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookStatus'
+
+    WebhookContact:
+      type: object
+      required: [wa_id, profile]
+      properties:
+        wa_id:
+          type: string
+          description: WhatsApp ID (phone number)
+        profile:
+          type: object
+          properties:
+            name:
+              type: string
+
+    WebhookMessage:
+      type: object
+      required: [from, id, timestamp, type]
+      properties:
+        from:
+          type: string
+          description: Sender phone number
+        id:
+          type: string
+          description: Message ID
+        timestamp:
+          type: string
+          description: Unix timestamp
+        type:
+          type: string
+          enum: [text, image, voice, audio, video, document, location, contacts, interactive, button, reaction]
+        text:
+          type: object
+          properties:
+            body:
+              type: string
+        voice:
+          $ref: '#/components/schemas/VoiceMessage'
+        audio:
+          $ref: '#/components/schemas/AudioMessage'
+        image:
+          $ref: '#/components/schemas/ImageMessage'
+
+    VoiceMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        mime_type:
+          type: string
+          example: "audio/ogg; codecs=opus"
+        sha256:
+          type: string
+          description: SHA-256 hash of media
+        voice:
+          type: boolean
+          default: true
+
+    AudioMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        mime_type:
+          type: string
+        sha256:
+          type: string
+
+    ImageMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        mime_type:
+          type: string
+          example: "image/jpeg"
+        sha256:
+          type: string
+        caption:
+          type: string
+
+    WebhookStatus:
+      type: object
+      required: [id, status, timestamp, recipient_id]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [sent, delivered, read, failed]
+        timestamp:
+          type: string
+        recipient_id:
+          type: string
+        conversation:
+          type: object
+          properties:
+            id:
+              type: string
+            category:
+              type: string
+              enum: [business_initiated, user_initiated, referral]
+
+    # Error Response Schemas
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [consent_required, consent_expired, invalid_scope, rate_limited, invalid_signature, processing_failed, internal_error]
+        message:
+          type: string
+        action:
+          type: string
+          enum: [request_consent, refresh_consent, retry_later, contact_support]
+        retry_after:
+          type: integer
+          description: Seconds to wait before retry (for rate limits)
+
+    SuccessResponse:
+      type: object
+      required: [message_id, status]
+      properties:
+        message_id:
+          type: string
+          description: Unique message identifier
+        status:
+          type: string
+          enum: [queued, sent, delivered, read, failed]
+        timestamp:
+          type: string
+          format: date-time
+
+# ═══════════════════════════════════════════════════════════════════
+# API PATHS
+# ═══════════════════════════════════════════════════════════════════
+paths:
+  /whatsapp/messages:
+    post:
+      operationId: sendWhatsAppMessage
+      summary: Send WhatsApp Message (Business-Initiated)
+      description: |
+        Send a message to a WhatsApp user.
+        
+        **APEX Security Requirements:**
+        - Requires valid POPIA consent for non-session messages
+        - Input sanitized per x-apeX-sanitize annotations
+        - Rate limited: 50 messages per 15 minutes per user
+        
+        **POPIA Compliance:**
+        - Marketing messages require explicit consent
+        - Consent expiry enforced (max 2 years)
+        - Audit trail maintained for all sends
+      tags:
+        - Messaging
+      security:
+        - WhatsAppBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppMessageRequest'
+            examples:
+              text-message:
+                summary: Simple text message
+                value:
+                  messaging_product: whatsapp
+                  to: "+27821234567"
+                  type: text
+                  text:
+                    body: "Hello from Vaal AI!"
+              template-message:
+                summary: Pre-approved template
+                value:
+                  messaging_product: whatsapp
+                  to: "+27821234567"
+                  type: template
+                  template:
+                    name: payment_confirmation
+                    language:
+                      code: en_US
+      responses:
+        '200':
+          description: Message queued for delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing access token
+        '403':
+          description: |
+            Consent required or invalid.
+            Response includes action to take.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                consent-required:
+                  summary: User has not granted consent
+                  value:
+                    error: consent_required
+                    message: User must explicitly opt-in before receiving business messages
+                    action: request_consent
+                consent-expired:
+                  summary: Consent has expired
+                  value:
+                    error: consent_expired
+                    message: User consent expired on 2026-01-01
+                    action: refresh_consent
+        '429':
+          description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: rate_limited
+                message: Too many messages sent to this user
+                retry_after: 900
+      x-apeX-observability:
+        log_event: true
+        emit_metric: whatsapp_message_sent
+        trace_span: whatsapp.send_message
+        alert_on_high_error_rate: true
+        error_rate_threshold: 5
+
+  /whatsapp/consent/{msisdn}:
+    get:
+      operationId: getWhatsAppConsent
+      summary: Get User Consent Status
+      description: Retrieve current POPIA consent status for a user
+      tags:
+        - Consent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: msisdn
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\+[1-9]\d{1,14}$'
+          description: User phone number in E.164 format
+      responses:
+        '200':
+          description: Consent status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentStatus'
+        '404':
+          description: User not found
+
+    post:
+      operationId: updateWhatsAppConsent
+      summary: Update User Consent
+      description: |
+        Update POPIA consent for a user.
+        Requires admin or user authentication.
+      tags:
+        - Consent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: msisdn
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\+[1-9]\d{1,14}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [granted, scope]
+              properties:
+                granted:
+                  type: boolean
+                scope:
+                  type: array
+                  items:
+                    type: string
+                    enum: [session, marketing, utility, authentication, voice_processing]
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Consent updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentStatus'
+
+  /webhooks/whatsapp:
+    get:
+      operationId: verifyWhatsAppWebhook
+      summary: Verify Webhook (Meta Challenge)
+      description: |
+        Meta verification challenge handler.
+        Used during webhook setup in Meta Dashboard.
+      tags:
+        - Webhooks
+      parameters:
+        - name: hub.mode
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [subscribe]
+        - name: hub.verify_token
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Verification successful
+          content:
+            text/plain:
+              schema:
+                type: string
+              description: Echo of hub.challenge
+        '403':
+          description: Verification failed
+
+    post:
+      operationId: receiveWhatsAppWebhook
+      summary: Receive WhatsApp Webhook Events
+      description: |
+        Receive incoming webhook events from Meta.
+        
+        **APEX Security:**
+        - Signature verified on EVERY request (Invariant #2)
+        - Payload size limited to 1MB
+        - Response within 20 seconds required by Meta
+        
+        **Event Types:**
+        - messages: Incoming messages from users
+        - statuses: Message delivery/read receipts
+      tags:
+        - Webhooks
+      security:
+        - WebhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WhatsAppWebhookEvent'
+      responses:
+        '200':
+          description: Event received successfully
+          content:
+            text/plain:
+              example: EVENT_RECEIVED
+        '401':
+          description: Invalid signature
+        '413':
+          description: Payload too large
+      x-apeX-observability:
+        log_event: true
+        emit_metric: whatsapp_webhook_received
+        trace_span: whatsapp.webhook.process
+        alert_on_failure: true
+        max_payload_size: 1048576  # 1MB
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health Check
+      description: Service health endpoint for load balancers
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+        '503':
+          description: Service is unhealthy
+
+# ═══════════════════════════════════════════════════════════════════
+# APEX EXTENSIONS
+# ═══════════════════════════════════════════════════════════════════
+x-apeX-metadata:
+  audit_date: "2026-02-26"
+  auditor: "AI Principal Security Engineer"
+  compliance_framework: "APEX-v2.0"
+  data_classification: "sensitive"
+  poipa_compliant: true
+  security_review_status: "approved"
+  
+x-apeX-security-controls:
+  input_validation:
+    schema_validation: strict
+    sanitize_all_inputs: true
+    max_request_size: 1048576
+  
+  authentication:
+    require_auth: true
+    token_rotation_days: 90
+    
+  authorization:
+    consent_enforcement: mandatory
+    scope_validation: strict
+    
+  rate_limiting:
+    enabled: true
+    default_limit: "50_per_15min"
+    burst_allowance: 10
+    
+  observability:
+    logging_level: info
+    metrics_enabled: true
+    tracing_enabled: true
+    
+  data_protection:
+    encryption_at_rest: AES-256-GCM
+    encryption_in_transit: TLS-1.3
+    pii_logging: false
+    auto_purge: true
+    retention_days: 30

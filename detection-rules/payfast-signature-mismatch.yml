@@ -1,0 +1,29 @@
+title: PayFast ITN Signature Mismatch
+id: apex-payfast-001
+status: stable
+description: Detects potential PayFast webhook tampering or misconfiguration
+author: Security Team
+date: 2026/02/26
+modified: 2026/02/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - payment
+  - webhook
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: payfast-itn
+detection:
+  selection:
+    event_type: payfast_itn_received
+    signature_valid: false
+  condition: selection
+falsepositives:
+  - PayFast sandbox testing
+  - Signature rotation during key update
+level: high
+---
+# APEX Compliance: Linked to FIND-001 suppression
+# Owner: @security-team
+# Expiry: 2027-Q1 (review when PayFast v3 migration complete)

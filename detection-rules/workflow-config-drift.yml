@@ -1,0 +1,33 @@
+title: CI/CD Workflow Configuration Drift
+id: apex-cicd-003
+status: stable
+description: Detects unauthorized changes to security workflow configurations
+author: Security Team
+date: 2026/02/26
+tags:
+  - attack.persistence
+  - attack.t1547
+  - ci-cd
+  - supply-chain
+logsource:
+  category: version_control
+  product: github
+  service: actions
+detection:
+  selection:
+    event_type: push
+    paths:
+      - '.github/workflows/security.yml'
+      - '.github/codeql/codeql-config.yml'
+    actor: 
+      - '!dependabot[bot]'
+      - '!github-actions[bot]'
+  condition: selection
+falsepositives:
+  - Approved security team changes
+  - Automated dependency updates
+level: high
+---
+# APEX Compliance: Enforces Phase 8 CI/CD Security controls
+# Requires: Branch protection + CODEOWNERS approval for workflow changes
+# Integration: GitHub Audit Log → SIEM ingestion

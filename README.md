@@ -2,7 +2,9 @@
 
 **Digital Sovereignty for South African SMEs**
 
-Complete autonomous AI platform with Stripe subscription billing.
+Complete autonomous AI platform with PayFast subscription billing for the South African market.
+
+🇿🇦 Built in the Vaal. Built for Africa.
 
 ---
 
@@ -17,16 +19,16 @@ cd vaal-ai-empire-site
 chmod +x INSTALL.sh
 ./INSTALL.sh
 
-# Configure Stripe
+# Configure PayFast
 cd server
 cp .env.example .env
-# Edit .env with your keys
+# Edit .env with your PayFast merchant keys
 
 # Start server
 npm start
 ```
 
-**Open:** http://localhost:4242
+**Open:** http://localhost:3000
 
 ---
 
@@ -34,23 +36,30 @@ npm start
 
 ### Complete Website:
 - ✅ Professional homepage
-- ✅ Pricing page with 2 tiers
+- ✅ Pricing page with 2 tiers (Vaal Starter, Vaal Empire)
 - ✅ Success/cancel pages
 - ✅ Responsive design
 - ✅ Mobile-first approach
 
-### Stripe Integration:
-- ✅ Subscription checkout
-- ✅ Webhook handling
-- ✅ Customer portal
+### PayFast Integration (South Africa):
+- ✅ Payment gateway integration
+- ✅ ITN (Instant Transaction Notification) handling
 - ✅ ZAR currency
 - ✅ 7-day free trials
+- ✅ Sandbox and Production modes
 
 ### Backend:
 - ✅ Node.js/Express server
 - ✅ Complete API
-- ✅ Environment config
+- ✅ APEX Security Framework v2.0 compliant
+- ✅ POPIA compliant
 - ✅ Production ready
+
+### AI Capabilities:
+- ✅ Financial Sentinel Agent (Perplexity + SEC EDGAR)
+- ✅ WhatsApp Business API integration
+- ✅ XRPL Settlement (RLUSD stablecoin)
+- ✅ Multi-language support (African languages)
 
 ---
 
@@ -65,11 +74,15 @@ npm start
 
 ## 🛠 Tech Stack
 
-- **Frontend:** HTML5, CSS3, Vanilla JS
-- **Backend:** Node.js, Express
-- **Payments:** Stripe
-- **Hosting:** Alibaba Cloud Singapore
-- **Currency:** ZAR (South African Rand)
+| Component | Technology |
+|-----------|------------|
+| **Frontend** | HTML5, CSS3, Vanilla JS |
+| **Backend** | Node.js, Express |
+| **Payments** | PayFast (South Africa) |
+| **AI/ML** | Python, AG2 (AutoGen) |
+| **Blockchain** | XRPL (RLUSD) |
+| **Hosting** | Vercel / Self-hosted |
+| **Currency** | ZAR (South African Rand) |
 
 ---
 
@@ -77,50 +90,62 @@ npm start
 
 ### Required Environment Variables:
 
-```env
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_SECRET_KEY=sk_test_...
-STARTER_PRICE_ID=price_...
-EMPIRE_PRICE_ID=price_...
-DOMAIN=http://localhost:4242
+```bash
+# PayFast Configuration
+PAYFAST_MERCHANT_ID=your_merchant_id
+PAYFAST_MERCHANT_KEY=your_merchant_key
+PAYFAST_PASSPHRASE=your_passphrase
+PAYFAST_SANDBOX=true  # Set to false for production
+
+# WhatsApp Business API
+WHATSAPP_ACCESS_TOKEN=your_access_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+WHATSAPP_APP_SECRET=your_app_secret
+WHATSAPP_VERIFY_TOKEN=your_verify_token
+
+# Perplexity Financial Intelligence
+PERPLEXITY_API_KEY=your_perplexity_key
+
+# Database (Optional)
+MONGODB_URI=mongodb://localhost:27017/vaal_ai
+
+# Security
+JWT_SECRET=your_jwt_secret
 ```
 
 See `server/.env.example` for complete list.
 
 ---
 
-## 🧪 Testing
+## 🧪 Testing PayFast Integration
 
-### Stripe Test Cards:
-
-```
-Success: 4242 4242 4242 4242
-3D Secure: 4000 0025 0000 3155
-Declined: 4000 0000 0000 0002
-```
-
-### Test Flow:
-
-1. Visit http://localhost:4242/pricing.html
-2. Click "Start Free Trial"
-3. Enter test card details
+### Sandbox Mode:
+1. Visit http://localhost:3000/pricing.html
+2. Select a plan and click "Subscribe"
+3. Use PayFast sandbox credentials
 4. Verify redirect to success page
+5. Check ITN webhook received
+
+### Production Deployment:
+1. Switch PayFast to live mode (set `PAYFAST_SANDBOX=false`)
+2. Update domain in environment variables
+3. Configure ITN webhook URL in PayFast dashboard
+4. Test with real transaction (small amount)
 
 ---
 
 ## 🚀 Deployment
 
 ### Production Checklist:
-
-- [ ] Switch to live Stripe keys
+- [ ] Switch to live PayFast keys
 - [ ] Update DOMAIN in .env
-- [ ] Set up webhooks
-- [ ] Configure SSL
-- [ ] Test real payment
-- [ ] Set up monitoring
+- [ ] Set up ITN webhook endpoint
+- [ ] Configure SSL/TLS
+- [ ] Test payment flow
+- [ ] Set up monitoring (Prometheus/Grafana)
+- [ ] Enable WhatsApp Business API production mode
 
 ### Deploy Commands:
-
 ```bash
 cd server
 npm install --production
@@ -133,45 +158,57 @@ npm start
 
 ```
 vaal-ai-empire-site/
-├── index.html          # Homepage
-├── pricing.html        # Pricing page
-├── success.html        # Payment success
-├── canceled.html       # Checkout canceled
+├── index.html              # Homepage
+├── pricing.html            # Pricing page
+├── success.html            # Payment success
+├── canceled.html           # Checkout canceled
 ├── css/
-│   └── styles.css      # All styles
+│   └── styles.css          # All styles
 ├── js/
-│   └── main.js         # Frontend JS
+│   └── main.js             # Frontend JS
 ├── server/
-│   ├── server.js       # Express server
-│   ├── package.json    # Dependencies
-│   └── .env.example    # Config template
-├── INSTALL.sh          # Auto-installer
-└── README.md           # This file
+│   ├── server.js           # Express server (PayFast + WhatsApp)
+│   ├── package.json        # Dependencies
+│   ├── routes/
+│   │   ├── whatsapp.js     # WhatsApp webhook routes
+│   │   └── paymentRoutes.js # PayFast routes
+│   ├── services/
+│   │   ├── whatsapp-webhook-validator.js
+│   │   └── payfast-handler.js
+│   └── .env.example        # Config template
+├── agents/
+│   ├── ag2/                # AutoGen agents
+│   │   └── financial_sentinel_agent.py
+│   └── lib/
+│       ├── perplexity_financial_client.py
+│       └── xrpl_settlement.py
+├── INSTALL.sh              # Auto-installer
+└── README.md               # This file
 ```
 
 ---
 
 ## 📚 Documentation
 
-- **Installation:** See INSTALL.sh output
-- **Server API:** server/README.md
-- **Stripe Setup:** server/.env.example
+| Document | Purpose |
+|----------|---------|
+| `APEX_EXECUTION_REPORT.md` | Complete APEX v2.0 security audit |
+| `IMPLEMENTATION_COMPLETE.md` | Implementation verification |
+| `PERPLEXITY_INTEGRATION_STATUS.md` | Financial agent documentation |
+| `HYBRID_DEPLOYMENT.md` | Deployment architecture |
+| `BACKEND_SETUP.md` | Server configuration guide |
 
 ---
 
 ## 🐛 Troubleshooting
 
-### "Node.js not found"
-→ Install from https://nodejs.org/
-
-### "Cannot find module"
-→ Run `npm install` in server/
-
-### "Missing API keys"
-→ Check server/.env file
-
-### "Port in use"
-→ Change PORT in .env
+| Issue | Solution |
+|-------|----------|
+| "Node.js not found" | Install from https://nodejs.org/ |
+| "Cannot find module" | Run `npm install` in server/ |
+| "Missing API keys" | Check `server/.env` file |
+| "Port in use" | Change PORT in .env |
+| "PayFast ITN failing" | Verify signature calculation |
 
 ---
 
@@ -179,17 +216,17 @@ vaal-ai-empire-site/
 
 - **Email:** founders@vaalai.co.za
 - **GitHub:** [Issues](https://github.com/deedk822-lang/vaal-ai-empire-site/issues)
-- **Stripe:** https://stripe.com/docs
+- **PayFast:** https://developers.payfast.co.za/docs
 
 ---
 
 ## 🇿🇦 About
 
-**Vaal AI Empire** provides digital sovereignty for South African SMEs through three autonomous AI engines:
+Vaal AI Empire provides **digital sovereignty** for South African SMEs through autonomous AI engines:
 
-1. **Financial Sentinel** - Tax recovery & compliance
-2. **Guardian Engine** - Infrastructure monitoring
-3. **Talent Accelerator** - Automated hiring
+1. **Financial Sentinel** - Tax recovery, compliance monitoring, financial intelligence
+2. **Guardian Engine** - Infrastructure monitoring, predictive maintenance
+3. **Talent Accelerator** - Automated hiring, skills matching
 
 **Launch:** December 27, 2025
 
@@ -201,4 +238,4 @@ Proprietary © 2025 Vaal AI Empire, Inc.
 
 ---
 
-**⚡ Built in the Vaal. Built for Africa. Built to dominate.** 🇿🇦
+⚡ **Built in the Vaal. Built for Africa. Built to dominate.** 🇿🇦

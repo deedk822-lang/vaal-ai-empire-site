@@ -2,9 +2,9 @@ name: Hybrid Benchmark
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, digital-preeminence-fixes]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, develop]
   workflow_dispatch:
     inputs:
       backend:
@@ -155,17 +155,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Download Ollama results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@v4
         with:
           name: ollama-benchmark-results
           path: results/ollama
         continue-on-error: true
 
       - name: Download Direct API results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@v4
         with:
           name: direct-api-benchmark-results
           path: results/direct
