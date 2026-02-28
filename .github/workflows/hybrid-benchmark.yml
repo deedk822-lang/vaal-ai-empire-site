@@ -2,9 +2,9 @@ name: Hybrid Benchmark
 
 on:
   push:
-    branches: [m[m[main, master, optimal-performance]
+    branches: [main, master, optimal-performance]
   pull_request:
-    branches: [m[m[main, master]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       backend:

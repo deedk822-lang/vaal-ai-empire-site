@@ -2,9 +2,9 @@ name: Security Scanning
 
 on:
   push:
-    branches: [m[m[main, master, digital-preeminence-fixes]
+    branches: [main, master, digital-preeminence-fixes]
   pull_request:
-    branches: [m[m[main, master]
+    branches: [main, master]
   schedule:
     - cron: '0 0 * * 1'
   workflow_dispatch:

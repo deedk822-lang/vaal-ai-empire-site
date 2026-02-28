@@ -2,9 +2,9 @@ name: Sentient Financial Sentinel CI/CD
 
 on:
   push:
-    branches: [m[m[main, develop, 'sentinel-*']
+    branches: [main, develop, 'sentinel-*']
   pull_request:
-    branches: [m[m[main, develop]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
