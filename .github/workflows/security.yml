@@ -2,7 +2,7 @@ name: Security Scanning
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, digital-preeminence-fixes]
   pull_request:
     branches: [main, master]
   schedule:
@@ -15,15 +15,13 @@ permissions:
   contents: read
 
 jobs:
+ optimal-performance
+
   codeql:
-    name: CodeQL — ${{ matrix.language }}
+    name: CodeQL Analysis
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['javascript', 'python']
-
+    
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -31,7 +29,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: javascript,python
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
@@ -39,9 +37,8 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
-        with:
-          category: '/language:${{ matrix.language }}'
 
+ digital-preeminence-fixes
   bandit:
     name: Bandit — Python SAST
     runs-on: ubuntu-latest

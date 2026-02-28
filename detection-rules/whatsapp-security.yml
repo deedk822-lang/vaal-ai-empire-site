@@ -1,0 +1,191 @@
+# WhatsApp Business API Security Detection Rules
+# APEX Security Framework v2.0
+
+---
+title: WhatsApp Webhook Signature Validation Failure
+id: apex-whatsapp-001
+status: stable
+description: Detects potential webhook spoofing attempts against WhatsApp integration
+author: Security Team
+date: 2026/02/26
+modified: 2026/02/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - whatsapp
+  - webhook
+  - hmac
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-webhook
+detection:
+  selection:
+    event_type: whatsapp_webhook_received
+    signature_valid: false
+  timeframe: 5m
+  condition: selection | count() by source_ip > 3
+falsepositives:
+  - Meta infrastructure IP changes
+  - Clock skew between servers
+  - Misconfigured app secret rotation
+level: high
+---
+# APEX Compliance: Enforces Invariant #2 (Auth per-request)
+# Owner: @security-team
+# Expiry: 2027-Q1 (review when WhatsApp API version updated)
+# Escalation: Slack #alerts-whatsapp → PagerDuty P1 if >10 failures/5min
+
+---
+title: WhatsApp Business Message Without Valid Consent
+id: apex-whatsapp-002
+status: stable
+description: Detects attempts to send business-initiated messages without POPIA-compliant consent
+author: Compliance Team
+date: 2026/02/26
+tags:
+  - attack.impact
+  - attack.t1530
+  - whatsapp
+  - popia
+  - compliance
+  - privacy
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-messaging
+detection:
+  selection:
+    event_type: whatsapp_message_send_attempt
+    message_category: marketing
+    consent_valid: false
+  condition: selection
+falsepositives:
+  - Race condition during consent grant
+  - Test environment with mock consent
+level: critical
+---
+# APEX Compliance: Enforces POPIA Invariant
+# Alert threshold: ANY occurrence (zero tolerance for consent violations)
+# Escalation: Immediate Slack #compliance-alerts + JIRA ticket auto-created
+# Legal notification: Required within 4 hours per POPIA breach notification rules
+
+---
+title: WhatsApp Voice Note Processing Without Biometric Consent
+id: apex-whatsapp-003
+status: stable
+description: Detects voice note ASR/TTS processing without explicit biometric data consent
+author: Privacy Team
+date: 2026/02/26
+tags:
+  - attack.impact
+  - attack.t1530
+  - whatsapp
+  - popia
+  - biometric
+  - privacy
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-voice
+detection:
+  selection:
+    event_type: whatsapp_voice_processing
+    voice_consent_granted: false
+  condition: selection
+falsepositives:
+  - Emergency fallback processing with legal authorization
+level: high
+---
+# APEX Compliance: POPIA biometric data protection
+# Remediation: Immediately delete processed voice data + audit access logs
+
+---
+title: WhatsApp User Opt-Out Not Honored
+id: apex-whatsapp-004
+status: experimental
+description: Detects potential POPIA violation where user opted out but messages continue
+author: Compliance Team
+date: 2026/02/26
+tags:
+  - attack.impact
+  - attack.t1530
+  - whatsapp
+  - popia
+  - opt-out
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-messaging
+detection:
+  selection:
+    event_type: whatsapp_message_sent
+    user_opted_out: true
+    opt_out_timestamp:
+      before: "message_sent_timestamp - 24h"
+  condition: selection
+falsepositives:
+  - Session messages (user-initiated) which are always allowed
+  - Clock synchronization issues
+level: critical
+---
+# APEX Compliance: POPIA 24-hour opt-out SLA
+# This is a compliance violation requiring immediate investigation
+
+---
+title: WhatsApp Media URL from Untrusted Domain
+id: apex-whatsapp-005
+status: stable
+description: Detects potential data exfiltration via malicious media URLs
+author: Security Team
+date: 2026/02/26
+tags:
+  - attack.exfiltration
+  - attack.t1567
+  - whatsapp
+  - media
+  - ssrf
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-webhook
+detection:
+  selection:
+    event_type: whatsapp_media_url_validation
+    trusted_domain: false
+    blocked: true
+  condition: selection
+falsepositives:
+  - Legitimate Meta CDN URL format changes
+level: medium
+---
+# APEX Compliance: Invariant #3 (Input validation at trust boundaries)
+
+---
+title: WhatsApp High-Volume Opt-Out Rate
+id: apex-whatsapp-006
+status: experimental
+description: Detects sudden spike in opt-outs indicating potential messaging abuse or consent issues
+author: Compliance Team
+date: 2026/02/26
+tags:
+  - attack.impact
+  - whatsapp
+  - popia
+  - abuse
+logsource:
+  category: application
+  product: vaal-ai-empire
+  service: whatsapp-messaging
+detection:
+  selection:
+    event_type: whatsapp_opt_out
+  timeframe: 1h
+  condition: selection | count() > 50
+falsepositives:
+  - Major service disruption causing mass unsubscribes
+  - Marketing campaign with poor targeting
+level: medium
+---
+# APEX Compliance: Early warning for potential POPIA investigation trigger
+# Threshold: >50 opt-outs in 1 hour (>1% of typical user base)
