@@ -183,6 +183,13 @@ class SentinelModelClient:
             self.request_count += 1
             
             # Build audit record
+            # APEX: Guard against empty choices array
+            response_content = ""
+            response_length = 0
+            if response and hasattr(response, 'choices') and len(response.choices) > 0:
+                response_content = response.choices[0].message.content or ""
+                response_length = len(response_content)
+            
             audit = AuditRecord(
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 action="model_chat",
@@ -191,7 +198,7 @@ class SentinelModelClient:
                     "request_id": request_id,
                     "message_count": len(messages),
                     "has_tools": bool(tools),
-                    "response_length": len(response.choices[0].message.content or "")
+                    "response_length": response_length
                 },
                 consent_reference=consent_ref,
                 model_used=self.model,
@@ -1029,7 +1036,16 @@ class SentientFinancialSentinel:
             user_id=user_id
         )
         
-        response_text = analysis["response"].choices[0].message.content
+        # APEX: Guard against empty choices array
+        response_obj = analysis.get("response")
+        response_text = ""
+        if response_obj and hasattr(response_obj, 'choices') and len(response_obj.choices) > 0:
+            response_text = response_obj.choices[0].message.content or ""
+        else:
+            return {
+                "status": "error",
+                "message": "AI model returned empty response"
+            }
         
         # Step 4: Check for action requirements
         # TODO: Parse tool calls from response if autonomous mode
