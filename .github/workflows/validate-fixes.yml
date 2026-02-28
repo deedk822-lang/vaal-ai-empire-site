@@ -1,6 +1,10 @@
 name: Validate CI/CD Fixes
 
 on:
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+  pull_request:
+    branches: [main, master, optimal-performance]
+
  codex/add-missing-validate-fixes.yml-workflow
 
   push:
@@ -8,6 +12,7 @@ on:
  kimi-fixes
   pull_request:
     branches: [ main, master, optimal-performance ]
+ kimi-fixes
 
 permissions:
   contents: read
@@ -17,13 +22,92 @@ jobs:
     name: Validate Configuration Files
     runs-on: ubuntu-latest
     steps:
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Ensure required workflow files exist
+        run: |
+          test -f .github/workflows/validate-fixes.yml
+          test -f .github/workflows/main.yml
+          test -f .github/workflows/security.yml
+          echo "✅ Required workflow files exist"
+
+      - name: Check for unresolved merge markers
+        run: |
+          if rg '^(<<<<<<<|=======|>>>>>>>)' .github/workflows -g '*.yml'; then
+            echo "❌ Conflict markers found in workflow files"
+            exit 1
+          fi
+          echo "✅ No conflict markers in workflow files"
+
+      - name: Validate workflow YAML
+        run: |
+          ruby << 'RUBYEOF'
+          require 'yaml'
+
+          workflows = Dir.glob('.github/workflows/*.yml').sort
+          workflows.each do |wf|
+            YAML.load_file(wf)
+            puts "✅ #{wf}"
+          end
+          puts "Validated #{workflows.length} workflow files"
+          RUBYEOF
+
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - run: echo "✅ All configuration files are valid"
 
+ kimi-fixes
   validate-node-18:
     name: Validate Node.js Setup (18.x)
     runs-on: ubuntu-latest
     steps:
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '18.x'
+
+      - name: Validate package manifests
+        run: |
+          if [ -f package.json ]; then
+            node -e "JSON.parse(require('fs').readFileSync('package.json'))"
+            echo "✅ package.json valid"
+          fi
+
+          if [ -f server/package.json ]; then
+            node -e "JSON.parse(require('fs').readFileSync('server/package.json'))"
+            echo "✅ server/package.json valid"
+          fi
+
+  validate-node-20:
+    name: Validate Node.js Setup (20.x)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
+        with:
+          node-version: '20.x'
+
+      - name: Validate package manifests
+        run: |
+          if [ -f package.json ]; then
+            node -e "JSON.parse(require('fs').readFileSync('package.json'))"
+            echo "✅ package.json valid"
+          fi
+
+          if [ -f server/package.json ]; then
+            node -e "JSON.parse(require('fs').readFileSync('server/package.json'))"
+            echo "✅ server/package.json valid"
+          fi
+
       - run: echo "✅ Node 18.x setup validated"
 
   validate-node-20:
@@ -31,6 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "✅ Node 20.x setup validated"
+ kimi-fixes
 
   validate-python-setup:
     name: Validate Python Setup (3.10/3.11/3.12)
@@ -39,15 +124,101 @@ jobs:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
     steps:
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+ kimi-fixes
         with:
           python-version: ${{ matrix.python-version }}
       - run: echo "✅ Python ${{ matrix.python-version }} validated"
 
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+      - name: Compile Python modules
+        run: |
+          python -m compileall -q agents
+          echo "✅ Python modules compile on ${{ matrix.python-version }}"
+
+      - name: Validate fallback manager imports
+        run: |
+          python << 'PYEOF'
+          import sys
+          sys.path.insert(0, 'agents')
+
+          from ai_fallback_manager import AIFallbackManager, AIProvider, generate_with_fallback  # noqa: F401
+
+          manager = AIFallbackManager(priority=[AIProvider.OLLAMA, AIProvider.LOCALAI])
+          status = manager.get_status()
+          assert 'providers' in status and isinstance(status['providers'], dict)
+          print(f"✅ ai_fallback_manager import+status OK ({len(status['providers'])} providers)")
+          PYEOF
+
+
+ kimi-fixes
   test-ai-fallback-manager:
     name: Test AI Fallback Manager
     runs-on: ubuntu-latest
     steps:
+ codex/add-missing-validate-fixes.yml-workflow-6jwzou
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install locked Python dependencies
+        run: |
+          python -m pip install --quiet --require-hashes -r requirements.txt
+
+      - name: Run smoke tests
+        run: |
+          python << 'PYEOF'
+          import sys
+          sys.path.insert(0, 'agents')
+
+          from ai_fallback_manager import AIFallbackManager, AIProvider
+
+          manager = AIFallbackManager(priority=[AIProvider.OLLAMA, AIProvider.LOCALAI])
+          status = manager.get_status()
+          health = manager.health_check()
+
+          assert isinstance(status, dict)
+          assert 'providers' in status
+          assert isinstance(health, bool)
+
+          response = manager.generate('hello', use_cache=True)
+          assert response.content
+          assert response.provider in AIProvider
+          print('✅ AI Fallback Manager smoke tests passed')
+          PYEOF
+
+  validation-summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs:
+      [
+        validate-configuration-files,
+        validate-node-18,
+        validate-node-20,
+        validate-python-setup,
+        test-ai-fallback-manager,
+      ]
+    if: always()
+    steps:
+      - name: Validation report
+        run: |
+          echo "validate-configuration-files=${{ needs.validate-configuration-files.result }}"
+          echo "validate-node-18=${{ needs.validate-node-18.result }}"
+          echo "validate-node-20=${{ needs.validate-node-20.result }}"
+          echo "validate-python-setup=${{ needs.validate-python-setup.result }}"
+          echo "test-ai-fallback-manager=${{ needs.test-ai-fallback-manager.result }}"
+
       - run: echo "✅ AI Fallback Manager test passed"
 
   validation-summary:
@@ -56,3 +227,4 @@ jobs:
     needs: [validate-configuration-files, validate-node-18, validate-node-20, validate-python-setup, test-ai-fallback-manager]
     steps:
       - run: echo "🎉 All CI/CD fixes validated successfully"
+ kimi-fixes
