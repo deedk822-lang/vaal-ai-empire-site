@@ -14,8 +14,8 @@ from urllib.parse import urlparse
 # APEX: Removed module-level pytestmark - apply skip only to seed-dependent tests
 # Tests that don't require XRPL_AGENT_SEED should run in CI
 
-# APEX: Allowed XRPL testnet hosts for URL validation
-ALLOWED_XRPL_HOSTS = ["s.altnet.rippletest.net", "rippletest.net"]
+# APEX: Allowed XRPL testnet hosts for URL validation (exact hosts only, no base domains)
+ALLOWED_XRPL_HOSTS = ["s.altnet.rippletest.net"]
 
 # APEX: Reusable decorator for seed-dependent tests
 seed_required = pytest.mark.skipif(
@@ -42,12 +42,26 @@ class TestXRPLConnection:
     """Test XRPL network connectivity."""
 
     def test_xrpl_testnet_connection(self):
-        """Verify connection to XRPL Testnet."""
+        """Verify connection to XRPL Testnet with actual network I/O."""
         try:
             from xrpl.clients import JsonRpcClient
+            from xrpl.models.requests import ServerInfo
+            
             client = JsonRpcClient("https://s.altnet.rippletest.net:51234")
-            assert client is not None
-            print("✅ XRPL Testnet connection successful")
+            
+            # APEX: Perform actual network request to verify connectivity
+            try:
+                response = client.request(ServerInfo())
+                result = response.result
+                
+                # Verify response contains expected fields
+                assert "info" in result or "status" in result, f"Unexpected response: {result}"
+                print("✅ XRPL Testnet connection successful (ServerInfo received)")
+                
+            except Exception as conn_err:
+                # Network errors in CI should skip, not fail
+                pytest.skip(f"XRPL Testnet unreachable: {conn_err}")
+                
         except ImportError:
             pytest.skip("xrpl-py not installed")
 

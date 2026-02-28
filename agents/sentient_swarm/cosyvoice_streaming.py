@@ -559,8 +559,9 @@ class CosyVoiceStreamingProcessor:
         """
         import binascii
         try:
-            audio_data = base64.b64decode(audio_base64)
-        except binascii.Error as e:
+            # APEX: Use strict validation to reject malformed base64
+            audio_data = base64.b64decode(audio_base64, validate=True)
+        except (binascii.Error, ValueError) as e:
             logger.error(f"Invalid base64 audio data: {e}")
             return {
                 "status": "error",
@@ -739,6 +740,8 @@ class VoiceCommandProcessor:
             # APEX: Cap history to prevent unbounded growth (same as process_voice_input)
             if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
                 context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
+            # APEX: Update LRU timestamp so session isn't evicted prematurely
+            self._session_timestamps[session_id] = time.time()
 
         return await self.cosyvoice.synthesize_complete(
             text=text,

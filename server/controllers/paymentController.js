@@ -71,6 +71,12 @@ function validateAndCanonicalizeDomain(domain) {
         const hostname = parsed.hostname;
         const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
         
+        // APEX: Only allow localhost in non-production environments
+        if (isLocalhost && process.env.NODE_ENV === 'production') {
+            console.error('Localhost not allowed in production environment');
+            return null;
+        }
+        
         if (!isLocalhost && !ALLOWED_HOSTS.includes(hostname)) {
             console.error(`Domain hostname not in allowlist: ${hostname}`);
             return null;
@@ -78,7 +84,7 @@ function validateAndCanonicalizeDomain(domain) {
         
         // Return canonicalized URL (no trailing slash)
         return parsed.origin;
-    } catch (e) {
+    } catch {
         console.error(`Invalid DOMAIN format: ${domain}`);
         return null;
     }
@@ -150,15 +156,26 @@ exports.createPayment = catchAsync(async (req, res, next) => {
     const paymentId = `Vaal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // APEX: Validate and canonicalize DOMAIN before building URLs
-    const baseUrl = validateAndCanonicalizeDomain(process.env.DOMAIN) || 'http://localhost:3000';
+    const baseUrl = validateAndCanonicalizeDomain(process.env.DOMAIN);
+    
+    // APEX: Fail-fast in production if DOMAIN is missing/invalid
+    if (!baseUrl) {
+        if (process.env.NODE_ENV === 'production') {
+            console.error('CRITICAL: DOMAIN environment variable is missing or invalid in production');
+            return next(new AppError('Server configuration error - DOMAIN not configured', 500));
+        }
+        // Non-production fallback to localhost
+        console.warn('DOMAIN not configured, using localhost fallback');
+    }
+    const finalBaseUrl = baseUrl || 'http://localhost:3000';
     
     // Build PayFast data
     const paymentData = {
         merchant_id: PAYFAST_CONFIG.merchant_id,
         merchant_key: PAYFAST_CONFIG.merchant_key,
-        return_url: `${baseUrl}/success.html?payment_id=${encodeURIComponent(paymentId)}`,
-        cancel_url: `${baseUrl}/canceled.html`,
-        notify_url: `${baseUrl}/payfast/notify`,
+        return_url: `${finalBaseUrl}/success.html?payment_id=${encodeURIComponent(paymentId)}`,
+        cancel_url: `${finalBaseUrl}/canceled.html`,
+        notify_url: `${finalBaseUrl}/payfast/notify`,
         name_first: name ? name.split(' ')[0] : 'Customer',
         name_last: name ? name.split(' ').slice(1).join(' ') || '' : '',
         email_address: email,

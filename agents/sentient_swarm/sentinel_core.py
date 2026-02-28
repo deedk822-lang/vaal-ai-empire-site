@@ -442,12 +442,19 @@ class XRPLLiquidityEngine:
             
             # For XRP payments
             if currency.upper() == "XRP":
-                import re
                 from xrpl.models.transactions import Payment
                 from xrpl.utils import xrp_to_drops
+                # APEX: Use xrpl-py's authoritative validators instead of manual regex
+                try:
+                    from xrpl.core.addresscodec import is_valid_classic_address, is_valid_xaddress
+                except ImportError:
+                    # Fallback for older xrpl-py versions
+                    import re
+                    is_valid_classic_address = lambda addr: bool(re.match(r'^r[1-9A-HJ-NP-Za-km-z]{25,34}$', addr))
+                    is_valid_xaddress = lambda addr: bool(re.match(r'^X[1-9A-HJ-NP-Za-km-z]{46,58}$', addr))
 
-                # APEX INV-SEC-03: Input validation
-                if not destination or not re.match(r'^r[1-9A-HJ-NP-Za-km-z]{25,34}$', destination):
+                # APEX INV-SEC-03: Input validation using xrpl-py validators
+                if not destination or not (is_valid_classic_address(destination) or is_valid_xaddress(destination)):
                     audit_record["status"] = "error"
                     return {
                         "status": "error",
