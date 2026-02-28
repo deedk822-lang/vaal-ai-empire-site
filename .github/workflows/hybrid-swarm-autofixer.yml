@@ -147,10 +147,18 @@ jobs:
             
             // Build comment body - avoid lines starting with * in YAML
             const header = '## 🤖 Swarm Auto-Fixer Results\n\n';
-            const statusLine = '**Status:** ✅ Success\n';
+            // Derive status from actual job result
+            let statusLine;
+            if ('${{ needs.execute-enterprise-swarm.result }}' === 'success') {
+              statusLine = '**Status:** ✅ Success\n';
+            } else if ('${{ needs.execute-enterprise-swarm.result }}' === 'failure') {
+              statusLine = '**Status:** ❌ Failure\n';
+            } else {
+              statusLine = '**Status:** ⚠️ Warning\n';
+            }
             const durationLine = '**Duration:** ' + duration + 'ms\n';
             const modelLine = '**Model:** qwen3.5-plus\n';
-            const filesLine = '**Files Analyzed:** ' + filesGenerated + '\n';
+            const filesLine = '**Files Generated:** ' + filesGenerated + '\n';
             const issuesLine = '**Issues Processed:** ' + issuesFound + '\n\n';
             
             let fixesSection = '';

@@ -27,13 +27,13 @@ seed_required = pytest.mark.skipif(
 def _validate_xrpl_host(url: str) -> bool:
     """
     Validate that URL host is an allowed XRPL testnet host.
-    APEX: Proper hostname validation, not substring matching.
+    APEX: Exact hostname match only - no subdomain wildcards.
     """
     try:
         parsed = urlparse(url)
         host = parsed.hostname or ""
-        # Check exact match or subdomain match
-        return any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_XRPL_HOSTS)
+        # APEX: Exact match only - prevents subdomain bypass
+        return host in ALLOWED_XRPL_HOSTS
     except Exception:
         return False
 

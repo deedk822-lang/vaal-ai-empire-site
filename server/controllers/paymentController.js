@@ -107,9 +107,13 @@ function validateAndCanonicalizeDomain(domain) {
         }
         
         // In production, validate against allowlist
-        // In development, allow localhost
+        // In development, allow localhost (including IPv6 variants)
         const hostname = parsed.hostname;
-        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+        const isLocalhost = 
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '::1' ||
+            hostname === '0:0:0:0:0:0:0:1';
         
         // APEX: Only allow localhost in non-production environments
         if (isLocalhost && process.env.NODE_ENV === 'production') {

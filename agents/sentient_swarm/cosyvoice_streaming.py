@@ -633,20 +633,19 @@ class VoiceCommandProcessor:
     ):
         self.cosyvoice = cosyvoice
         self.consent_manager = consent_manager
-        self._session_contexts: OrderedDict = OrderedDict()
-        self._session_timestamps: Dict[str, float] = {}
+        self._session_contexts: OrderedDict = OrderedDict()  # O(1) LRU via move_to_end
 
-    def _prune_sessions(self):
-        """LRU prune sessions with oldest last-access timestamp."""
+    def _touch_session(self, session_id: str) -> None:
+        """Move session to end (most recently used) - O(1)."""
+        if session_id in self._session_contexts:
+            self._session_contexts.move_to_end(session_id)
+
+    def _prune_sessions(self) -> None:
+        """Evict oldest sessions - O(1) per eviction via popitem."""
         while len(self._session_contexts) > self.MAX_SESSIONS:
-            # APEX: True LRU - find session with oldest timestamp
-            if not self._session_timestamps:
-                break
-            oldest_key = min(self._session_timestamps.keys(), 
-                            key=lambda k: self._session_timestamps.get(k, float('inf')))
-            del self._session_contexts[oldest_key]
-            self._session_timestamps.pop(oldest_key, None)
-            logger.debug(f"Pruned LRU session: {oldest_key}")
+            # popitem(last=False) removes the oldest (first) item - O(1)
+            session_id, _ = self._session_contexts.popitem(last=False)
+            logger.debug(f"Pruned LRU session: {session_id}")
 
     async def process_voice_input(
         self,
@@ -678,11 +677,10 @@ class VoiceCommandProcessor:
                 "turn_count": 0,
                 "history": []
             }
-            self._session_timestamps[session_id] = time.time()
             self._prune_sessions()
-
-        # Update LRU timestamp
-        self._session_timestamps[session_id] = time.time()
+        else:
+            # Update LRU order - move to end (most recently used)
+            self._touch_session(session_id)
 
         context = self._session_contexts[session_id]
 
@@ -740,8 +738,8 @@ class VoiceCommandProcessor:
             # APEX: Cap history to prevent unbounded growth (same as process_voice_input)
             if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
                 context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
-            # APEX: Update LRU timestamp so session isn't evicted prematurely
-            self._session_timestamps[session_id] = time.time()
+            # APEX: Update LRU order so session isn't evicted prematurely
+            self._touch_session(session_id)
 
         return await self.cosyvoice.synthesize_complete(
             text=text,
@@ -793,11 +791,9 @@ class VoiceCommandProcessor:
         return self._session_contexts.get(session_id)
 
     def clear_session(self, session_id: str) -> bool:
-        """Clear a session context and its timestamp."""
+        """Clear a session context."""
         if session_id in self._session_contexts:
             del self._session_contexts[session_id]
-            # APEX: Also clean up timestamps to avoid stale entries
-            self._session_timestamps.pop(session_id, None)
             return True
         return False
 

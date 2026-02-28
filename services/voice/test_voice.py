@@ -70,22 +70,22 @@ class TestVoiceStreaming:
     def test_streaming_config(self):
         """Test voice streaming configuration - validates against actual StreamingConfig."""
         try:
-            # APEX: Import actual StreamingConfig class
-            from agents.sentient_swarm.cosyvoice_streaming import StreamingConfig
+            # APEX: Import actual StreamingConfig class and AudioFormat enum
+            from agents.sentient_swarm.cosyvoice_streaming import StreamingConfig, AudioFormat
             
-            # Create instance with sample values
+            # Create instance with correct field names matching StreamingConfig dataclass
             config = StreamingConfig(
                 sample_rate=16000,
                 channels=1,
-                format="wav",
-                chunk_size=1024
+                format=AudioFormat.WAV,
+                chunk_size_ms=200
             )
             
             # Assert against actual instance attributes
             assert config.sample_rate == 16000, f"Expected sample_rate=16000, got {config.sample_rate}"
             assert config.channels == 1, f"Expected channels=1, got {config.channels}"
-            assert config.format == "wav", f"Expected format='wav', got {config.format}"
-            assert config.chunk_size == 1024, f"Expected chunk_size=1024, got {config.chunk_size}"
+            assert config.format == AudioFormat.WAV, f"Expected format=AudioFormat.WAV, got {config.format}"
+            assert config.chunk_size_ms == 200, f"Expected chunk_size_ms=200, got {config.chunk_size_ms}"
             
             print("✅ Voice streaming config verified against StreamingConfig class")
         except ImportError:
