@@ -7,11 +7,8 @@ const connectDB = async () => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             // MongoDB connection options
+            // Note: useNewUrlParser and useUnifiedTopology removed - deprecated since Mongoose v6
             const options = {
-                // Use new URL parser
-                useNewUrlParser: true,
-                useUnifiedTopology: true,
-
                 // Connection pool settings
                 maxPoolSize: 10,
                 minPoolSize: 2,

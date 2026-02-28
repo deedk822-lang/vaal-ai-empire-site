@@ -56,7 +56,7 @@ async function executeSentinel(command, data) {
             if (code === 0) {
                 try {
                     resolve(JSON.parse(stdout));
-                } catch (e) {
+                } catch {
                     resolve({ status: 'error', message: 'Invalid JSON response', raw: stdout });
                 }
             } else {
@@ -125,7 +125,7 @@ router.get('/status', async (req, res) => {
  */
 router.post('/query', sentinelRateLimiter, async (req, res) => {
     try {
-        const { query, user_id, context } = req.body;
+        const { query, user_id } = req.body;
 
         if (!query) {
             return res.status(400).json({
@@ -141,30 +141,39 @@ router.post('/query', sentinelRateLimiter, async (req, res) => {
             });
         }
 
-        // For now, return a simulated response
-        // In production, this would call the Python sentinel
-        const response = {
-            status: 'success',
-            query: query,
-            response: {
-                analysis: `Analysis of: "${query.substring(0, 100)}..."`,
-                recommendations: [
-                    'Consider diversifying your investment portfolio',
-                    'Review your current expense ratios',
-                    'Evaluate tax optimization opportunities'
-                ],
-                currency: 'ZAR',
-                timestamp: new Date().toISOString()
-            },
-            audit: {
-                action: 'financial_query',
-                user_id: user_id,
-                timestamp: new Date().toISOString(),
-                model_used: 'qwen3.5-plus'
-            }
-        };
-
-        res.json(response);
+        // Try to use Python sentinel, fallback to simulation
+        try {
+            const result = await executeSentinel('query', {
+                mode: 'advisory',
+                query,
+                user_id
+            });
+            res.json(result);
+        } catch (sentinelError) {
+            // Graceful fallback to simulation if Python sentinel unavailable
+            const response = {
+                status: 'success',
+                query: query,
+                response: {
+                    analysis: `Analysis of: "${query.substring(0, 100)}..."`,
+                    recommendations: [
+                        'Consider diversifying your investment portfolio',
+                        'Review your current expense ratios',
+                        'Evaluate tax optimization opportunities'
+                    ],
+                    currency: 'ZAR',
+                    timestamp: new Date().toISOString()
+                },
+                audit: {
+                    action: 'financial_query',
+                    user_id: user_id,
+                    timestamp: new Date().toISOString(),
+                    model_used: 'qwen3.5-plus',
+                    mode: 'simulation'
+                }
+            };
+            res.json(response);
+        }
 
     } catch (error) {
         console.error('Sentinel query error:', error);
@@ -198,22 +207,33 @@ router.post('/voice', sentinelRateLimiter, async (req, res) => {
             });
         }
 
-        // Simulated voice processing response
-        const response = {
-            status: 'success',
-            transcription: 'This is a simulated transcription result.',
-            response_text: 'I understand your request. How can I assist you with your financial needs today?',
-            language: language || 'en-ZA',
-            duration_ms: 450,
-            consent_required: false,
-            audit: {
-                action: 'voice_command',
-                user_id: user_id,
-                timestamp: new Date().toISOString()
-            }
-        };
-
-        res.json(response);
+        // Try to use Python sentinel for voice processing, fallback to simulation
+        try {
+            const result = await executeSentinel('voice', {
+                mode: 'advisory',
+                audio_base64,
+                user_id,
+                language: language || 'en-ZA'
+            });
+            res.json(result);
+        } catch (sentinelError) {
+            // Graceful fallback to simulation
+            const response = {
+                status: 'success',
+                transcription: 'This is a simulated transcription result.',
+                response_text: 'I understand your request. How can I assist you with your financial needs today?',
+                language: language || 'en-ZA',
+                duration_ms: 450,
+                consent_required: false,
+                audit: {
+                    action: 'voice_command',
+                    user_id: user_id,
+                    timestamp: new Date().toISOString(),
+                    mode: 'simulation'
+                }
+            };
+            res.json(response);
+        }
 
     } catch (error) {
         console.error('Voice processing error:', error);
