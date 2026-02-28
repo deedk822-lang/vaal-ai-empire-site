@@ -119,11 +119,11 @@ class SentinelModelClient:
     
     @property
     def client(self):
-        """Lazy-load the OpenAI client."""
+        """Lazy-load the async OpenAI client."""
         if self._client is None:
             try:
-                from openai import OpenAI
-                self._client = OpenAI(
+                from openai import AsyncOpenAI
+                self._client = AsyncOpenAI(
                     api_key=self.api_key,
                     base_url=self.base_url
                 )
@@ -176,8 +176,8 @@ class SentinelModelClient:
                 params["tools"] = tools
                 params["extra_body"] = {"enable_auto": True}
             
-            # Make the API call
-            response = self.client.chat.completions.create(**params)
+            # Make the API call (async)
+            response = await self.client.chat.completions.create(**params)
             
             duration_ms = int((time.time() - start_time) * 1000)
             self.request_count += 1
@@ -311,11 +311,11 @@ class XRPLLiquidityEngine:
     
     @property
     def client(self):
-        """Lazy-load XRPL client."""
+        """Lazy-load async XRPL client."""
         if self._client is None:
             try:
-                from xrpl.clients import JsonRpcClient
-                self._client = JsonRpcClient(self.network_url)
+                from xrpl.asyncio.clients import AsyncJsonRpcClient
+                self._client = AsyncJsonRpcClient(self.network_url)
             except ImportError:
                 logger.warning("xrpl-py not installed")
         return self._client
@@ -331,7 +331,7 @@ class XRPLLiquidityEngine:
         
         try:
             from xrpl.models.requests import AccountInfo
-            response = self.client.request(AccountInfo(
+            response = await self.client.request(AccountInfo(
                 account=target_address,
                 ledger_index="validated"
             ))
