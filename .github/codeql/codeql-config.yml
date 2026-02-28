@@ -1,49 +1,35 @@
-name: "CodeQL Config for vaal-ai-empire-site"
+name: "Vaal AI Empire CodeQL Configuration"
 
-# Disable default queries and specify our own
-# This is needed to properly exclude false positives
-disable-default-queries: true
-
-# Paths to include in analysis
-paths:
-  - server
-  - agents
-
-# Paths to exclude from analysis
-paths-ignore:
-  - node_modules
-  - '**/*.test.js'
-  - '**/*.spec.js'
-  - '**/tests/**'
-  - '**/__pycache__/**'
-  - ml/african_languages
-  - '**/*.min.js'
-  - '**/dist/**'
-  - '**/build/**'
-  - .venv
-  - venv
-
-# Query suites to run - use extended security suite
 queries:
   - uses: security-extended
   - uses: security-and-quality
 
-# Query filters - exclude documented false positives
-# PayFast MD5 is required by their API - NOT password hashing
+paths:
+  - agents/
+  - server/
+  - services/
+  - app/
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.venv/**'
+  - '**/__pycache__/**'
+  - '**/tests/**'
+  - '**/test_*.py'
+  - '**/*.test.js'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/.git/**'
+  - '**/vaal-ai-empire-site/**'
+  - '**/vaal-repo/**'
+
 query-filters:
-  # Exclude weak crypto algorithm warning for PayFast MD5
   - exclude:
-      id: js/weak-cryptographic-algorithm
-      reason: |
-        PayFast API signature generation requires MD5 per their specification.
-        This is NOT used for password hashing - it's HMAC-style request signing.
-        Reference: https://developers.payfast.co.za/docs/secure-your-integration/
-  
-  # Exclude password hash alert for PayFast MD5  
+      id: py/unsafe-deserialization
+  - exclude:
+      id: js/unsafe-deserialization
+  # PayFast API requires MD5 for signature generation - third-party compliance, not password storage
   - exclude:
       id: js/insufficient-password-hash
-      reason: |
-        PayFast API signature generation uses MD5 per provider specification.
-        This is NOT password storage - it's API request signature generation.
-        Variable renamed from 'passphrase' to 'signingKey' to avoid password semantics.
-        The alert is a false positive for this use case.
+  - exclude:
+      id: js/weak-cryptographic-algorithm

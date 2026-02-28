@@ -20,7 +20,7 @@ import hashlib  # APEX: For POPIA-compliant user_id hashing
 import logging
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone  # APEX: timezone added for UTC
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
@@ -71,7 +71,7 @@ class POPIAConsent:
         """Check if consent is valid for a given scope."""
         if self.revoked:
             return False
-        if datetime.utcnow() > self.expires_at:
+        if datetime.now(timezone.utc) > self.expires_at:
             return False
         return scope in self.scopes
 
@@ -119,11 +119,11 @@ class SentinelModelClient:
     
     @property
     def client(self):
-        """Lazy-load the OpenAI client."""
+        """Lazy-load the async OpenAI client."""
         if self._client is None:
             try:
-                from openai import OpenAI
-                self._client = OpenAI(
+                from openai import AsyncOpenAI
+                self._client = AsyncOpenAI(
                     api_key=self.api_key,
                     base_url=self.base_url
                 )
@@ -154,10 +154,11 @@ class SentinelModelClient:
         start_time = time.time()
         request_id = f"sentinel-{uuid4().hex[:8]}"
         
+        # APEX: Hash user_id for POPIA-compliant logging
         logger.info(f"Model request started", extra={
             "request_id": request_id,
             "model": self.model,
-            "user_id": user_id,
+            "user_id_hash": hashlib.sha256(user_id.encode()).hexdigest()[:16],
             "message_count": len(messages)
         })
         
@@ -175,22 +176,29 @@ class SentinelModelClient:
                 params["tools"] = tools
                 params["extra_body"] = {"enable_auto": True}
             
-            # Make the API call
-            response = self.client.chat.completions.create(**params)
+            # Make the API call (async)
+            response = await self.client.chat.completions.create(**params)
             
             duration_ms = int((time.time() - start_time) * 1000)
             self.request_count += 1
             
             # Build audit record
+            # APEX: Guard against empty choices array
+            response_content = ""
+            response_length = 0
+            if response and hasattr(response, 'choices') and len(response.choices) > 0:
+                response_content = response.choices[0].message.content or ""
+                response_length = len(response_content)
+            
             audit = AuditRecord(
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 action="model_chat",
                 user_id=user_id,
                 details={
                     "request_id": request_id,
                     "message_count": len(messages),
                     "has_tools": bool(tools),
-                    "response_length": len(response.choices[0].message.content or "")
+                    "response_length": response_length
                 },
                 consent_reference=consent_ref,
                 model_used=self.model,
@@ -279,13 +287,8 @@ class XRPLLiquidityEngine:
         wallet_seed: Optional[str] = None,
         network_type: str = "testnet"  # testnet or mainnet
     ):
- optimal-performance
-        default_network_url = "https://s.altnet.rippletest.net:51234"
-        self.network_url = network_url or os.getenv("XRPL_NETWORK_URL", default_network_url)
-
         # Default to XRPL Testnet if no URL provided
         self.network_url = network_url or os.getenv("XRPL_NETWORK_URL", "https://s.altnet.rippletest.net:51234")
- digital-preeminence-fixes
         self.network_type = network_type
         self.wallet = None
         self._client = None
@@ -308,11 +311,11 @@ class XRPLLiquidityEngine:
     
     @property
     def client(self):
-        """Lazy-load XRPL client."""
+        """Lazy-load async XRPL client."""
         if self._client is None:
             try:
-                from xrpl.clients import JsonRpcClient
-                self._client = JsonRpcClient(self.network_url)
+                from xrpl.asyncio.clients import AsyncJsonRpcClient
+                self._client = AsyncJsonRpcClient(self.network_url)
             except ImportError:
                 logger.warning("xrpl-py not installed")
         return self._client
@@ -328,7 +331,7 @@ class XRPLLiquidityEngine:
         
         try:
             from xrpl.models.requests import AccountInfo
-            response = self.client.request(AccountInfo(
+            response = await self.client.request(AccountInfo(
                 account=target_address,
                 ledger_index="validated"
             ))
@@ -420,7 +423,7 @@ class XRPLLiquidityEngine:
         
         audit_record = {
             "action": "x402_payment",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "amount": str(amount),
             "currency": currency,
             "destination": destination[:10] + "...",  # Truncate for privacy
@@ -441,28 +444,127 @@ class XRPLLiquidityEngine:
             if currency.upper() == "XRP":
                 from xrpl.models.transactions import Payment
                 from xrpl.utils import xrp_to_drops
-                
+                # APEX: Use xrpl-py's authoritative validators instead of manual regex
+                try:
+                    from xrpl.core.addresscodec import is_valid_classic_address, is_valid_xaddress
+                except ImportError:
+                    # Fallback for older xrpl-py versions
+                    import re
+                    # APEX: {24,34} allows 'r' + 24-34 chars = 25-35 total (valid XRPL classic addresses)
+                    is_valid_classic_address = lambda addr: bool(re.match(r'^r[1-9A-HJ-NP-Za-km-z]{24,34}$', addr))
+                    is_valid_xaddress = lambda addr: bool(re.match(r'^X[1-9A-HJ-NP-Za-km-z]{46,58}$', addr))
+
+                # APEX INV-SEC-03: Input validation using xrpl-py validators
+                if not destination or not (is_valid_classic_address(destination) or is_valid_xaddress(destination)):
+                    audit_record["status"] = "error"
+                    return {
+                        "status": "error",
+                        "message": f"Invalid XRPL destination address",
+                        "audit": audit_record
+                    }
+
+                try:
+                    amount_xrp = float(amount)
+                    if amount_xrp <= 0:
+                        raise ValueError("Amount must be positive")
+                except (TypeError, ValueError) as exc:
+                    audit_record["status"] = "error"
+                    return {
+                        "status": "error",
+                        "message": f"Invalid amount: {exc}",
+                        "audit": audit_record
+                    }
+
+                logger.info(
+                    "XRP payment initiated",
+                    extra={
+                        "destination": destination,
+                        "amount_xrp": amount_xrp,
+                        "sender_hash": hashlib.sha256(
+                            self.wallet.address.encode()
+                        ).hexdigest()[:16],
+                    },
+                )
+
                 payment = Payment(
                     account=self.wallet.address,
                     destination=destination,
-                    amount=xrp_to_drops(float(amount))
+                    amount=xrp_to_drops(amount_xrp)
                 )
-                
-                # Sign and submit (in production)
-                # signed = sign(payment, self.wallet)
-                # response = submit(signed, self.client)
-                
-                audit_record["status"] = "success"
-                audit_record["duration_ms"] = int((time.time() - start_time) * 1000)
-                
-                return {
-                    "status": "success",
-                    "transaction_type": "Payment",
-                    "amount": str(amount),
-                    "currency": "XRP",
-                    "audit": audit_record,
-                    "message": "Payment prepared (requires signing in production)"
-                }
+
+                # APEX FIX #436: Actually submit the transaction
+                try:
+                    from xrpl.asyncio.transaction import autofill_and_sign, submit_and_wait
+
+                    # Use self.client (already initialized) - AsyncJsonRpcClient is NOT a context manager
+                    # It handles connections per-request via internal httpx.AsyncClient
+                    client = self.client
+                    if client is None:
+                        raise ImportError("XRPL client not available")
+
+                    # autofill_and_sign populates Sequence, Fee, LastLedgerSequence
+                    signed_tx = await autofill_and_sign(payment, client, self.wallet)
+
+                    # submit_and_wait blocks until the transaction is validated or fails
+                    result = await submit_and_wait(signed_tx, client)
+
+                    tx_hash = result.result.get("hash", "unknown")
+                    ledger_idx = result.result.get("ledger_index", -1)
+                    tx_result = result.result.get("meta", {}).get("TransactionResult", "unknown")
+
+                    if tx_result != "tesSUCCESS":
+                        logger.error(
+                            "XRP payment rejected by ledger",
+                            extra={"tx_result": tx_result, "tx_hash": tx_hash},
+                        )
+                        audit_record["status"] = "error"
+                        audit_record["tx_hash"] = tx_hash
+                        return {
+                            "status": "error",
+                            "message": f"Transaction rejected: {tx_result}",
+                            "tx_hash": tx_hash,
+                            "audit": audit_record
+                        }
+
+                    logger.info(
+                        "XRP payment settled on ledger",
+                        extra={
+                            "tx_hash": tx_hash,
+                            "ledger_index": ledger_idx,
+                            "amount_xrp": amount_xrp,
+                        },
+                    )
+
+                    audit_record["status"] = "success"
+                    audit_record["duration_ms"] = int((time.time() - start_time) * 1000)
+
+                    return {
+                        "status": "success",
+                        "transaction_type": "Payment",
+                        "amount": str(amount_xrp),
+                        "currency": "XRP",
+                        "tx_hash": tx_hash,
+                        "ledger_index": ledger_idx,
+                        "audit": audit_record,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+
+                except ImportError as exc:
+                    logger.error(f"xrpl-py not installed: {exc}")
+                    return {
+                        "status": "error",
+                        "message": f"XRPL library unavailable: {exc}",
+                        "audit": audit_record
+                    }
+                except Exception as exc:
+                    logger.exception("Unexpected error during XRP payment execution")
+                    audit_record["status"] = "error"
+                    audit_record["error"] = str(exc)
+                    return {
+                        "status": "error",
+                        "message": f"Payment execution failed: {exc}",
+                        "audit": audit_record
+                    }
             
             # For RLUSD (issued currency)
             elif currency.upper() == "RLUSD":
@@ -543,7 +645,7 @@ class CosyVoiceProcessor:
         
         audit = {
             "action": "voice_synthesis",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "language": language,
             "voice": voice,
             "text_length": len(text),
@@ -555,7 +657,9 @@ class CosyVoiceProcessor:
         try:
             import aiohttp
             
-            async with aiohttp.ClientSession() as session:
+            # APEX: Add timeout to prevent hanging on upstream stalls
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 payload = {
                     "model": "cosyvoice-v3-plus",
                     "input": {
@@ -635,7 +739,7 @@ class CosyVoiceProcessor:
         
         audit = {
             "action": "voice_transcription",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "language": language,
             "audio_size_bytes": len(audio_base64),
             "consent_reference": consent_ref
@@ -646,7 +750,9 @@ class CosyVoiceProcessor:
         try:
             import aiohttp
             
-            async with aiohttp.ClientSession() as session:
+            # APEX: Add timeout to prevent hanging on upstream stalls
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 payload = {
                     "model": "paraformer-v2",
                     "input": {
@@ -713,12 +819,19 @@ class ConsentManager:
     """
     POPIA-compliant consent management.
     Handles consent grants, revocations, and verification.
+    
+    APEX: user_id is hashed in all audit logs and logger calls per POPIA data-minimisation.
     """
     
     def __init__(self):
         self._consents: Dict[str, POPIAConsent] = {}
         self._audit_log: List[Dict] = []
         logger.info("ConsentManager initialized")
+    
+    @staticmethod
+    def _hash_user_id(user_id: str) -> str:
+        """APEX: Hash user_id for POPIA-compliant logging."""
+        return hashlib.sha256(user_id.encode()).hexdigest()[:16]
     
     def grant_consent(
         self,
@@ -728,7 +841,7 @@ class ConsentManager:
         duration_days: int = 365
     ) -> POPIAConsent:
         """Grant consent for specified scopes."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         consent = POPIAConsent(
             user_id=user_id,
@@ -749,11 +862,11 @@ class ConsentManager:
         self._audit_log.append({
             "timestamp": now.isoformat(),
             "action": "consent_granted",
-            "user_id": user_id,
+            "user_id_hash": self._hash_user_id(user_id),  # APEX: POPIA-compliant
             "scopes": [s.value for s in scopes]
         })
         
-        logger.info(f"Consent granted for user {user_id}: {[s.value for s in scopes]}")
+        logger.info(f"Consent granted for user {self._hash_user_id(user_id)}: {[s.value for s in scopes]}")
         return consent
     
     def verify_consent(
@@ -770,19 +883,21 @@ class ConsentManager:
         consent = self._consents.get(user_id)
         
         if not consent:
-            logger.warning(f"No consent found for user {user_id}")
+            logger.warning(f"No consent found for user {self._hash_user_id(user_id)}")
             return False, None
         
         if not consent.is_valid(scope):
-            logger.warning(f"Consent invalid for user {user_id}, scope {scope.value}")
+            logger.warning(f"Consent invalid for user {self._hash_user_id(user_id)}, scope {scope.value}")
             return False, None
         
-        ref = f"consent-{user_id}-{scope.value}-{uuid4().hex[:8]}"
+        # APEX: Use hashed user_id in reference to avoid PII exposure
+        user_id_hash = self._hash_user_id(user_id)
+        ref = f"consent-{user_id_hash}-{scope.value}-{uuid4().hex[:8]}"
         
         # Add to audit trail
         consent.audit_trail.append({
             "action": "verified",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "scope": scope.value,
             "reference": ref
         })
@@ -799,18 +914,18 @@ class ConsentManager:
         consent.revoked = True
         consent.audit_trail.append({
             "action": "revoked",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "reason": reason
         })
         
         self._audit_log.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": "consent_revoked",
-            "user_id": user_id,
+            "user_id_hash": self._hash_user_id(user_id),  # APEX: POPIA-compliant
             "reason": reason
         })
         
-        logger.info(f"Consent revoked for user {user_id}: {reason}")
+        logger.info(f"Consent revoked for user {self._hash_user_id(user_id)}: {reason}")
         return True
 
 
@@ -937,7 +1052,16 @@ class SentientFinancialSentinel:
             user_id=user_id
         )
         
-        response_text = analysis["response"].choices[0].message.content
+        # APEX: Guard against empty choices array
+        response_obj = analysis.get("response")
+        response_text = ""
+        if response_obj and hasattr(response_obj, 'choices') and len(response_obj.choices) > 0:
+            response_text = response_obj.choices[0].message.content or ""
+        else:
+            return {
+                "status": "error",
+                "message": "AI model returned empty response"
+            }
         
         # Step 4: Check for action requirements
         # TODO: Parse tool calls from response if autonomous mode
@@ -960,8 +1084,8 @@ class SentientFinancialSentinel:
             "consent_reference": consent_ref,
             "audit": {
                 "action": "voice_command_processed",
-                "timestamp": datetime.utcnow().isoformat(),
-                "user_id": user_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "user_id_hash": hashlib.sha256(user_id.encode()).hexdigest()[:16],  # APEX: POPIA-compliant
                 "language": language,
                 "duration_ms": duration_ms
             }

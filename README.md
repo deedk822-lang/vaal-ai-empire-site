@@ -94,7 +94,7 @@ npm start
 # PayFast Configuration
 PAYFAST_MERCHANT_ID=your_merchant_id
 PAYFAST_MERCHANT_KEY=your_merchant_key
-PAYFAST_PASSPHRASE=your_passphrase
+PAYFAST_SIGNATURE_SALT=your_passphrase
 PAYFAST_SANDBOX=true  # Set to false for production
 
 # WhatsApp Business API
