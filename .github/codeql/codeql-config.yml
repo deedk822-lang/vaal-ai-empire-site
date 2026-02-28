@@ -4,6 +4,8 @@ name: "CodeQL Config for vaal-ai-empire-site"
 paths:
   - server
   - agents
+  - services
+  - scripts
 
 # Paths to exclude from analysis
 paths-ignore:
@@ -18,10 +20,10 @@ paths-ignore:
   - '**/build/**'
   - .venv
   - venv
+  - docs
 
 # Query suites to run - use extended security suite
 queries:
-  - uses: security-extended
   - uses: security-and-quality
 
 # APEX: PayFast MD5 suppression note
@@ -31,3 +33,6 @@ queries:
 # Suppression is applied inline in the code:
 #   // codeql[js/insufficient-password-hash] PAYFAST-API-COMPLIANCE: ...
 # Reference: https://developers.payfast.co.za/docs/secure-your-integration/
+# Owner: @deedk822-lang
+# Expiry: 2027-Q1
+# APEX Compliance: [APEX-PAYFAST-MD5-2026-028-APPROVED]
