@@ -34,11 +34,7 @@ async function executeSentinel(command, data) {
             '--json-input', JSON.stringify(data)
         ];
 
- optimal-performance
-        const process = spawn('python3', args, {
-
         const pythonProcess = spawn('python3', args, {
- digital-preeminence-fixes
             env: {
                 ...process.env,
                 PYTHONUNBUFFERED: '1'
@@ -47,17 +43,6 @@ async function executeSentinel(command, data) {
 
         let stdout = '';
         let stderr = '';
-
- optimal-performance
-        process.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-
-        process.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-
-        process.on('close', (code) => {
 
         pythonProcess.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
@@ -68,7 +53,6 @@ async function executeSentinel(command, data) {
         });
 
         pythonProcess.on('close', (code) => {
- digital-preeminence-fixes
             if (code === 0) {
                 try {
                     resolve(JSON.parse(stdout));
@@ -80,23 +64,14 @@ async function executeSentinel(command, data) {
             }
         });
 
- optimal-performance
-        process.on('error', (err) => {
-
         pythonProcess.on('error', (err) => {
- digital-preeminence-fixes
             reject(err);
         });
 
         // Send data via stdin
         if (data.stdin) {
- optimal-performance
-            process.stdin.write(JSON.stringify(data.stdin));
-            process.stdin.end();
-
             pythonProcess.stdin.write(JSON.stringify(data.stdin));
             pythonProcess.stdin.end();
- digital-preeminence-fixes
         }
     });
 }
@@ -379,6 +354,24 @@ router.post('/settlement', sentinelRateLimiter, async (req, res) => {
             });
         }
 
+        // APEX: POPIA compliance - validate consent_ref for XRPL settlements
+        if (!consent_ref) {
+            return res.status(400).json({
+                status: 'error',
+                code: 'CONSENT_REQUIRED',
+                message: 'consent_ref is required for XRPL settlements. Grant consent via /api/sentinel/consent with scope "xrpl_settlement"'
+            });
+        }
+
+        // Validate consent_ref format (basic check)
+        if (!consent_ref.startsWith('consent-') || consent_ref.length < 20) {
+            return res.status(400).json({
+                status: 'error',
+                code: 'INVALID_CONSENT_REF',
+                message: 'Invalid consent_ref format'
+            });
+        }
+
         // Simulated settlement response
         const paymentId = `x402-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
@@ -429,33 +422,49 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             consent_ref
         } = req.body;
 
-        // Validate required fields
-        if (!principal || !currency || !interest_bps || !duration_days || !user_id) {
+        // Validate required fields - use explicit undefined/null checks
+        if (principal === undefined || principal === null ||
+            currency === undefined || currency === null ||
+            interest_bps === undefined || interest_bps === null ||
+            duration_days === undefined || duration_days === null ||
+            user_id === undefined || user_id === null) {
             return res.status(400).json({
                 status: 'error',
                 message: 'principal, currency, interest_bps, duration_days, and user_id are required'
             });
         }
 
-        // Validate currency
+        // Validate principal is a positive number
+        const principalNum = parseFloat(principal);
+        if (isNaN(principalNum) || principalNum <= 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'principal must be a positive number'
+            });
+        }
+
+        // Validate currency - normalize to uppercase before checking
+        const normalizedCurrency = currency && typeof currency === 'string' ? currency.toUpperCase() : '';
         const validCurrencies = ['XRP', 'RLUSD'];
-        if (!validCurrencies.includes(currency.toUpperCase())) {
+        if (!validCurrencies.includes(normalizedCurrency)) {
             return res.status(400).json({
                 status: 'error',
                 message: `Invalid currency. Must be one of: ${validCurrencies.join(', ')}`
             });
         }
 
-        // Validate interest rate (max 50% = 5000 bps)
-        if (interest_bps < 0 || interest_bps > 5000) {
+        // Validate interest rate - parse and check (max 50% = 5000 bps)
+        const parsedInterestBps = parseInt(interest_bps, 10);
+        if (isNaN(parsedInterestBps) || parsedInterestBps < 0 || parsedInterestBps > 5000) {
             return res.status(400).json({
                 status: 'error',
                 message: 'interest_bps must be between 0 and 5000 (0% to 50%)'
             });
         }
 
-        // Validate duration (1 day to 5 years)
-        if (duration_days < 1 || duration_days > 1825) {
+        // Validate duration - parse and check (1 day to 5 years)
+        const parsedDurationDays = parseInt(duration_days, 10);
+        if (isNaN(parsedDurationDays) || parsedDurationDays < 1 || parsedDurationDays > 1825) {
             return res.status(400).json({
                 status: 'error',
                 message: 'duration_days must be between 1 and 1825 (5 years)'
@@ -469,13 +478,13 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             status: 'success',
             loan: {
                 loan_id: loanId,
-                principal: principal,
-                principal_currency: currency.toUpperCase(),
-                interest_bps: interest_bps,
-                duration_days: duration_days,
+                principal: principalNum,
+                principal_currency: normalizedCurrency,
+                interest_bps: parsedInterestBps,
+                duration_days: parsedDurationDays,
                 collateral_ratio: collateral_ratio || 1.5,
                 status: 'pending',
-                total_repayment: (principal * (1 + interest_bps / 10000)).toFixed(2)
+                total_repayment: (principalNum * (1 + parsedInterestBps / 10000)).toFixed(2)
             },
             consent_ref: consent_ref,
             audit: {

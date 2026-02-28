@@ -1,73 +1,88 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
-    try {
-        // MongoDB connection options
-        const options = {
-            // Use new URL parser
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
+    const maxRetries = 5;
+    const retryDelay = 3000; // 3 seconds
 
-            // Connection pool settings
-            maxPoolSize: 10,
-            minPoolSize: 2,
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            // MongoDB connection options
+            const options = {
+                // Use new URL parser
+                useNewUrlParser: true,
+                useUnifiedTopology: true,
 
-            // Timeout settings
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
+                // Connection pool settings
+                maxPoolSize: 10,
+                minPoolSize: 2,
 
-            // Retry settings
-            retryWrites: true,
-            retryReads: true,
+                // Timeout settings
+                serverSelectionTimeoutMS: 5000,
+                socketTimeoutMS: 45000,
 
-            // Authentication
-            authSource: 'admin'
-        };
+                // Retry settings
+                retryWrites: true,
+                retryReads: true,
 
-        // Get MongoDB URI from environment
-        const mongoURI = process.env.MONGODB_URI || process.env.DATABASE_URL;
+                // Authentication
+                authSource: 'admin'
+            };
 
-        if (!mongoURI) {
-            console.warn('⚠️  No MongoDB URI found. Running without database.');
-            console.warn('   Set MONGODB_URI in your .env file to enable database features.');
-            return;
-        }
+            // Get MongoDB URI from environment
+            const mongoURI = process.env.MONGODB_URI || process.env.DATABASE_URL;
 
-        // Connect to MongoDB
-        const conn = await mongoose.connect(mongoURI, options);
+            if (!mongoURI) {
+                console.warn('⚠️  No MongoDB URI found. Running without database.');
+                console.warn('   Set MONGODB_URI in your .env file to enable database features.');
+                return;
+            }
 
-        console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-        console.log(`   Database: ${conn.connection.name}`);
+            // Connect to MongoDB
+            const conn = await mongoose.connect(mongoURI, options);
 
-        // Connection event handlers
-        mongoose.connection.on('error', (err) => {
-            console.error('❌ MongoDB connection error:', err);
-        });
+            console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+            console.log(`   Database: ${conn.connection.name}`);
 
-        mongoose.connection.on('disconnected', () => {
-            console.warn('⚠️  MongoDB disconnected');
-        });
+            // Connection event handlers
+            mongoose.connection.on('error', (err) => {
+                console.error('❌ MongoDB connection error:', err);
+            });
 
-        mongoose.connection.on('reconnected', () => {
-            console.log('✅ MongoDB reconnected');
-        });
+            mongoose.connection.on('disconnected', () => {
+                console.warn('⚠️  MongoDB disconnected');
+            });
 
-        // Graceful shutdown
-        process.on('SIGINT', async () => {
-            await mongoose.connection.close();
-            console.log('\n🔌 MongoDB connection closed through app termination');
-            process.exit(0);
-        });
+            mongoose.connection.on('reconnected', () => {
+                console.log('✅ MongoDB reconnected');
+            });
 
-    } catch (error) {
-        console.error('❌ MongoDB connection error:', error.message);
+            // Graceful shutdown
+            process.on('SIGINT', async () => {
+                await mongoose.connection.close();
+                console.log('\n🔌 MongoDB connection closed through app termination');
+                process.exit(0);
+            });
 
-        // In development, continue without database
-        if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️  Running in development mode without database');
-        } else {
-            // In production, exit on database error
-            process.exit(1);
+            return; // Success - exit function
+
+        } catch (error) {
+            console.warn(`⚠️  MongoDB connection attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+
+            if (attempt === maxRetries) {
+                console.error('❌ MongoDB connection failed after maximum retries');
+
+                // In development, continue without database
+                if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+                    console.warn('⚠️  Running without database connection');
+                    return;
+                } else {
+                    // In production, exit on database error
+                    process.exit(1);
+                }
+            }
+
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
     }
 };

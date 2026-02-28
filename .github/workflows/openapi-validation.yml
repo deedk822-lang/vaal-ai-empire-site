@@ -91,15 +91,15 @@ jobs:
               if spectral lint "$spec" --format stylish --ruleset .spectral.yaml; then
                 echo "✅ $spec: passed" >> "$GITHUB_STEP_SUMMARY"
               else
-                echo "⚠️ $spec: warnings found (non-blocking)" >> "$GITHUB_STEP_SUMMARY"
-                EXIT_CODE=0
+                # APEX: Propagate lint errors instead of suppressing
+                echo "❌ $spec: lint errors found" >> "$GITHUB_STEP_SUMMARY"
+                EXIT_CODE=1
               fi
             fi
           done
           
           shopt -u nullglob
           exit $EXIT_CODE
-        continue-on-error: true
 
   # ═══════════════════════════════════════════════════════════════════
   # APEX Phase 8: APEX Annotation Validation
@@ -175,9 +175,9 @@ jobs:
                 process.exit(0);
               } catch (e) {
                 console.error('❌ OpenAPI spec parse error:', e.message);
-                process.exit(0);  // Non-blocking
+                process.exit(1);  // APEX: Fail on YAML parse errors
               }
-            " || true
+            "
             echo "✅ OpenAPI spec validated" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::notice::openapi/whatsapp-api.yaml not found"
@@ -189,12 +189,12 @@ jobs:
           mkdir -p /tmp/generated
           
           if [ -f "openapi/whatsapp-api.yaml" ]; then
+            # APEX: Validate spec during generation (removed --skip-validate-spec)
             openapi-generator-cli generate \
               -i openapi/whatsapp-api.yaml \
               -g nodejs-express-server \
               -o /tmp/generated \
-              --additional-properties=usePromises=true \
-              --skip-validate-spec || {
+              --additional-properties=usePromises=true || {
               echo "::warning::OpenAPI generation completed with warnings"
             }
           else

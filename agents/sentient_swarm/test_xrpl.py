@@ -4,29 +4,64 @@ XRPL Integration Tests for Sentient Financial Sentinel.
 APEX v2.0 Compliant - Conditional on XRPL secrets.
 
 These tests verify XRPL functionality when secrets are available.
-When secrets are not configured, tests pass gracefully with skip messages.
+Non-seed-dependent tests run in CI; seed-dependent tests skip gracefully.
 """
 
 import os
 import pytest
+from urllib.parse import urlparse
 
-# Skip all tests if XRPL_AGENT_SEED is not configured
-pytestmark = pytest.mark.skipif(
+# APEX: Removed module-level pytestmark - apply skip only to seed-dependent tests
+# Tests that don't require XRPL_AGENT_SEED should run in CI
+
+# APEX: Allowed XRPL testnet hosts for URL validation (exact hosts only, no base domains)
+ALLOWED_XRPL_HOSTS = ["s.altnet.rippletest.net"]
+
+# APEX: Reusable decorator for seed-dependent tests
+seed_required = pytest.mark.skipif(
     not os.getenv("XRPL_AGENT_SEED"),
-    reason="XRPL_AGENT_SEED not configured - skipping XRPL integration tests"
+    reason="XRPL_AGENT_SEED not configured - skipping seed-dependent tests"
 )
+
+
+def _validate_xrpl_host(url: str) -> bool:
+    """
+    Validate that URL host is an allowed XRPL testnet host.
+    APEX: Proper hostname validation, not substring matching.
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        # Check exact match or subdomain match
+        return any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_XRPL_HOSTS)
+    except Exception:
+        return False
 
 
 class TestXRPLConnection:
     """Test XRPL network connectivity."""
 
     def test_xrpl_testnet_connection(self):
-        """Verify connection to XRPL Testnet."""
+        """Verify connection to XRPL Testnet with actual network I/O."""
         try:
             from xrpl.clients import JsonRpcClient
+            from xrpl.models.requests import ServerInfo
+            
             client = JsonRpcClient("https://s.altnet.rippletest.net:51234")
-            assert client is not None
-            print("✅ XRPL Testnet connection successful")
+            
+            # APEX: Perform actual network request to verify connectivity
+            try:
+                response = client.request(ServerInfo())
+                result = response.result
+                
+                # Verify response contains expected fields
+                assert "info" in result or "status" in result, f"Unexpected response: {result}"
+                print("✅ XRPL Testnet connection successful (ServerInfo received)")
+                
+            except Exception as conn_err:
+                # Network errors in CI should skip, not fail
+                pytest.skip(f"XRPL Testnet unreachable: {conn_err}")
+                
         except ImportError:
             pytest.skip("xrpl-py not installed")
 
@@ -45,22 +80,22 @@ class TestXRPLLiquidityEngine:
         print("✅ XRPL Engine initialized without seed")
 
     def test_engine_default_url(self):
-        """Test engine uses correct default URL."""
+        """Test engine uses correct default URL with proper hostname validation."""
         from sentinel_core import XRPLLiquidityEngine
         
         engine = XRPLLiquidityEngine()
-        assert "rippletest.net" in engine.network_url
+        # APEX: Use proper hostname validation instead of substring check
+        assert _validate_xrpl_host(engine.network_url), f"Invalid XRPL host: {engine.network_url}"
         print("✅ XRPL Engine default URL verified")
 
 
-class TestXRLPWalletOperations:
+class TestXRPLWalletOperations:
     """Test XRPL wallet operations (requires seed)."""
 
+    @seed_required
     def test_wallet_initialization(self):
         """Test wallet initialization from seed."""
         seed = os.getenv("XRPL_AGENT_SEED")
-        if not seed:
-            pytest.skip("XRPL_AGENT_SEED not configured")
         
         try:
             from xrpl.wallet import Wallet

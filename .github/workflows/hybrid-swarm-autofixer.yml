@@ -145,28 +145,27 @@ jobs:
             const duration = process.env.DURATION_MS || '0';
             const issuesFound = process.env.ISSUES_FOUND || '0';
             
-            const comment = `## 🤖 Swarm Auto-Fixer Results
-
-**Status:** ✅ Success
-**Duration:** ${duration}ms
-**Model:** qwen3.5-plus
-**Files Analyzed:** ${filesGenerated}
-**Issues Processed:** ${issuesFound}
-
-${filesGenerated !== '0' ? `
-### 🛠️ Generated Fixes
-Fixes have been uploaded as artifacts. Download and review before applying.
-
-\`\`\`bash
-gh run download --name swarm-fixes-${prNumber}
-\`\`\`
-` : `
-### ℹ️ No Fixes Needed
-Swarm analyzed the PR and found no issues requiring automated fixes.
-`}
-
----
-*APEX Security Framework v2.0 Compliant*`;
+            // Build comment body - avoid lines starting with * in YAML
+            const header = '## 🤖 Swarm Auto-Fixer Results\n\n';
+            const statusLine = '**Status:** ✅ Success\n';
+            const durationLine = '**Duration:** ' + duration + 'ms\n';
+            const modelLine = '**Model:** qwen3.5-plus\n';
+            const filesLine = '**Files Analyzed:** ' + filesGenerated + '\n';
+            const issuesLine = '**Issues Processed:** ' + issuesFound + '\n\n';
+            
+            let fixesSection = '';
+            if (filesGenerated !== '0') {
+              fixesSection = '### 🛠️ Generated Fixes\n' +
+                'Fixes have been uploaded as artifacts. Download and review before applying.\n\n' +
+                '```bash\ngh run download --name swarm-fixes-' + prNumber + '\n```\n\n';
+            } else {
+              fixesSection = '### ℹ️ No Fixes Needed\n' +
+                'Swarm analyzed the PR and found no issues requiring automated fixes.\n\n';
+            }
+            
+            const footer = '---\n_APEX Security Framework v2.0 Compliant_';
+            
+            const comment = header + statusLine + durationLine + modelLine + filesLine + issuesLine + fixesSection + footer;
             
             try {
               await github.rest.issues.createComment({

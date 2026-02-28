@@ -475,8 +475,10 @@ app.post('/payfast/notify',
             }
         );
 
-        if (verifyResponse.data !== 'VALID') {
-            console.error('❌ PayFast validation failed');
+        // APEX: Normalize response to handle whitespace/linebreaks from upstream
+        const responseText = verifyResponse.data?.toString().trim().toUpperCase();
+        if (responseText !== 'VALID') {
+            console.error('❌ PayFast validation failed:', responseText || 'empty response');
             return res.status(400).send('Validation failed');
         }
     } catch (error) {

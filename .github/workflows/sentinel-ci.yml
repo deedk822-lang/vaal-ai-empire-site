@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.33.0  # Pinned version (verified working)
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -76,12 +76,12 @@ jobs:
 
       - name: Run Sentinel Core tests
         run: |
-          pytest agents/sentient_swarm/ -v --cov=agents/sentient_swarm --cov-report=xml || true
+          pytest agents/sentient_swarm/ -v --cov=agents/sentient_swarm --cov-report=xml
         continue-on-error: true
 
       - name: Run Voice Service tests
         run: |
-          pytest services/voice/ -v --cov=services/voice --cov-report=xml || true
+          pytest services/voice/ -v --cov=services/voice --cov-report=xml
         continue-on-error: true
 
       - name: Upload coverage
@@ -200,11 +200,17 @@ jobs:
       - name: Check POPIA consent handling
         run: |
           python -c "
-          import ast
+          import os
           import sys
           
+          # Check sentinel_core.py exists
+          sentinel_path = 'agents/sentient_swarm/sentinel_core.py'
+          if not os.path.exists(sentinel_path):
+              print(f'❌ {sentinel_path} not found')
+              sys.exit(1)
+          
           # Check sentinel_core.py for consent verification
-          with open('agents/sentient_swarm/sentinel_core.py', 'r') as f:
+          with open(sentinel_path, 'r') as f:
               content = f.read()
           
           checks = {
@@ -257,11 +263,11 @@ jobs:
 
       - name: Install Node dependencies
         run: |
-          npm install framer-motion
+          npm ci
 
       - name: Build Next.js app
         run: |
-          npm run build 2>/dev/null || echo "No Next.js build configured"
+          npm run build
 
       - name: Create deployment artifact
         run: |
