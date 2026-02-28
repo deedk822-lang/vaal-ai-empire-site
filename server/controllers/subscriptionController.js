@@ -1,7 +1,7 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { catchAsync } = require('../middleware/errorHandler');
 
-exports.createCheckoutSession = catchAsync(async (req, res, next) => {
+exports.createCheckoutSession = catchAsync(async (req, res, _next) => {
     const { priceId, planType } = req.body;
     const user = req.user;
 
