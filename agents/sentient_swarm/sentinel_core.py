@@ -494,15 +494,19 @@ class XRPLLiquidityEngine:
 
                 # APEX FIX #436: Actually submit the transaction
                 try:
-                    from xrpl.asyncio.clients import AsyncJsonRpcClient
                     from xrpl.asyncio.transaction import autofill_and_sign, submit_and_wait
 
-                    async with AsyncJsonRpcClient(self.network_url) as client:
-                        # autofill_and_sign populates Sequence, Fee, LastLedgerSequence
-                        signed_tx = await autofill_and_sign(payment, client, self.wallet)
+                    # Use self.client (already initialized) - AsyncJsonRpcClient is NOT a context manager
+                    # It handles connections per-request via internal httpx.AsyncClient
+                    client = self.client
+                    if client is None:
+                        raise ImportError("XRPL client not available")
 
-                        # submit_and_wait blocks until the transaction is validated or fails
-                        result = await submit_and_wait(signed_tx, client)
+                    # autofill_and_sign populates Sequence, Fee, LastLedgerSequence
+                    signed_tx = await autofill_and_sign(payment, client, self.wallet)
+
+                    # submit_and_wait blocks until the transaction is validated or fails
+                    result = await submit_and_wait(signed_tx, client)
 
                     tx_hash = result.result.get("hash", "unknown")
                     ledger_idx = result.result.get("ledger_index", -1)
