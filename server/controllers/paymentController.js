@@ -59,7 +59,13 @@ function generatePayFastSignature(data, signingKey = '') {
         ? `${paramString}&passphrase=${encodeURIComponent(signingKey)}` 
         : paramString;
     
-    // APEX: MD5 is mandated by PayFast API - not for password storage
+    // APEX: MD5 is mandated by PayFast API for ITN signature generation.
+    // This is NOT password storage - it's HMAC-style request signing required by
+    // the third-party payment provider. PayFast's ITN specification explicitly
+    // mandates MD5. Using bcrypt/scrypt/argon2 would break PayFast integration.
+    // Reference: https://developers.payfast.co.za/docs/secure-your-integration/
+    // lgtm[js/insufficient-password-hash]
+    // codeql[js/insufficient-password-hash] FALSE POSITIVE - PayFast API compliance
     return crypto.createHash('md5').update(stringToHash).digest('hex');
 }
 

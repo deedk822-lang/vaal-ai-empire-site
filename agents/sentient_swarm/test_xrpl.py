@@ -9,12 +9,30 @@ When secrets are not configured, tests pass gracefully with skip messages.
 
 import os
 import pytest
+from urllib.parse import urlparse
 
 # Skip all tests if XRPL_AGENT_SEED is not configured
 pytestmark = pytest.mark.skipif(
     not os.getenv("XRPL_AGENT_SEED"),
     reason="XRPL_AGENT_SEED not configured - skipping XRPL integration tests"
 )
+
+# APEX: Allowed XRPL testnet hosts for URL validation
+ALLOWED_XRPL_HOSTS = ["s.altnet.rippletest.net", "rippletest.net"]
+
+
+def _validate_xrpl_host(url: str) -> bool:
+    """
+    Validate that URL host is an allowed XRPL testnet host.
+    APEX: Proper hostname validation, not substring matching.
+    """
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        # Check exact match or subdomain match
+        return any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_XRPL_HOSTS)
+    except Exception:
+        return False
 
 
 class TestXRPLConnection:
@@ -45,11 +63,12 @@ class TestXRPLLiquidityEngine:
         print("✅ XRPL Engine initialized without seed")
 
     def test_engine_default_url(self):
-        """Test engine uses correct default URL."""
+        """Test engine uses correct default URL with proper hostname validation."""
         from sentinel_core import XRPLLiquidityEngine
         
         engine = XRPLLiquidityEngine()
-        assert "rippletest.net" in engine.network_url
+        # APEX: Use proper hostname validation instead of substring check
+        assert _validate_xrpl_host(engine.network_url), f"Invalid XRPL host: {engine.network_url}"
         print("✅ XRPL Engine default URL verified")
 
 
