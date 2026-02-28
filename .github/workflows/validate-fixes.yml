@@ -32,19 +32,16 @@ jobs:
 
       - name: Validate workflow YAML
         run: |
-          python -m pip install --quiet pyyaml
-          python << 'PYEOF'
-          from pathlib import Path
-          import yaml
+          ruby << 'RUBYEOF'
+          require 'yaml'
 
-          workflow_dir = Path('.github/workflows')
-          workflows = sorted(workflow_dir.glob('*.yml'))
-          for wf in workflows:
-              with wf.open('r', encoding='utf-8') as f:
-                  yaml.safe_load(f)
-              print(f"✅ {wf}")
-          print(f"Validated {len(workflows)} workflow files")
-          PYEOF
+          workflows = Dir.glob('.github/workflows/*.yml').sort
+          workflows.each do |wf|
+            YAML.load_file(wf)
+            puts "✅ #{wf}"
+          end
+          puts "Validated #{workflows.length} workflow files"
+          RUBYEOF
 
   validate-node-18:
     name: Validate Node.js Setup (18.x)
@@ -140,9 +137,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install runtime dependency
+      - name: Install locked Python dependencies
         run: |
-          python -m pip install --quiet requests
+          python -m pip install --quiet --require-hashes -r requirements.txt
 
       - name: Run smoke tests
         run: |
