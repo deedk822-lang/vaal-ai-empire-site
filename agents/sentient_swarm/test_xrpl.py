@@ -4,21 +4,24 @@ XRPL Integration Tests for Sentient Financial Sentinel.
 APEX v2.0 Compliant - Conditional on XRPL secrets.
 
 These tests verify XRPL functionality when secrets are available.
-When secrets are not configured, tests pass gracefully with skip messages.
+Non-seed-dependent tests run in CI; seed-dependent tests skip gracefully.
 """
 
 import os
 import pytest
 from urllib.parse import urlparse
 
-# Skip all tests if XRPL_AGENT_SEED is not configured
-pytestmark = pytest.mark.skipif(
-    not os.getenv("XRPL_AGENT_SEED"),
-    reason="XRPL_AGENT_SEED not configured - skipping XRPL integration tests"
-)
+# APEX: Removed module-level pytestmark - apply skip only to seed-dependent tests
+# Tests that don't require XRPL_AGENT_SEED should run in CI
 
 # APEX: Allowed XRPL testnet hosts for URL validation
 ALLOWED_XRPL_HOSTS = ["s.altnet.rippletest.net", "rippletest.net"]
+
+# APEX: Reusable decorator for seed-dependent tests
+seed_required = pytest.mark.skipif(
+    not os.getenv("XRPL_AGENT_SEED"),
+    reason="XRPL_AGENT_SEED not configured - skipping seed-dependent tests"
+)
 
 
 def _validate_xrpl_host(url: str) -> bool:
@@ -75,11 +78,10 @@ class TestXRPLLiquidityEngine:
 class TestXRPLWalletOperations:
     """Test XRPL wallet operations (requires seed)."""
 
+    @seed_required
     def test_wallet_initialization(self):
         """Test wallet initialization from seed."""
         seed = os.getenv("XRPL_AGENT_SEED")
-        if not seed:
-            pytest.skip("XRPL_AGENT_SEED not configured")
         
         try:
             from xrpl.wallet import Wallet

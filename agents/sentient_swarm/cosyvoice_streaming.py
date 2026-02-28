@@ -824,8 +824,10 @@ async def main():
         try:
             voice_model = VoiceModel(args.voice)
         except ValueError as e:
+            # APEX: Build valid voices from enum, not hardcoded list
+            valid_voices = ", ".join(v.value for v in VoiceModel)
             print(f"Error: Invalid voice model '{args.voice}': {e}")
-            print("Valid voices: zhiyan, zhichu, zhiyan_emo, zhichu_emo")
+            print(f"Valid voices: {valid_voices}")
             sys.exit(1)
 
         result = await processor.synthesize_complete(

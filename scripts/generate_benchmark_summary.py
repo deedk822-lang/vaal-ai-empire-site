@@ -11,7 +11,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -72,7 +72,7 @@ def generate_summary(
     lines = [
         "# Hybrid Benchmark Results",
         "",
-        f"**Generated:** {datetime.utcnow().isoformat()}Z",
+        f"**Generated:** {datetime.now(timezone.utc).isoformat()}",
         "",
     ]
     

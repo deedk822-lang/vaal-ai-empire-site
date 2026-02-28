@@ -100,7 +100,6 @@ jobs:
           
           shopt -u nullglob
           exit $EXIT_CODE
-        continue-on-error: true
 
   # ═══════════════════════════════════════════════════════════════════
   # APEX Phase 8: APEX Annotation Validation
