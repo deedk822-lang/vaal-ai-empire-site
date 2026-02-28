@@ -16,12 +16,14 @@ License: Proprietary
 """
 
 import os
+import sys
 import json
 import asyncio
 import time
 import base64
 import logging
-from datetime import datetime
+from collections import OrderedDict
+from datetime import datetime, timezone  # APEX: timezone added for UTC
 from typing import Optional, Dict, Any, AsyncGenerator, List
 from dataclasses import dataclass
 from enum import Enum
@@ -105,6 +107,7 @@ class CosyVoiceStreamingProcessor:
         self.total_asr_requests = 0
         self.total_tts_latency_ms = 0
         self.total_asr_latency_ms = 0
+        self._metrics_lock = asyncio.Lock()  # Thread-safe metrics updates
 
         if not self.api_key:
             logger.warning("DASHSCOPE_API_KEY not set - voice features disabled")
@@ -199,8 +202,9 @@ class CosyVoiceStreamingProcessor:
 
         finally:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.total_tts_requests += 1
-            self.total_tts_latency_ms += duration_ms
+            async with self._metrics_lock:
+                self.total_tts_requests += 1
+                self.total_tts_latency_ms += duration_ms
 
             logger.info("Streaming TTS completed", extra={
                 "request_id": request_id,
@@ -240,7 +244,7 @@ class CosyVoiceStreamingProcessor:
 
         audit = {
             "action": "tts_synthesis",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "request_id": request_id,
             "language": lang,
             "voice": voice_model.value,
@@ -278,8 +282,9 @@ class CosyVoiceStreamingProcessor:
                         audio_data = await response.read()
                         duration_ms = int((time.time() - start_time) * 1000)
 
-                        self.total_tts_requests += 1
-                        self.total_tts_latency_ms += duration_ms
+                        async with self._metrics_lock:
+                            self.total_tts_requests += 1
+                            self.total_tts_latency_ms += duration_ms
 
                         audit["status"] = "success"
                         audit["duration_ms"] = duration_ms
@@ -365,6 +370,15 @@ class CosyVoiceStreamingProcessor:
                     },
                     data=audio_stream
                 ) as response:
+                    # APEX: Check HTTP status before processing response
+                    if response.status != 200:
+                        error_body = await response.text()
+                        logger.error(
+                            f"Streaming ASR failed with status {response.status}",
+                            extra={"error": error_body[:500]}
+                        )
+                        raise Exception(f"ASR API error ({response.status}): {error_body[:200]}")
+                    
                     async for line in response.content:
                         if line:
                             try:
@@ -392,8 +406,9 @@ class CosyVoiceStreamingProcessor:
 
         finally:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.total_asr_requests += 1
-            self.total_asr_latency_ms += duration_ms
+            async with self._metrics_lock:
+                self.total_asr_requests += 1
+                self.total_asr_latency_ms += duration_ms
 
             logger.info("Streaming ASR completed", extra={
                 "request_id": request_id,
@@ -432,7 +447,7 @@ class CosyVoiceStreamingProcessor:
 
         audit = {
             "action": "asr_transcription",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "request_id": request_id,
             "language": lang,
             "audio_size_bytes": len(audio_data),
@@ -477,8 +492,9 @@ class CosyVoiceStreamingProcessor:
                         detected_language = result.get("output", {}).get("detected_language", lang)
                         words = result.get("output", {}).get("words", [])
 
-                        self.total_asr_requests += 1
-                        self.total_asr_latency_ms += duration_ms
+                        async with self._metrics_lock:
+                            self.total_asr_requests += 1
+                            self.total_asr_latency_ms += duration_ms
 
                         audit["status"] = "success"
                         audit["duration_ms"] = duration_ms
@@ -541,7 +557,16 @@ class CosyVoiceStreamingProcessor:
         Returns:
             Transcription result
         """
-        audio_data = base64.b64decode(audio_base64)
+        import binascii
+        try:
+            # APEX: Use strict validation to reject malformed base64
+            audio_data = base64.b64decode(audio_base64, validate=True)
+        except (binascii.Error, ValueError) as e:
+            logger.error(f"Invalid base64 audio data: {e}")
+            return {
+                "status": "error",
+                "message": f"Invalid base64 audio data: {str(e)[:100]}"
+            }
         return await self.transcribe_complete(audio_data, language, consent_ref)
 
     def _split_text_for_streaming(self, text: str) -> List[str]:
@@ -597,6 +622,10 @@ class VoiceCommandProcessor:
     real-time voice-based financial interactions.
     """
 
+    # LRU configuration for unbounded session contexts
+    MAX_SESSIONS = 100
+    MAX_HISTORY_PER_SESSION = 50
+
     def __init__(
         self,
         cosyvoice: CosyVoiceStreamingProcessor,
@@ -604,7 +633,19 @@ class VoiceCommandProcessor:
     ):
         self.cosyvoice = cosyvoice
         self.consent_manager = consent_manager
-        self._session_contexts: Dict[str, Dict[str, Any]] = {}
+        self._session_contexts: OrderedDict = OrderedDict()  # O(1) LRU via move_to_end
+
+    def _touch_session(self, session_id: str) -> None:
+        """Move session to end (most recently used) - O(1)."""
+        if session_id in self._session_contexts:
+            self._session_contexts.move_to_end(session_id)
+
+    def _prune_sessions(self) -> None:
+        """Evict oldest sessions - O(1) per eviction via popitem."""
+        while len(self._session_contexts) > self.MAX_SESSIONS:
+            # popitem(last=False) removes the oldest (first) item - O(1)
+            session_id, _ = self._session_contexts.popitem(last=False)
+            logger.debug(f"Pruned LRU session: {session_id}")
 
     async def process_voice_input(
         self,
@@ -636,6 +677,10 @@ class VoiceCommandProcessor:
                 "turn_count": 0,
                 "history": []
             }
+            self._prune_sessions()
+        else:
+            # Update LRU order - move to end (most recently used)
+            self._touch_session(session_id)
 
         context = self._session_contexts[session_id]
 
@@ -652,8 +697,12 @@ class VoiceCommandProcessor:
             context["history"].append({
                 "role": "user",
                 "text": result["text"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
+            
+            # Cap history to prevent unbounded growth
+            if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
+                context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
 
             result["session_id"] = session_id
             result["turn_count"] = context["turn_count"]
@@ -684,8 +733,13 @@ class VoiceCommandProcessor:
             context["history"].append({
                 "role": "assistant",
                 "text": text,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
+            # APEX: Cap history to prevent unbounded growth (same as process_voice_input)
+            if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
+                context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
+            # APEX: Update LRU order so session isn't evicted prematurely
+            self._touch_session(session_id)
 
         return await self.cosyvoice.synthesize_complete(
             text=text,
@@ -769,10 +823,19 @@ async def main():
 
     if args.tts:
         print(f"Synthesizing: {args.tts[:50]}...")
+        try:
+            voice_model = VoiceModel(args.voice)
+        except ValueError as e:
+            # APEX: Build valid voices from enum, not hardcoded list
+            valid_voices = ", ".join(v.value for v in VoiceModel)
+            print(f"Error: Invalid voice model '{args.voice}': {e}")
+            print(f"Valid voices: {valid_voices}")
+            sys.exit(1)
+
         result = await processor.synthesize_complete(
             text=args.tts,
             language=args.language,
-            voice=VoiceModel(args.voice)
+            voice=voice_model
         )
 
         if result["status"] == "success":
@@ -788,8 +851,18 @@ async def main():
 
     elif args.asr:
         print(f"Transcribing: {args.asr}")
-        with open(args.asr, "rb") as f:
-            audio_data = f.read()
+        try:
+            with open(args.asr, "rb") as f:
+                audio_data = f.read()
+        except FileNotFoundError:
+            print(f"Error: Audio file not found: {args.asr}")
+            sys.exit(1)
+        except PermissionError:
+            print(f"Error: Permission denied reading: {args.asr}")
+            sys.exit(1)
+        except IsADirectoryError:
+            print(f"Error: Expected a file but got a directory: {args.asr}")
+            sys.exit(1)
 
         result = await processor.transcribe_complete(
             audio_data=audio_data,

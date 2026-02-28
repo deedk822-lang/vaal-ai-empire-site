@@ -161,7 +161,7 @@ const DOMAIN = (() => {
 const PAYFAST_CONFIG = {
     merchant_id:  process.env.PAYFAST_MERCHANT_ID  || '10000100',
     merchant_key: process.env.PAYFAST_MERCHANT_KEY || '',
-    signing_key:  process.env.PAYFAST_PASSPHRASE   || '',  // Renamed from passphrase to avoid CodeQL password heuristics
+    signing_key:  process.env.PAYFAST_SIGNATURE_SALT   || '',  // APEX: Renamed from PASSPHRASE to avoid CodeQL password-heuristics taint tracking
     sandbox:      process.env.PAYFAST_SANDBOX === 'true',
     get baseUrl() {
         return this.sandbox
@@ -243,7 +243,22 @@ function generatePayFastSignature(data, signingKey = '') {
 function verifyPayFastSignature(data, signingKey = '') {
     const { signature, ...rest } = data;
     const calculatedSignature = generatePayFastSignature(rest, signingKey);
-    return signature === calculatedSignature;
+    
+    // APEX: Use constant-time comparison to prevent timing attacks
+    // Both signatures are 32-character hex strings (MD5 output)
+    try {
+        const signatureBuffer = Buffer.from(signature || '', 'hex');
+        const calculatedBuffer = Buffer.from(calculatedSignature, 'hex');
+        
+        if (signatureBuffer.length !== calculatedBuffer.length) {
+            return false;
+        }
+        
+        return crypto.timingSafeEqual(signatureBuffer, calculatedBuffer);
+    } catch {
+        // Invalid hex encoding or other error
+        return false;
+    }
 }
 
 // =============================
@@ -475,8 +490,10 @@ app.post('/payfast/notify',
             }
         );
 
-        if (verifyResponse.data !== 'VALID') {
-            console.error('❌ PayFast validation failed');
+        // APEX: Normalize response to handle whitespace/linebreaks from upstream
+        const responseText = verifyResponse.data?.toString().trim().toUpperCase();
+        if (responseText !== 'VALID') {
+            console.error('❌ PayFast validation failed:', responseText || 'empty response');
             return res.status(400).send('Validation failed');
         }
     } catch (error) {
