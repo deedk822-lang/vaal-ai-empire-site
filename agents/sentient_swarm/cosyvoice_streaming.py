@@ -736,6 +736,9 @@ class VoiceCommandProcessor:
                 "text": text,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
+            # APEX: Cap history to prevent unbounded growth (same as process_voice_input)
+            if len(context["history"]) > self.MAX_HISTORY_PER_SESSION:
+                context["history"] = context["history"][-self.MAX_HISTORY_PER_SESSION:]
 
         return await self.cosyvoice.synthesize_complete(
             text=text,
