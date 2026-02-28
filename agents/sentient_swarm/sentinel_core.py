@@ -645,7 +645,9 @@ class CosyVoiceProcessor:
         try:
             import aiohttp
             
-            async with aiohttp.ClientSession() as session:
+            # APEX: Add timeout to prevent hanging on upstream stalls
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 payload = {
                     "model": "cosyvoice-v3-plus",
                     "input": {
@@ -736,7 +738,9 @@ class CosyVoiceProcessor:
         try:
             import aiohttp
             
-            async with aiohttp.ClientSession() as session:
+            # APEX: Add timeout to prevent hanging on upstream stalls
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 payload = {
                     "model": "paraformer-v2",
                     "input": {

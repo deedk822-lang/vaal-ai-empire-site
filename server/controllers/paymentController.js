@@ -241,11 +241,9 @@ exports.verifyITN = catchAsync(async (req, res) => {  // APEX-FIX: Removed unuse
         
     } catch (error) {
         console.error('❌ PayFast verification error:', error.message);
-        if (!PAYFAST_CONFIG.sandbox) {
-            return res.status(400).send('Verification failed');
-        }
-        // In sandbox, still return OK for testing
-        res.status(200).send('OK');
+        // APEX: Always fail on verification error, even in sandbox
+        // Returning 200 on failure allows fraudulent payments to pass
+        return res.status(400).send('Verification failed');
     }
 });
 
