@@ -15,8 +15,6 @@ permissions:
   contents: read
 
 jobs:
- optimal-performance
-
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
@@ -38,7 +36,6 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
 
- digital-preeminence-fixes
   bandit:
     name: Bandit — Python SAST
     runs-on: ubuntu-latest
