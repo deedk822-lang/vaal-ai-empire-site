@@ -52,9 +52,10 @@ function validateAndCanonicalizeDomain(domain) {
     ];
     
     try {
-        // Ensure scheme is present for URL parsing
+        // Ensure scheme is present for URL parsing (case-insensitive check)
         let urlStr = domain.trim();
-        if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+        const lowerUrlStr = urlStr.toLowerCase();
+        if (!lowerUrlStr.startsWith('http://') && !lowerUrlStr.startsWith('https://')) {
             urlStr = 'https://' + urlStr;
         }
         
