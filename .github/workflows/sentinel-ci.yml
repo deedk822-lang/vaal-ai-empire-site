@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@f9424c10c36e # 0.33.0
+        uses: aquasecurity/trivy-action@0.33.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -43,7 +43,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@bb471cdcf4dd
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
@@ -87,7 +87,7 @@ jobs:
           pytest services/voice/ -v --cov=services/voice --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@b9fd7d16f6d7 # v4
+        uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
         continue-on-error: true
@@ -172,7 +172,6 @@ jobs:
           import os
           from openai import OpenAI
           
-          # Test connection (if API key available)
           api_key = os.getenv('DASHSCOPE_API_KEY')
           if api_key:
               client = OpenAI(
@@ -205,13 +204,11 @@ jobs:
           import os
           import sys
           
-          # Check sentinel_core.py exists
           sentinel_path = 'agents/sentient_swarm/sentinel_core.py'
           if not os.path.exists(sentinel_path):
               print(f'❌ {sentinel_path} not found')
               sys.exit(1)
           
-          # Check sentinel_core.py for consent verification
           with open(sentinel_path, 'r') as f:
               content = f.read()
           

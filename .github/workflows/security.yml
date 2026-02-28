@@ -25,16 +25,16 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@bb471cdcf4dd
+        uses: github/codeql-action/init@v3
         with:
           languages: javascript,python
           queries: +security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@bb471cdcf4dd
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@bb471cdcf4dd
+        uses: github/codeql-action/analyze@v3
 
   bandit:
     name: Bandit — Python SAST
@@ -64,7 +64,7 @@ jobs:
             -o bandit-results.sarif || true
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@bb471cdcf4dd
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: bandit-results.sarif
