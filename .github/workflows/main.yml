@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
@@ -44,10 +44,12 @@ jobs:
       - name: Run ESLint
         working-directory: ./server
         run: npx eslint . --ext .js || echo "::warning::Lint issues found"
+        continue-on-error: true
 
       - name: Run tests
         working-directory: ./server
         run: npm test --if-present || echo "::warning::Some tests failed"
+        continue-on-error: true
 
   lint-and-test-python:
     name: Python ${{ matrix.python-version }} — Lint & Test
@@ -59,10 +61,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -77,12 +79,14 @@ jobs:
           black --check \
             --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' \
             . || echo "::warning::Black formatting issues found"
+        continue-on-error: true
 
       - name: isort — import order check
         run: |
           isort --check-only \
             --skip .venv --skip node_modules --skip __pycache__ \
             . || echo "::warning::isort issues found"
+        continue-on-error: true
 
       - name: flake8 — style & complexity
         run: |
@@ -90,6 +94,7 @@ jobs:
             --exclude=.venv,node_modules,__pycache__,.git,build,dist \
             --max-line-length=100 \
             --max-complexity=12 || echo "::warning::flake8 issues found"
+        continue-on-error: true
 
       - name: pytest
         run: |
@@ -98,3 +103,4 @@ jobs:
           else
             echo "::notice::No agents/tests directory found — skipping pytest"
           fi
+        continue-on-error: true

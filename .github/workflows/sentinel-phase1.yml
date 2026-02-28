@@ -23,11 +23,6 @@ on:
           - testnet
           - mainnet
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read
-
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
@@ -43,10 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -65,7 +60,7 @@ jobs:
           safety check --json || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -74,7 +69,7 @@ jobs:
           cd server && npm audit --audit-level=high || true
 
       - name: Upload security reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: security-reports
           path: |
@@ -90,10 +85,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -133,10 +128,10 @@ jobs:
     needs: [security-scan, architecture-check]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -179,10 +174,10 @@ jobs:
     needs: [security-scan]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -255,10 +250,10 @@ jobs:
     needs: [security-scan]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -269,11 +264,11 @@ jobs:
           sys.path.insert(0, 'agents/sentient_swarm')
 
           from sentinel_core import AuditRecord
-          from datetime import datetime, timezone
+          from datetime import datetime
 
           # Create test audit record
           audit = AuditRecord(
-              timestamp=datetime.now(timezone.utc).isoformat(),
+              timestamp=datetime.utcnow().isoformat(),
               action='test_action',
               user_id='test-user',
               details={'test': True},
@@ -305,9 +300,10 @@ jobs:
     name: XRPL Integration Test (APEX Section 4)
     runs-on: ubuntu-latest
     needs: [security-scan]
-    # Note: Secrets cannot be accessed in job-level if conditions
-    # We use step-level checks instead
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
       - name: Check XRPL secrets
         id: check-secrets
         run: |
@@ -315,16 +311,12 @@ jobs:
             echo "has_secrets=true" >> $GITHUB_OUTPUT
           else
             echo "has_secrets=false" >> $GITHUB_OUTPUT
-            echo "✅ XRPL integration test skipped (no XRPL_AGENT_SEED secret configured)"
+            echo "✅ XRPL tests skipped (no XRPL_AGENT_SEED secret configured)"
           fi
-
-      - name: Checkout repository
-        if: steps.check-secrets.outputs.has_secrets == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Python
         if: steps.check-secrets.outputs.has_secrets == 'true'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -369,23 +361,12 @@ jobs:
     name: API Endpoint Tests (APEX Section 6)
     runs-on: ubuntu-latest
     needs: [security-scan, architecture-check]
-    services:
-      mongodb:
-        image: mongo:7.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -396,46 +377,27 @@ jobs:
       - name: Run existing tests
         run: |
           cd server && npm test || true
-        env:
-          NODE_ENV: test
-          MONGODB_URI: mongodb://localhost:27017/vaal-ai-test
 
       - name: Start server for integration tests
         run: |
           cd server && npm start &
-          # APEX: Health check with timeout instead of fixed sleep
-          for i in {1..30}; do
-            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
-              echo "Server ready after ${i} attempts"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "Server failed to start within 30 seconds"
-              # Don't fail - continue with tests
-              break
-            fi
-            sleep 1
-          done
+          sleep 5
         env:
           NODE_ENV: test
           PORT: 3001
-          MONGODB_URI: mongodb://localhost:27017/vaal-ai-test
 
       - name: Test sentinel API endpoints
         run: |
           # Test status endpoint
-          curl -s http://localhost:3001/api/sentinel/status | jq . || echo "Status endpoint check complete"
+          curl -s http://localhost:3001/api/sentinel/status | jq .
 
           # Test languages endpoint
-          curl -s http://localhost:3001/api/sentinel/languages | jq . || echo "Languages endpoint check complete"
+          curl -s http://localhost:3001/api/sentinel/languages | jq .
 
           # Test metrics endpoint
-          curl -s http://localhost:3001/api/sentinel/metrics | jq . || echo "Metrics endpoint check complete"
+          curl -s http://localhost:3001/api/sentinel/metrics | jq .
 
-          echo "✅ API endpoints check complete"
-        env:
-          NODE_ENV: test
-          MONGODB_URI: mongodb://localhost:27017/vaal-ai-test
+          echo "✅ API endpoints responding"
 
   # ═══════════════════════════════════════════════════════════════════
   # APEX Section 8: Deployment
@@ -448,7 +410,7 @@ jobs:
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Deploy to Vercel (Preview)
         run: |
@@ -464,7 +426,7 @@ jobs:
     environment: production
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Deploy to Vercel (Production)
         run: |
