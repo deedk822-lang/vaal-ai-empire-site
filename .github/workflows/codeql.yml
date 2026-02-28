@@ -1,4 +1,4 @@
-name: CodeQL
+name: CodeQL Analysis
 
 on:
   push:
@@ -15,32 +15,53 @@ permissions:
   security-events: write
 
 jobs:
-  analyze:
-    name: Analyze (CodeQL)
+  analyze-javascript:
+    name: Analyze (JavaScript/TypeScript)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript, python]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: javascript-typescript
           config-file: ./.github/codeql/codeql-config.yml
-        continue-on-error: true
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v4
-        continue-on-error: true
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
-        continue-on-error: true
         with:
-          category: "/language:${{matrix.language}}"
+          category: "/language:javascript"
+
+  analyze-python:
+    name: Analyze (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:python"

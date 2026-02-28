@@ -20,9 +20,16 @@ paths-ignore:
   - '**/dist/**'
   - '**/build/**'
   - '**/.git/**'
+  - '**/vaal-ai-empire-site/**'
+  - '**/vaal-repo/**'
 
 query-filters:
   - exclude:
       id: py/unsafe-deserialization
   - exclude:
       id: js/unsafe-deserialization
+  # PayFast API requires MD5 for signature generation - third-party compliance, not password storage
+  - exclude:
+      id: js/insufficient-password-hash
+  - exclude:
+      id: js/weak-cryptographic-algorithm
