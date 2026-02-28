@@ -15,7 +15,7 @@ Docs: https://xrpl.org/rlusd.html
 
 
 import logging
-from typing import Literal, Optional, Dict
+from typing import Literal, Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

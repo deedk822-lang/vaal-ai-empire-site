@@ -227,7 +227,9 @@ function generatePayFastSignature(data, signingKey = '') {
     // Alternative: None - third-party requirement
     // Verification: https://developers.payfast.co.za/docs/secure-your-integration/
     //
-    return crypto.createHash('md5').update(stringToHash).digest('hex'); // lgtm[js/insufficient-password-hash] -- PayFast API mandates MD5 for ITN signing; not password storage
+    // codeql[js/insufficient-password-hash] PayFast API mandates MD5 for ITN signature generation per https://developers.payfast.co.za/docs/secure-your-integration/ - this is NOT password storage, it's third-party API signature compliance
+    // codeql[js/weak-cryptographic-algorithm] PayFast payment gateway requires MD5 for signature verification - cannot be changed without breaking PayFast integration
+    return crypto.createHash('md5').update(stringToHash).digest('hex');
 }
 
 /**
