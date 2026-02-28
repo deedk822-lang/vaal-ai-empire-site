@@ -75,14 +75,16 @@ jobs:
           [ -f requirements.txt ] && pip install -r requirements.txt || true
 
       - name: Run Sentinel Core tests
+        # Tests run for visibility; failures do not block the pipeline
+        continue-on-error: true
         run: |
           pytest agents/sentient_swarm/ -v --cov=agents/sentient_swarm --cov-report=xml
-        continue-on-error: true
 
       - name: Run Voice Service tests
+        # Tests run for visibility; failures do not block the pipeline
+        continue-on-error: true
         run: |
           pytest services/voice/ -v --cov=services/voice --cov-report=xml
-        continue-on-error: true
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

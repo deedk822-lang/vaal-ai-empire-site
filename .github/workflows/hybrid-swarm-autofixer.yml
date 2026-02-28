@@ -138,19 +138,30 @@ jobs:
           FILES_GENERATED: ${{ steps.swarm-fix.outputs.files_generated }}
           DURATION_MS: ${{ steps.swarm-fix.outputs.duration_ms }}
           ISSUES_FOUND: ${{ steps.swarm-fix.outputs.issues_found }}
+          SWARM_STEP_OUTCOME: ${{ steps.swarm-fix.outcome }}
         with:
           script: |
             const prNumber = parseInt(process.env.PR_NUMBER);
             const filesGenerated = process.env.FILES_GENERATED || '0';
             const duration = process.env.DURATION_MS || '0';
             const issuesFound = process.env.ISSUES_FOUND || '0';
+            const swarmOutcome = process.env.SWARM_STEP_OUTCOME || 'unknown';
+            
+            // Derive status from actual step outcome
+            let statusLine;
+            if (swarmOutcome === 'success') {
+              statusLine = '**Status:** ✅ Success\n';
+            } else if (swarmOutcome === 'failure') {
+              statusLine = '**Status:** ❌ Failure\n';
+            } else {
+              statusLine = '**Status:** ⚠️ Warning\n';
+            }
             
             // Build comment body - avoid lines starting with * in YAML
             const header = '## 🤖 Swarm Auto-Fixer Results\n\n';
-            const statusLine = '**Status:** ✅ Success\n';
             const durationLine = '**Duration:** ' + duration + 'ms\n';
             const modelLine = '**Model:** qwen3.5-plus\n';
-            const filesLine = '**Files Analyzed:** ' + filesGenerated + '\n';
+            const filesLine = '**Files Generated:** ' + filesGenerated + '\n';
             const issuesLine = '**Issues Processed:** ' + issuesFound + '\n\n';
             
             let fixesSection = '';
