@@ -2,7 +2,7 @@ name: Validate CI/CD Fixes
 
 on:
   push:
-    branches: [optimal-performance, main]
+    branches: [optimal-performance, m[main]
   pull_request:
     branches: [main]
   workflow_dispatch:

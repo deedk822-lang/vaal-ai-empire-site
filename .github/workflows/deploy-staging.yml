@@ -2,7 +2,7 @@ name: Staging Deploy
 
 on:
   push:
-    branches: [main, merge/develop-to-main]
+    branches: [main, merge/develop-to-m[main]
 
 permissions:
   contents: read

@@ -2,7 +2,7 @@ name: LocalAI Fallback Integration
 
 on:
   push:
-    branches: [main, optimal-performance]
+    branches: [[main, optimal-performance]
   pull_request:
     branches: [main]
   workflow_dispatch:
