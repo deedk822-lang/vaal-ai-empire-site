@@ -2,7 +2,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, master, optimal-performance]
+    branches: [main, master, digital-preeminence-fixes]
   pull_request:
     branches: [main, master]
   schedule:

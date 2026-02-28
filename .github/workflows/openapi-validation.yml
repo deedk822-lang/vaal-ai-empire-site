@@ -176,9 +176,9 @@ jobs:
                 process.exit(0);
               } catch (e) {
                 console.error('❌ OpenAPI spec parse error:', e.message);
-                process.exit(0);  // Non-blocking
+                process.exit(1);  // APEX: Fail on YAML parse errors
               }
-            " || true
+            "
             echo "✅ OpenAPI spec validated" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::notice::openapi/whatsapp-api.yaml not found"

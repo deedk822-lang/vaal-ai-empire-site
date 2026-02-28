@@ -16,11 +16,13 @@ License: Proprietary
 """
 
 import os
+import sys
 import json
 import asyncio
 import time
 import base64
 import logging
+from collections import OrderedDict
 from datetime import datetime, timezone  # APEX: timezone added for UTC
 from typing import Optional, Dict, Any, AsyncGenerator, List
 from dataclasses import dataclass
@@ -368,6 +370,15 @@ class CosyVoiceStreamingProcessor:
                     },
                     data=audio_stream
                 ) as response:
+                    # APEX: Check HTTP status before processing response
+                    if response.status != 200:
+                        error_body = await response.text()
+                        logger.error(
+                            f"Streaming ASR failed with status {response.status}",
+                            extra={"error": error_body[:500]}
+                        )
+                        raise Exception(f"ASR API error ({response.status}): {error_body[:200]}")
+                    
                     async for line in response.content:
                         if line:
                             try:
@@ -625,12 +636,16 @@ class VoiceCommandProcessor:
         self._session_timestamps: Dict[str, float] = {}
 
     def _prune_sessions(self):
-        """LRU prune oldest sessions when over limit."""
+        """LRU prune sessions with oldest last-access timestamp."""
         while len(self._session_contexts) > self.MAX_SESSIONS:
-            oldest_key = next(iter(self._session_contexts.keys()))
+            # APEX: True LRU - find session with oldest timestamp
+            if not self._session_timestamps:
+                break
+            oldest_key = min(self._session_timestamps.keys(), 
+                            key=lambda k: self._session_timestamps.get(k, float('inf')))
             del self._session_contexts[oldest_key]
             self._session_timestamps.pop(oldest_key, None)
-            logger.debug(f"Pruned session: {oldest_key}")
+            logger.debug(f"Pruned LRU session: {oldest_key}")
 
     async def process_voice_input(
         self,
@@ -772,9 +787,11 @@ class VoiceCommandProcessor:
         return self._session_contexts.get(session_id)
 
     def clear_session(self, session_id: str) -> bool:
-        """Clear a session context."""
+        """Clear a session context and its timestamp."""
         if session_id in self._session_contexts:
             del self._session_contexts[session_id]
+            # APEX: Also clean up timestamps to avoid stale entries
+            self._session_timestamps.pop(session_id, None)
             return True
         return False
 

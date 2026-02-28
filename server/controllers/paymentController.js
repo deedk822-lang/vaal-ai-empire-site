@@ -31,6 +31,60 @@ const PAYFAST_CONFIG = {
 };
 
 /**
+ * Validate and canonicalize domain URL
+ * APEX: Prevent SSRF and injection via DOMAIN env var
+ * 
+ * @param {string} domain - Raw domain from env
+ * @returns {string|null} - Canonicalized URL or null if invalid
+ */
+function validateAndCanonicalizeDomain(domain) {
+    if (!domain || typeof domain !== 'string') {
+        return null;
+    }
+    
+    // Allowed hosts for production
+    const ALLOWED_HOSTS = [
+        'vaal-ai-empire.vercel.app',
+        'vaal-ai-empire-site.vercel.app',
+        'vaal.co.za',
+        'www.vaal.co.za',
+        'api.vaal.co.za'
+    ];
+    
+    try {
+        // Ensure scheme is present for URL parsing
+        let urlStr = domain.trim();
+        if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+            urlStr = 'https://' + urlStr;
+        }
+        
+        const parsed = new URL(urlStr);
+        
+        // Only allow http/https schemes
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            console.error(`Invalid scheme in DOMAIN: ${parsed.protocol}`);
+            return null;
+        }
+        
+        // In production, validate against allowlist
+        // In development, allow localhost
+        const hostname = parsed.hostname;
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+        
+        if (!isLocalhost && !ALLOWED_HOSTS.includes(hostname)) {
+            console.error(`Domain hostname not in allowlist: ${hostname}`);
+            return null;
+        }
+        
+        // Return canonicalized URL (no trailing slash)
+        return parsed.origin;
+    } catch (e) {
+        console.error(`Invalid DOMAIN format: ${domain}`);
+        return null;
+    }
+}
+
+/**
  * Get PayFast configuration for frontend
  * APEX: Expose only non-sensitive config
  */
@@ -64,9 +118,7 @@ function generatePayFastSignature(data, signingKey = '') {
     // the third-party payment provider. PayFast's ITN specification explicitly
     // mandates MD5. Using bcrypt/scrypt/argon2 would break PayFast integration.
     // Reference: https://developers.payfast.co.za/docs/secure-your-integration/
-    // lgtm[js/insufficient-password-hash]
-    // codeql[js/insufficient-password-hash] FALSE POSITIVE - PayFast API compliance
-    return crypto.createHash('md5').update(stringToHash).digest('hex');
+    return crypto.createHash('md5').update(stringToHash).digest('hex'); // codeql[js/insufficient-password-hash] PAYFAST-API-COMPLIANCE: MD5 mandated by PayFast ITN spec — NOT password hashing — owner: @deedk822-lang, expiry: 2027-Q1, JIRA-SEC-0042
 }
 
 /**
@@ -97,13 +149,16 @@ exports.createPayment = catchAsync(async (req, res, next) => {
     const itemName = plan === 'empire' ? 'Vaal Empire' : 'Vaal Starter';
     const paymentId = `Vaal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // APEX: Validate and canonicalize DOMAIN before building URLs
+    const baseUrl = validateAndCanonicalizeDomain(process.env.DOMAIN) || 'http://localhost:3000';
+    
     // Build PayFast data
     const paymentData = {
         merchant_id: PAYFAST_CONFIG.merchant_id,
         merchant_key: PAYFAST_CONFIG.merchant_key,
-        return_url: `${process.env.DOMAIN || 'http://localhost:3000'}/success.html?payment_id=${paymentId}`,
-        cancel_url: `${process.env.DOMAIN || 'http://localhost:3000'}/canceled.html`,
-        notify_url: `${process.env.DOMAIN || 'http://localhost:3000'}/payfast/notify`,
+        return_url: `${baseUrl}/success.html?payment_id=${encodeURIComponent(paymentId)}`,
+        cancel_url: `${baseUrl}/canceled.html`,
+        notify_url: `${baseUrl}/payfast/notify`,
         name_first: name ? name.split(' ')[0] : 'Customer',
         name_last: name ? name.split(' ').slice(1).join(' ') || '' : '',
         email_address: email,

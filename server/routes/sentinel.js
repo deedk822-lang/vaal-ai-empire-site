@@ -422,8 +422,12 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             consent_ref
         } = req.body;
 
-        // Validate required fields
-        if (!principal || !currency || !interest_bps || !duration_days || !user_id) {
+        // Validate required fields - use explicit undefined/null checks
+        if (principal === undefined || principal === null ||
+            currency === undefined || currency === null ||
+            interest_bps === undefined || interest_bps === null ||
+            duration_days === undefined || duration_days === null ||
+            user_id === undefined || user_id === null) {
             return res.status(400).json({
                 status: 'error',
                 message: 'principal, currency, interest_bps, duration_days, and user_id are required'
@@ -439,25 +443,28 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             });
         }
 
-        // Validate currency
+        // Validate currency - normalize to uppercase before checking
+        const normalizedCurrency = currency && typeof currency === 'string' ? currency.toUpperCase() : '';
         const validCurrencies = ['XRP', 'RLUSD'];
-        if (!validCurrencies.includes(currency.toUpperCase())) {
+        if (!validCurrencies.includes(normalizedCurrency)) {
             return res.status(400).json({
                 status: 'error',
                 message: `Invalid currency. Must be one of: ${validCurrencies.join(', ')}`
             });
         }
 
-        // Validate interest rate (max 50% = 5000 bps)
-        if (interest_bps < 0 || interest_bps > 5000) {
+        // Validate interest rate - parse and check (max 50% = 5000 bps)
+        const parsedInterestBps = parseInt(interest_bps, 10);
+        if (isNaN(parsedInterestBps) || parsedInterestBps < 0 || parsedInterestBps > 5000) {
             return res.status(400).json({
                 status: 'error',
                 message: 'interest_bps must be between 0 and 5000 (0% to 50%)'
             });
         }
 
-        // Validate duration (1 day to 5 years)
-        if (duration_days < 1 || duration_days > 1825) {
+        // Validate duration - parse and check (1 day to 5 years)
+        const parsedDurationDays = parseInt(duration_days, 10);
+        if (isNaN(parsedDurationDays) || parsedDurationDays < 1 || parsedDurationDays > 1825) {
             return res.status(400).json({
                 status: 'error',
                 message: 'duration_days must be between 1 and 1825 (5 years)'
@@ -471,13 +478,13 @@ router.post('/loan', sentinelRateLimiter, async (req, res) => {
             status: 'success',
             loan: {
                 loan_id: loanId,
-                principal: principal,
-                principal_currency: currency.toUpperCase(),
-                interest_bps: interest_bps,
-                duration_days: duration_days,
+                principal: principalNum,
+                principal_currency: normalizedCurrency,
+                interest_bps: parsedInterestBps,
+                duration_days: parsedDurationDays,
                 collateral_ratio: collateral_ratio || 1.5,
                 status: 'pending',
-                total_repayment: (principalNum * (1 + interest_bps / 10000)).toFixed(2)
+                total_repayment: (principalNum * (1 + parsedInterestBps / 10000)).toFixed(2)
             },
             consent_ref: consent_ref,
             audit: {

@@ -435,30 +435,117 @@ class XRPLLiquidityEngine:
             
             # For XRP payments
             if currency.upper() == "XRP":
+                import re
                 from xrpl.models.transactions import Payment
                 from xrpl.utils import xrp_to_drops
-                
+
+                # APEX INV-SEC-03: Input validation
+                if not destination or not re.match(r'^r[1-9A-HJ-NP-Za-km-z]{25,34}$', destination):
+                    audit_record["status"] = "error"
+                    return {
+                        "status": "error",
+                        "message": f"Invalid XRPL destination address",
+                        "audit": audit_record
+                    }
+
+                try:
+                    amount_xrp = float(amount)
+                    if amount_xrp <= 0:
+                        raise ValueError("Amount must be positive")
+                except (TypeError, ValueError) as exc:
+                    audit_record["status"] = "error"
+                    return {
+                        "status": "error",
+                        "message": f"Invalid amount: {exc}",
+                        "audit": audit_record
+                    }
+
+                logger.info(
+                    "XRP payment initiated",
+                    extra={
+                        "destination": destination,
+                        "amount_xrp": amount_xrp,
+                        "sender_hash": hashlib.sha256(
+                            self.wallet.address.encode()
+                        ).hexdigest()[:16],
+                    },
+                )
+
                 payment = Payment(
                     account=self.wallet.address,
                     destination=destination,
-                    amount=xrp_to_drops(float(amount))
+                    amount=xrp_to_drops(amount_xrp)
                 )
-                
-                # Sign and submit (in production)
-                # signed = sign(payment, self.wallet)
-                # response = submit(signed, self.client)
-                
-                audit_record["status"] = "success"
-                audit_record["duration_ms"] = int((time.time() - start_time) * 1000)
-                
-                return {
-                    "status": "success",
-                    "transaction_type": "Payment",
-                    "amount": str(amount),
-                    "currency": "XRP",
-                    "audit": audit_record,
-                    "message": "Payment prepared (requires signing in production)"
-                }
+
+                # APEX FIX #436: Actually submit the transaction
+                try:
+                    from xrpl.asyncio.clients import AsyncJsonRpcClient
+                    from xrpl.asyncio.transaction import autofill_and_sign, submit_and_wait
+
+                    async with AsyncJsonRpcClient(self.network_url) as client:
+                        # autofill_and_sign populates Sequence, Fee, LastLedgerSequence
+                        signed_tx = await autofill_and_sign(payment, client, self.wallet)
+
+                        # submit_and_wait blocks until the transaction is validated or fails
+                        result = await submit_and_wait(signed_tx, client)
+
+                    tx_hash = result.result.get("hash", "unknown")
+                    ledger_idx = result.result.get("ledger_index", -1)
+                    tx_result = result.result.get("meta", {}).get("TransactionResult", "unknown")
+
+                    if tx_result != "tesSUCCESS":
+                        logger.error(
+                            "XRP payment rejected by ledger",
+                            extra={"tx_result": tx_result, "tx_hash": tx_hash},
+                        )
+                        audit_record["status"] = "error"
+                        audit_record["tx_hash"] = tx_hash
+                        return {
+                            "status": "error",
+                            "message": f"Transaction rejected: {tx_result}",
+                            "tx_hash": tx_hash,
+                            "audit": audit_record
+                        }
+
+                    logger.info(
+                        "XRP payment settled on ledger",
+                        extra={
+                            "tx_hash": tx_hash,
+                            "ledger_index": ledger_idx,
+                            "amount_xrp": amount_xrp,
+                        },
+                    )
+
+                    audit_record["status"] = "success"
+                    audit_record["duration_ms"] = int((time.time() - start_time) * 1000)
+
+                    return {
+                        "status": "success",
+                        "transaction_type": "Payment",
+                        "amount": str(amount_xrp),
+                        "currency": "XRP",
+                        "tx_hash": tx_hash,
+                        "ledger_index": ledger_idx,
+                        "audit": audit_record,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+
+                except ImportError as exc:
+                    logger.error(f"xrpl-py not installed: {exc}")
+                    return {
+                        "status": "error",
+                        "message": f"XRPL library unavailable: {exc}",
+                        "audit": audit_record
+                    }
+                except Exception as exc:
+                    logger.exception("Unexpected error during XRP payment execution")
+                    audit_record["status"] = "error"
+                    audit_record["error"] = str(exc)
+                    return {
+                        "status": "error",
+                        "message": f"Payment execution failed: {exc}",
+                        "audit": audit_record
+                    }
             
             # For RLUSD (issued currency)
             elif currency.upper() == "RLUSD":
@@ -780,7 +867,9 @@ class ConsentManager:
             logger.warning(f"Consent invalid for user {self._hash_user_id(user_id)}, scope {scope.value}")
             return False, None
         
-        ref = f"consent-{user_id}-{scope.value}-{uuid4().hex[:8]}"
+        # APEX: Use hashed user_id in reference to avoid PII exposure
+        user_id_hash = self._hash_user_id(user_id)
+        ref = f"consent-{user_id_hash}-{scope.value}-{uuid4().hex[:8]}"
         
         # Add to audit trail
         consent.audit_trail.append({
@@ -964,7 +1053,7 @@ class SentientFinancialSentinel:
             "audit": {
                 "action": "voice_command_processed",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "user_id": user_id,
+                "user_id_hash": hashlib.sha256(user_id.encode()).hexdigest()[:16],  # APEX: POPIA-compliant
                 "language": language,
                 "duration_ms": duration_ms
             }
