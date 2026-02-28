@@ -3,7 +3,7 @@
  * PhD-Level Security Validation
  */
 
-const _colors = require('colors'); // APEX: unused, kept for future colorized output
+const colors = require('colors');
 const path = require('path');
 const fs = require('fs');
 

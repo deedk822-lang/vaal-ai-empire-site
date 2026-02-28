@@ -392,10 +392,10 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
 
     // 3) Send it to user's email
     try {
-        const _resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
+        const resetURL = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
 
         // TODO: Send email with resetURL
-        // await sendPasswordResetEmail(user.email, _resetURL);
+        // await sendPasswordResetEmail(user.email, resetURL);
 
         res.status(200).json({
             status: 'success',
@@ -403,7 +403,7 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
             // Remove resetToken in production
             resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
         });
-    } catch (_err) {
+    } catch (err) {
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save({ validateBeforeSave: false });
@@ -629,7 +629,7 @@ exports.optionalAuth = catchAsync(async (req, res, next) => {
                 req.user = currentUser;
                 res.locals.user = currentUser;
             }
-        } catch (_err) {
+        } catch (err) {
             // Token invalid, but that's okay for optional auth
         }
     }

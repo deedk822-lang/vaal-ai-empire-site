@@ -278,7 +278,7 @@ const sendErrorProd = (err, req, res) => {
  *     .catch(next); // Error handled by globalErrorHandler
  * });
  */
-exports.globalErrorHandler = (err, req, res, _next) => {
+exports.globalErrorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 

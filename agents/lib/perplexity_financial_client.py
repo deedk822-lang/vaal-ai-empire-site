@@ -374,7 +374,7 @@ class _Metrics:
                     headers["Authorization"] = f"Basic {token}"
                     import urllib.request
                     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-                    with urllib.request.urlopen(req, timeout=timeout):  # nosec B310 - URL from configuration, not user input
+                    with urllib.request.urlopen(req, timeout=timeout):
                         pass
             push_to_gateway(
                 url,
@@ -404,12 +404,9 @@ def _resolve_cik(ticker: str) -> str:
     resp.raise_for_status()
 
     # Parse CIK from Atom feed
-    try:
-        import defusedxml.ElementTree as ET  # APEX: defusedxml prevents XML attacks
-    except ImportError:
-        import xml.etree.ElementTree as ET  # nosec B314 - fallback, EDGAR response is trusted
+    import xml.etree.ElementTree as ET
     ns = {"atom": "http://www.w3.org/2005/Atom"}
-    root = ET.fromstring(resp.text)  # nosec B314 - defusedxml used when available
+    root = ET.fromstring(resp.text)
     entries = root.findall("atom:entry", ns)
     if not entries:
         raise ValueError(f"CIK not found for ticker '{ticker}'")

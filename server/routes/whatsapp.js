@@ -190,7 +190,7 @@ async function handleWhatsAppEvent(event) {
  * @param {Object} metadata - Additional message metadata
  * @returns {Promise<void>}
  */
-async function handleMessage(message, _metadata) {
+async function handleMessage(message, metadata) {
   try {
     const msisdn = message.from;
     const messageType = message.type;
@@ -284,7 +284,7 @@ async function handleTextMessage(message, sanitizedMsisdn) {
  * 
  * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - ASR pipeline integration
  */
-async function handleVoiceMessage(message, _sanitizedMsisdn) {
+async function handleVoiceMessage(message, sanitizedMsisdn) {
   try {
     const User = require('../models/User');
     const user = await User.findOne({ phone: message.from });
@@ -344,7 +344,7 @@ async function handleVoiceMessage(message, _sanitizedMsisdn) {
  * 
  * @see https://github.com/deedk822-lang/vaal-ai-empire-site/issues/XX - Document processing pipeline
  */
-async function handleMediaMessage(message, _sanitizedMsisdn) {
+async function handleMediaMessage(message, sanitizedMsisdn) {
   // Media processing for business registration, document verification, etc.
   // Implementation tracked in GitHub Issues
   logger.info('Media message received', {

@@ -26,8 +26,7 @@ function sanitizeString(str) {
  * @returns {string|object} - Sanitized value
  */
 function sanitizeLog(value, options = {}) {
-  // allowedKeys is used by sanitizeObject via options
-  const _allowedKeys = options.allowedKeys || null;
+  const { allowedKeys = null } = options;
   
   // Handle null/undefined
   if (value === null) return 'null';
@@ -46,7 +45,7 @@ function sanitizeLog(value, options = {}) {
     try {
       const sanitized = sanitizeObject(value, new Set(), options);
       return JSON.stringify(sanitized).replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
-    } catch (_e) {
+    } catch (e) {
       return '[Object]';
     }
   }

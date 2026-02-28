@@ -15,7 +15,7 @@ Docs: https://xrpl.org/rlusd.html
 
 
 import logging
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -290,8 +290,7 @@ class RLUSDSettlement:
             import requests
             response = requests.post(
                 "https://faucet.altnet.rippletest.net/accounts",
-                json={"destination": wallet.address},
-                timeout=30  # APEX: Always specify timeout for external requests
+                json={"destination": wallet.address}
             )
             
             if response.status_code == 200:

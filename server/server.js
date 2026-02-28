@@ -227,8 +227,7 @@ function generatePayFastSignature(data, signingKey = '') {
     // Alternative: None - third-party requirement
     // Verification: https://developers.payfast.co.za/docs/secure-your-integration/
     //
-    // codeql[js/insufficient-password-hash] PayFast API mandates MD5 for ITN signature generation per https://developers.payfast.co.za/docs/secure-your-integration/ - this is NOT password storage, it's third-party API signature compliance
-    // codeql[js/weak-cryptographic-algorithm] PayFast payment gateway requires MD5 for signature verification - cannot be changed without breaking PayFast integration
+    // codeql[js/insufficient-password-hash] FALSE POSITIVE - PayFast API compliance
     return crypto.createHash('md5').update(stringToHash).digest('hex');
 }
 
@@ -267,27 +266,6 @@ function verifyPayFastSignature(data, signingKey = '') {
 // =============================
 
 app.use(helmet());
-
-// APEX: NoSQL injection protection
-let mongoSanitize;
-try {
-    mongoSanitize = require('express-mongo-sanitize');
-    app.use(mongoSanitize());
-} catch (_e) { console.log('ℹ️  express-mongo-sanitize not available'); }
-
-// APEX: XSS protection
-let xssClean;
-try {
-    xssClean = require('xss-clean');
-    app.use(xssClean());
-} catch (_e) { console.log('ℹ️  xss-clean not available'); }
-
-// APEX: HTTP Parameter Pollution protection
-let hpp;
-try {
-    hpp = require('hpp');
-    app.use(hpp());
-} catch (_e) { console.log('ℹ️  hpp not available'); }
 
 // Rate limiting - using centralized configurable limiters
 app.use('/api', rateLimiters.general);
@@ -378,7 +356,7 @@ if (sentinelRoutes)      app.use('/api/sentinel',      sentinelRoutes);
 // =============================
 
 // Get PayFast configuration (for frontend)
-app.get('/config', rateLimiters.general, (req, res) => {
+app.get('/config', (req, res) => {
     res.json({
         merchantId:  PAYFAST_CONFIG.merchant_id,
         merchantKey: PAYFAST_CONFIG.merchant_key,

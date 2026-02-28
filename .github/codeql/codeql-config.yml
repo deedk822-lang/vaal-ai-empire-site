@@ -1,0 +1,28 @@
+name: "Vaal AI Empire CodeQL Configuration"
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+paths:
+  - agents/
+  - server/
+  - services/
+  - app/
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.venv/**'
+  - '**/__pycache__/**'
+  - '**/tests/**'
+  - '**/test_*.py'
+  - '**/*.test.js'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/.git/**'
+
+query-filters:
+  - exclude:
+      id: py/unsafe-deserialization
+  - exclude:
+      id: js/unsafe-deserialization

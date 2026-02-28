@@ -1233,9 +1233,8 @@ class ProductionSwarmFixer:
                 )
 
                 if fixed_code and fixed_code.strip() != original_code.strip():
-                    fix_id = hashlib.md5(  # nosec B324 - not used for security, only for unique ID generation
-                        f"{file_path}:{line_number}:{time.time()}".encode(),
-                        usedforsecurity=False
+                    fix_id = hashlib.md5(
+                        f"{file_path}:{line_number}:{time.time()}".encode()
                     ).hexdigest()[:12]
 
                     diff = self.patcher.generate_diff(

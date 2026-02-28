@@ -14,7 +14,7 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .api_clients import UnifiedLLMClient, GrafanaClient, PrometheusClient, VercelClient
@@ -114,7 +114,7 @@ class SwarmOrchestrator:
         Returns:
             SwarmResult with all outputs
         """
-        start_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        start_time = datetime.utcnow().isoformat() + "Z"
         trace_id = self.tracer.start_trace("swarm_execution")
         
         self.logger.info(
@@ -185,7 +185,7 @@ class SwarmOrchestrator:
         # LLM metrics
         llm_metrics = self.llm.get_metrics()
         
-        end_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        end_time = datetime.utcnow().isoformat() + "Z"
         
         # Create result
         result = SwarmResult(

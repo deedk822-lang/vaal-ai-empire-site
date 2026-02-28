@@ -1212,24 +1212,6 @@ class SentientFinancialSentinel:
             "scopes": [s.value for s in consent.scopes],
             "expires_at": consent.expires_at.isoformat()
         }
-    
-    def get_status(self) -> Dict[str, Any]:
-        """
-        Get current sentinel status.
-        
-        Returns:
-            Status dictionary with mode, AI status, and XRPL network info
-        """
-        return {
-            "mode": self.mode.value,
-            "ai_enabled": self.model is not None,
-            "voice_enabled": self.voice is not None,
-            "xrpl_network": self.xrpl.network_type,
-            "xrpl_url": self.xrpl.network_url,
-            "xrpl_wallet": self.xrpl.wallet.address if self.xrpl.wallet else None,
-            "consent_count": len(self.consent_manager._consents),
-            "version": "1.0.0-phase1"
-        }
 
 
 # ═══════════════════════════════════════════════════════════════════

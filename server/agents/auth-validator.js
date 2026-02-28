@@ -11,7 +11,7 @@
 
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const _colors = require('colors'); // APEX: unused, kept for future colorized output
+const colors = require('colors');
 
 class AuthValidator {
     constructor() {
@@ -136,8 +136,7 @@ class AuthValidator {
         this.log('Testing User Model...');
 
         try {
-            const _User = require('../models/User'); // APEX: validates model loads without error
-            void _User; // suppress unused var
+            const User = require('../models/User');
             this.log('User model loaded', 'success');
             return true;
         } catch (error) {

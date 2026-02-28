@@ -9,7 +9,7 @@
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
-const _colors = require('colors'); // APEX: unused, kept for future colorized output
+const colors = require('colors');
 
 // Import all agents
 const AuthValidator = require('./auth-validator');
