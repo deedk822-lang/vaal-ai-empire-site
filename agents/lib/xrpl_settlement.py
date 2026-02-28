@@ -290,7 +290,8 @@ class RLUSDSettlement:
             import requests
             response = requests.post(
                 "https://faucet.altnet.rippletest.net/accounts",
-                json={"destination": wallet.address}
+                json={"destination": wallet.address},
+                timeout=30  # APEX: Always specify timeout for external requests
             )
             
             if response.status_code == 200:

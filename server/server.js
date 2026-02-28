@@ -267,6 +267,27 @@ function verifyPayFastSignature(data, signingKey = '') {
 
 app.use(helmet());
 
+// APEX: NoSQL injection protection
+let mongoSanitize;
+try {
+    mongoSanitize = require('express-mongo-sanitize');
+    app.use(mongoSanitize());
+} catch (_e) { console.log('ℹ️  express-mongo-sanitize not available'); }
+
+// APEX: XSS protection
+let xssClean;
+try {
+    xssClean = require('xss-clean');
+    app.use(xssClean());
+} catch (_e) { console.log('ℹ️  xss-clean not available'); }
+
+// APEX: HTTP Parameter Pollution protection
+let hpp;
+try {
+    hpp = require('hpp');
+    app.use(hpp());
+} catch (_e) { console.log('ℹ️  hpp not available'); }
+
 // Rate limiting - using centralized configurable limiters
 app.use('/api', rateLimiters.general);
 
