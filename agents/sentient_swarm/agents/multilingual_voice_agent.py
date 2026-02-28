@@ -18,7 +18,6 @@ Features:
 import asyncio
 import base64
 import io
-import os
 import logging
 from pathlib import Path
 from typing import ClassVar, Dict, Any, List, Optional, Tuple
@@ -524,8 +523,7 @@ class MultilingualVoiceAgent(BaseAgent):
         # Try ModelRouter first (Ollama primary with DashScope fallback)
         if self._model_router is not None:
             try:
-                # Classify task for optimal model selection
-                task_type = classify_task(query) if 'classify_task' in dir() else 'multilingual'
+                # Use multilingual task type for optimal model selection
                 model = self._model_router.get_model_for_task('multilingual')
                 
                 # Build messages

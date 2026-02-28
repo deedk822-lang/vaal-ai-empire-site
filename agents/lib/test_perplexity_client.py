@@ -18,7 +18,6 @@ Run in CI (key injected from secrets):
 from __future__ import annotations
 
 import os
-import time
 import unittest
 
 LIVE_KEY = os.environ.get("PERPLEXITY_API_KEY", "").strip()
@@ -31,7 +30,6 @@ from agents.lib.perplexity_financial_client import (
     SearchResult,
     MarketNewsResult,
     SECFilingResult,
-    EdgarFact,
     HealthReport,
     _resolve_cik,
     _extract_edgar_facts,

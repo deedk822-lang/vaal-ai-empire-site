@@ -37,6 +37,23 @@ module.exports = [
       'no-unreachable': 'error',
     },
   },
+  // APEX: Jest test environment globals for test files
+  {
+    files: ['**/*.test.js', '**/*.spec.js', '**/tests/**/*.js', '**/test/**/*.js'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        jest: 'readonly',
+      },
+    },
+  },
   {
     ignores: [
       'node_modules/**',

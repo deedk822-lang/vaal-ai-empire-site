@@ -227,8 +227,7 @@ function generatePayFastSignature(data, signingKey = '') {
     // Alternative: None - third-party requirement
     // Verification: https://developers.payfast.co.za/docs/secure-your-integration/
     //
-    // codeql[js/insufficient-password-hash] FALSE POSITIVE - PayFast API compliance
-    return crypto.createHash('md5').update(stringToHash).digest('hex');
+    return crypto.createHash('md5').update(stringToHash).digest('hex'); // lgtm[js/insufficient-password-hash] -- PayFast API mandates MD5 for ITN signing; not password storage
 }
 
 /**
@@ -377,7 +376,7 @@ if (sentinelRoutes)      app.use('/api/sentinel',      sentinelRoutes);
 // =============================
 
 // Get PayFast configuration (for frontend)
-app.get('/config', (req, res) => {
+app.get('/config', rateLimiters.general, (req, res) => {
     res.json({
         merchantId:  PAYFAST_CONFIG.merchant_id,
         merchantKey: PAYFAST_CONFIG.merchant_key,
