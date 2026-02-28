@@ -354,6 +354,24 @@ router.post('/settlement', sentinelRateLimiter, async (req, res) => {
             });
         }
 
+        // APEX: POPIA compliance - validate consent_ref for XRPL settlements
+        if (!consent_ref) {
+            return res.status(400).json({
+                status: 'error',
+                code: 'CONSENT_REQUIRED',
+                message: 'consent_ref is required for XRPL settlements. Grant consent via /api/sentinel/consent with scope "xrpl_settlement"'
+            });
+        }
+
+        // Validate consent_ref format (basic check)
+        if (!consent_ref.startsWith('consent-') || consent_ref.length < 20) {
+            return res.status(400).json({
+                status: 'error',
+                code: 'INVALID_CONSENT_REF',
+                message: 'Invalid consent_ref format'
+            });
+        }
+
         // Simulated settlement response
         const paymentId = `x402-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 

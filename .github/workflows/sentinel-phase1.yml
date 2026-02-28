@@ -384,7 +384,18 @@ jobs:
       - name: Start server for integration tests
         run: |
           cd server && npm start &
-          sleep 5
+          # APEX: Health check with timeout instead of fixed sleep
+          for i in {1..30}; do
+            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
+              echo "Server ready after ${i} attempts"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Server failed to start within 30 seconds"
+              exit 1
+            fi
+            sleep 1
+          done
         env:
           NODE_ENV: test
           PORT: 3001

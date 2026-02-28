@@ -20,7 +20,7 @@ import hashlib  # APEX: For POPIA-compliant user_id hashing
 import logging
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone  # APEX: timezone added for UTC
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
@@ -71,7 +71,7 @@ class POPIAConsent:
         """Check if consent is valid for a given scope."""
         if self.revoked:
             return False
-        if datetime.utcnow() > self.expires_at:
+        if datetime.now(timezone.utc) > self.expires_at:
             return False
         return scope in self.scopes
 
@@ -183,7 +183,7 @@ class SentinelModelClient:
             
             # Build audit record
             audit = AuditRecord(
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 action="model_chat",
                 user_id=user_id,
                 details={
@@ -415,7 +415,7 @@ class XRPLLiquidityEngine:
         
         audit_record = {
             "action": "x402_payment",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "amount": str(amount),
             "currency": currency,
             "destination": destination[:10] + "...",  # Truncate for privacy
@@ -538,7 +538,7 @@ class CosyVoiceProcessor:
         
         audit = {
             "action": "voice_synthesis",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "language": language,
             "voice": voice,
             "text_length": len(text),
@@ -630,7 +630,7 @@ class CosyVoiceProcessor:
         
         audit = {
             "action": "voice_transcription",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "language": language,
             "audio_size_bytes": len(audio_base64),
             "consent_reference": consent_ref
@@ -708,12 +708,19 @@ class ConsentManager:
     """
     POPIA-compliant consent management.
     Handles consent grants, revocations, and verification.
+    
+    APEX: user_id is hashed in all audit logs and logger calls per POPIA data-minimisation.
     """
     
     def __init__(self):
         self._consents: Dict[str, POPIAConsent] = {}
         self._audit_log: List[Dict] = []
         logger.info("ConsentManager initialized")
+    
+    @staticmethod
+    def _hash_user_id(user_id: str) -> str:
+        """APEX: Hash user_id for POPIA-compliant logging."""
+        return hashlib.sha256(user_id.encode()).hexdigest()[:16]
     
     def grant_consent(
         self,
@@ -723,7 +730,7 @@ class ConsentManager:
         duration_days: int = 365
     ) -> POPIAConsent:
         """Grant consent for specified scopes."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         consent = POPIAConsent(
             user_id=user_id,
@@ -744,11 +751,11 @@ class ConsentManager:
         self._audit_log.append({
             "timestamp": now.isoformat(),
             "action": "consent_granted",
-            "user_id": user_id,
+            "user_id_hash": self._hash_user_id(user_id),  # APEX: POPIA-compliant
             "scopes": [s.value for s in scopes]
         })
         
-        logger.info(f"Consent granted for user {user_id}: {[s.value for s in scopes]}")
+        logger.info(f"Consent granted for user {self._hash_user_id(user_id)}: {[s.value for s in scopes]}")
         return consent
     
     def verify_consent(
@@ -765,11 +772,11 @@ class ConsentManager:
         consent = self._consents.get(user_id)
         
         if not consent:
-            logger.warning(f"No consent found for user {user_id}")
+            logger.warning(f"No consent found for user {self._hash_user_id(user_id)}")
             return False, None
         
         if not consent.is_valid(scope):
-            logger.warning(f"Consent invalid for user {user_id}, scope {scope.value}")
+            logger.warning(f"Consent invalid for user {self._hash_user_id(user_id)}, scope {scope.value}")
             return False, None
         
         ref = f"consent-{user_id}-{scope.value}-{uuid4().hex[:8]}"
@@ -777,7 +784,7 @@ class ConsentManager:
         # Add to audit trail
         consent.audit_trail.append({
             "action": "verified",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "scope": scope.value,
             "reference": ref
         })
@@ -794,18 +801,18 @@ class ConsentManager:
         consent.revoked = True
         consent.audit_trail.append({
             "action": "revoked",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "reason": reason
         })
         
         self._audit_log.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": "consent_revoked",
-            "user_id": user_id,
+            "user_id_hash": self._hash_user_id(user_id),  # APEX: POPIA-compliant
             "reason": reason
         })
         
-        logger.info(f"Consent revoked for user {user_id}: {reason}")
+        logger.info(f"Consent revoked for user {self._hash_user_id(user_id)}: {reason}")
         return True
 
 
@@ -955,7 +962,7 @@ class SentientFinancialSentinel:
             "consent_reference": consent_ref,
             "audit": {
                 "action": "voice_command_processed",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "user_id": user_id,
                 "language": language,
                 "duration_ms": duration_ms

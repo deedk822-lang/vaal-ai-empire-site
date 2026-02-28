@@ -21,7 +21,7 @@ import asyncio
 import time
 import base64
 import logging
-from datetime import datetime
+from datetime import datetime, timezone  # APEX: timezone added for UTC
 from typing import Optional, Dict, Any, AsyncGenerator, List
 from dataclasses import dataclass
 from enum import Enum
@@ -242,7 +242,7 @@ class CosyVoiceStreamingProcessor:
 
         audit = {
             "action": "tts_synthesis",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "request_id": request_id,
             "language": lang,
             "voice": voice_model.value,
@@ -436,7 +436,7 @@ class CosyVoiceStreamingProcessor:
 
         audit = {
             "action": "asr_transcription",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "request_id": request_id,
             "language": lang,
             "audio_size_bytes": len(audio_data),
@@ -683,7 +683,7 @@ class VoiceCommandProcessor:
             context["history"].append({
                 "role": "user",
                 "text": result["text"],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
             
             # Cap history to prevent unbounded growth
@@ -719,7 +719,7 @@ class VoiceCommandProcessor:
             context["history"].append({
                 "role": "assistant",
                 "text": text,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         return await self.cosyvoice.synthesize_complete(
