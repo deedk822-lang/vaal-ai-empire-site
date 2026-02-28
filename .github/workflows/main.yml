@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, master, optimal-performance]
+    branches: [main, master]
   pull_request:
     branches: [main, master]
 
@@ -19,12 +19,12 @@ env:
 
 jobs:
   lint-and-test-node:
-    name: Node ${{ matrix.node-version }} — Lint & Test
+    name: Node ${{ matrix.node-version }} - Lint & Test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['18.x', '20.x']
+        node-version: ["'18.x', '20.x']
 
     steps:
       - name: Checkout
@@ -52,12 +52,12 @@ jobs:
         continue-on-error: true
 
   lint-and-test-python:
-    name: Python ${{ matrix.python-version }} — Lint & Test
+    name: Python ${{ matrix.python-version }} - Lint & Test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ["'3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout
@@ -74,21 +74,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio flake8 black isort
 
-      - name: Black — format check
+      - name: Black - format check
         run: |
           black --check \
             --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' \
             . || echo "::warning::Black formatting issues found"
         continue-on-error: true
 
-      - name: isort — import order check
+      - name: isort - import order check
         run: |
           isort --check-only \
             --skip .venv --skip node_modules --skip __pycache__ \
             . || echo "::warning::isort issues found"
         continue-on-error: true
 
-      - name: flake8 — style & complexity
+      - name: flake8 - style & complexity
         run: |
           flake8 . \
             --exclude=.venv,node_modules,__pycache__,.git,build,dist \
@@ -101,6 +101,7 @@ jobs:
           if [ -d "agents/tests" ]; then
             pytest agents/tests/ -v --tb=short || echo "::warning::Some tests failed"
           else
-            echo "::notice::No agents/tests directory found — skipping pytest"
+            echo "::notice::No agents/tests directory found - skipping pytest"
           fi
         continue-on-error: true
+

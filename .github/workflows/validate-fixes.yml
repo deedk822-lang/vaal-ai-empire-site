@@ -1,6 +1,11 @@
 name: Validate CI/CD Fixes
 
 on:
+ codex/add-missing-validate-fixes.yml-workflow
+
+  push:
+    branches: [optimal-performance, m[main]
+ kimi-fixes
   pull_request:
     branches: [ main, master, optimal-performance ]
 
