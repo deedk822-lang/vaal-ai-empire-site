@@ -149,7 +149,7 @@ router.post('/query', sentinelRateLimiter, async (req, res) => {
                 user_id
             });
             res.json(result);
-        } catch (sentinelError) {
+        } catch (_sentinelError) {
             // Graceful fallback to simulation if Python sentinel unavailable
             const response = {
                 status: 'success',
@@ -216,7 +216,7 @@ router.post('/voice', sentinelRateLimiter, async (req, res) => {
                 language: language || 'en-ZA'
             });
             res.json(result);
-        } catch (sentinelError) {
+        } catch (_sentinelError) {
             // Graceful fallback to simulation
             const response = {
                 status: 'success',
