@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout Canceled - Vaal AI Empire</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        .canceled-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+        }
+        .canceled-icon {
+            font-size: 5rem;
+            margin-bottom: 2rem;
+        }
+        .canceled-title {
+            font-size: 2.5rem;
+            color: #f7b731;
+            margin-bottom: 1rem;
+        }
+        .canceled-message {
+            font-size: 1.25rem;
+            color: #ccc;
+            max-width: 600px;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .help-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(247, 183, 49, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            margin-bottom: 2rem;
+        }
+        .help-box h3 {
+            color: #f7b731;
+            margin-bottom: 1rem;
+        }
+        .help-box p {
+            color: #ccc;
+            line-height: 1.6;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #f7b731 0%, #ff9933 100%);
+            color: #0f3460;
+        }
+        .btn-secondary {
+            background: transparent;
+            color: #f7b731;
+            border: 2px solid #f7b731;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(247, 183, 49, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="canceled-container">
+        <div class="canceled-icon">🤔</div>
+        <h1 class="canceled-title">Checkout Canceled</h1>
+        <p class="canceled-message">
+            No worries! Your subscription wasn't started and no charges were made.
+        </p>
+
+        <div class="help-box">
+            <h3>Need Help?</h3>
+            <p>If you encountered an issue or have questions about pricing, our team is here to help:</p>
+            <p style="margin-top: 1rem;">
+                📧 <strong>Email:</strong> founders@vaalai.co.za<br>
+                📱 <strong>WhatsApp:</strong> +27 XX XXX XXXX
+            </p>
+        </div>
+
+        <div class="action-buttons">
+            <a href="/pricing" class="btn btn-primary">Try Again</a>
+            <a href="/" class="btn btn-secondary">Return Home</a>
+        </div>
+    </div>
+</body>
+</html>

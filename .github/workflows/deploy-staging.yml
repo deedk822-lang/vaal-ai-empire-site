@@ -1,0 +1,111 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches: [main, merge/develop-to-main]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      IMAGE_REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}/site
+      STAGING_URL: ${{ vars.STAGING_URL || 'https://vaal-ai-empire-site.vercel.app' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=staging
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+        # REMOVED: continue-on-error: true
+        # Rationale: build failures must fail the job so stale images are not deployed
+
+      - name: Smoke test — HTTP health check
+        id: health_check
+        run: |
+          STAGING_URL="${{ env.STAGING_URL }}"
+          echo "Running smoke test against: ${STAGING_URL}"
+          
+          MAX_ATTEMPTS=6
+          SLEEP_SECONDS=10
+          
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt ${attempt}/${MAX_ATTEMPTS}..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --connect-timeout 5 --max-time 15 \
+              "${STAGING_URL}/health" 2>/dev/null || echo "000")
+            
+            if [[ "$HTTP_CODE" =~ ^2 ]]; then
+              echo "✅ Health check passed (HTTP ${HTTP_CODE})"
+              echo "result=passed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            
+            echo "  HTTP ${HTTP_CODE} — retrying in ${SLEEP_SECONDS}s..."
+            sleep "$SLEEP_SECONDS"
+          done
+          
+          echo "::error::Smoke test failed after ${MAX_ATTEMPTS} attempts — staging is unreachable"
+          echo "result=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          BUILD_STATUS="${{ steps.build.outcome }}"
+          HEALTH_STATUS="${{ steps.health_check.outputs.result || 'not_run' }}"
+          
+          {
+            echo "## 🚀 Staging Deployment Summary"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Docker Build & Push | $([ \"$BUILD_STATUS\" = 'success' ] && echo '✅ Success' || echo '⚠️ Warning') |"
+            echo "| Smoke Test          | $(case \"$HEALTH_STATUS\" in passed) echo '✅ Passed' ;; warning) echo '⚠️ Warning' ;; *) echo '⏭️ Not run' ;; esac) |"
+            echo ""
+            echo "**Image:** \`ghcr.io/${{ env.IMAGE_NAME }}:staging\`"
+            echo "**Commit:** \`${{ github.sha }}\`"
+            echo "**URL:** ${STAGING_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
