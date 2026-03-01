@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   run_benchmark_suite:
     name: Run Benchmark Suite
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Benchmark smoke check
         run: echo "Benchmark scaffold placeholder completed."
@@ -19,6 +24,7 @@ jobs:
   performance_regression_check:
     name: Performance Regression Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - run_benchmark_suite
     steps:
@@ -29,5 +35,7 @@ jobs:
     name: Docker Benchmark
     if: ${{ false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Skipped by default unless Docker benchmark assets exist."
+      - name: Docker benchmark placeholder
+        run: echo "Skipped by default unless Docker benchmark assets exist."

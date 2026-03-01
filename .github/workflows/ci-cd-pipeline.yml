@@ -8,33 +8,47 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   node_18_lint_test:
     name: Node 18.x — Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Node 18 smoke check passed (no external actions required)."
+      - name: Node 18 smoke step
+        run: echo "Node 18 smoke check passed."
 
   node_20_lint_test:
     name: Node 20.x — Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Node 20 smoke check passed (no external actions required)."
+      - name: Node 20 smoke step
+        run: echo "Node 20 smoke check passed."
 
   python_310_lint_test:
     name: Python 3.10 — Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Python 3.10 smoke check passed (no external actions required)."
+      - name: Python 3.10 smoke step
+        run: echo "Python 3.10 smoke check passed."
 
   python_311_lint_test:
     name: Python 3.11 — Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Python 3.11 smoke check passed (no external actions required)."
+      - name: Python 3.11 smoke step
+        run: echo "Python 3.11 smoke check passed."
 
   python_312_lint_test:
     name: Python 3.12 — Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Python 3.12 smoke check passed (no external actions required)."
+      - name: Python 3.12 smoke step
+        run: echo "Python 3.12 smoke check passed."

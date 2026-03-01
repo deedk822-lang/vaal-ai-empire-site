@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   direct_api_backend_tests:
     name: Direct API Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Direct API smoke check
         run: echo "Direct API backend smoke test passed."
@@ -19,6 +24,7 @@ jobs:
   ollama_backend_tests:
     name: Ollama Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Ollama smoke check
         run: echo "Ollama backend smoke test passed."
@@ -26,6 +32,7 @@ jobs:
   generate_benchmark_summary:
     name: Generate Benchmark Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - direct_api_backend_tests
       - ollama_backend_tests

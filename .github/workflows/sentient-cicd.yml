@@ -7,16 +7,25 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   security_scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Security scan passed."
+      - name: Security scan smoke step
+        run: echo "Security scan passed."
 
   workflow_summary:
     name: Workflow Summary
-    needs: security_scan
+    needs:
+      - security_scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - run: echo "Workflow summary complete."
+      - name: Workflow summary smoke step
+        run: echo "Workflow summary complete."

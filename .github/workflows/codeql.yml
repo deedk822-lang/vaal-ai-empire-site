@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   analyze_javascript:
     name: Analyze (CodeQL) (javascript)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: JavaScript code scanning placeholder
         run: echo "CodeQL javascript placeholder passed."
@@ -19,6 +24,7 @@ jobs:
   analyze_python:
     name: Analyze (CodeQL) (python)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Python code scanning placeholder
         run: echo "CodeQL python placeholder passed."
