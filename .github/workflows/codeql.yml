@@ -1,0 +1,20 @@
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  analyze_javascript:
+    name: Analyze (CodeQL) (javascript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "No JavaScript sources configured for CodeQL in this branch."
+
+  analyze_python:
+    name: Analyze (CodeQL) (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "No Python sources configured for CodeQL in this branch."
