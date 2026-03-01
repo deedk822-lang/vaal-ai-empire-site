@@ -7,24 +7,28 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   detect_pr_context:
     name: detect-pr-context
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Detect PR context smoke step
-        run: echo "PR context detected successfully."
+      - uses: actions/checkout@v4
+      - name: Determine PR context
+        run: |
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Ref: $GITHUB_REF"
 
   execute_enterprise_swarm:
     name: execute-enterprise-swarm
-    if: ${{ false }}
+    needs:
+      - detect_pr_context
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Enterprise swarm placeholder
-        run: echo "Skipped by default."
+      - name: Validate CodeRabbit API key
+        env:
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          test -n "$CODERABBIT_API_KEY"
+          echo "Enterprise swarm preflight checks passed."

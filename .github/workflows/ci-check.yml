@@ -8,15 +8,18 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: CI check smoke step
-        run: echo "Core CI check passed."
+      - uses: actions/checkout@v4
+      - name: Validate repository files
+        run: |
+          test -f README.md
+          test -d .github/workflows
+          echo "Repository structure looks valid."
+      - name: Validate all workflow YAML files parse
+        run: |
+          ruby -ryaml -e 'Dir[".github/workflows/*.yml"].each { |f| YAML.load_file(f); puts "ok #{f}" }'

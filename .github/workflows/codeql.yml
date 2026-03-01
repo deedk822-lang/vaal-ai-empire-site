@@ -6,25 +6,29 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
-
-defaults:
-  run:
-    shell: bash
+  security-events: write
 
 jobs:
   analyze_javascript:
     name: Analyze (CodeQL) (javascript)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: JavaScript code scanning placeholder
-        run: echo "CodeQL javascript placeholder passed."
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+      - uses: github/codeql-action/analyze@v3
 
   analyze_python:
     name: Analyze (CodeQL) (python)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: Python code scanning placeholder
-        run: echo "CodeQL python placeholder passed."
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@v3
