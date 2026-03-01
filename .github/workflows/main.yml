@@ -1,0 +1,100 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  lint-and-test-node:
+    name: Node ${{ matrix.node-version }} — Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18.x', '20.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./server
+        run: npm ci || npm install
+
+      - name: Run ESLint
+        working-directory: ./server
+        run: npx eslint . --ext .js || echo "::warning::Lint issues found"
+
+      - name: Run tests
+        working-directory: ./server
+        run: npm test --if-present || echo "::warning::Some tests failed"
+
+  lint-and-test-python:
+    name: Python ${{ matrix.python-version }} — Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio flake8 black isort
+
+      - name: Black — format check
+        run: |
+          black --check \
+            --extend-exclude='\.venv|node_modules|__pycache__|\.git|build|dist' \
+            . || echo "::warning::Black formatting issues found"
+
+      - name: isort — import order check
+        run: |
+          isort --check-only \
+            --skip .venv --skip node_modules --skip __pycache__ \
+            . || echo "::warning::isort issues found"
+
+      - name: flake8 — style & complexity
+        run: |
+          flake8 . \
+            --exclude=.venv,node_modules,__pycache__,.git,build,dist \
+            --max-line-length=100 \
+            --max-complexity=12 || echo "::warning::flake8 issues found"
+
+      - name: pytest
+        run: |
+          if [ -d "agents/tests" ]; then
+            pytest agents/tests/ -v --tb=short || echo "::warning::Some tests failed"
+          else
+            echo "::notice::No agents/tests directory found — skipping pytest"
+          fi

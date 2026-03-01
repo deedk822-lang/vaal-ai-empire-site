@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — Vaal AI Empire</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Pricing cards -->
+  <main>
+    <section class="pricing-section">
+      <h1>Choose Your Plan</h1>
+
+      <div class="pricing-grid">
+
+        <!-- Starter -->
+        <div class="pricing-card">
+          <h2>Vaal Starter</h2>
+          <p class="pricing-amount">R999<span>/month</span></p>
+          <p style="margin-top:1rem;font-size:0.875rem;color:#999;">
+            7-day trial, then R999/month
+          </p>
+          <button
+            class="btn-pricing subscribe-btn"
+            data-plan="starter"
+            aria-label="Start Free Trial — Vaal Starter plan">
+            Start Free Trial
+          </button>
+        </div>
+
+        <!-- Empire -->
+        <div class="pricing-card pricing-card--featured">
+          <h2>Vaal Empire</h2>
+          <p class="pricing-amount">R2,999<span>/month</span></p>
+          <p style="margin-top:1rem;font-size:0.875rem;color:#999;">
+            7-day trial, then R2,999/month
+          </p>
+          <button
+            class="btn-pricing subscribe-btn"
+            data-plan="empire"
+            aria-label="Start Free Trial — Vaal Empire plan">
+            Start Free Trial
+          </button>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer style="text-align:center;padding:3rem 2rem;border-top:1px solid rgba(255,255,255,0.1);">
+    <p style="color:#666;">&copy; 2026 Vaal AI Empire. Built in the Vaal. Built for Africa.</p>
+  </footer>
+
+  <script>
+  (() => {
+    'use strict';
+
+    let config = null; // populated from /config on load
+
+    // ── Load PayFast config from server ────────────────────────────────────
+    async function loadConfig() {
+      try {
+        const res = await fetch('/config');
+        if (!res.ok) throw new Error(`Failed to load config (HTTP ${res.status})`);
+        config = await res.json();
+      } catch (err) {
+        console.error('[Config]', err);
+        document.querySelectorAll('.subscribe-btn').forEach(btn => {
+          btn.disabled     = true;
+          btn.textContent  = 'Payment Unavailable';
+        });
+      }
+    }
+
+    // ── Submit a hidden form to PayFast ─────────────────────────────────────
+    // PayFast uses a browser form POST — not a fetch-based session redirect.
+    // The server generates the signed payload; we POST it directly to PayFast.
+    function redirectToPayFast(paymentData, payfastUrl) {
+      const form = document.createElement('form');
+      form.method  = 'post';
+      form.action  = payfastUrl;
+
+      Object.entries(paymentData).forEach(([key, value]) => {
+        const input   = document.createElement('input');
+        input.type    = 'hidden';
+        input.name    = key;
+        input.value   = String(value);
+        form.appendChild(input);
+      });
+
+      // Form must be in the DOM to submit in all browsers
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    // ── Handle plan button click ────────────────────────────────────────────
+    async function subscribe(plan) {
+      if (!config) {
+        alert('Payment system not ready. Please refresh the page.');
+        return;
+      }
+
+      const btn          = document.querySelector(`[data-plan="${plan}"]`);
+      const originalText = btn?.textContent;
+      if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+      try {
+        const res = await fetch('/create-payment', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ plan }),
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `Server error (HTTP ${res.status})`);
+        }
+
+        const data = await res.json();
+
+        if (!data.success)     throw new Error(data.error || 'Payment creation failed');
+        if (!data.payfastUrl)  throw new Error('No PayFast URL returned from server');
+        if (!data.paymentData) throw new Error('No payment data returned from server');
+
+        // Hand off to PayFast — browser will navigate away
+        redirectToPayFast(data.paymentData, data.payfastUrl);
+
+      } catch (err) {
+        console.error('[Checkout]', err);
+        alert(`Checkout error: ${err.message}`);
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
+    }
+
+    // ── Boot ────────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadConfig();
+
+      document.querySelectorAll('.subscribe-btn').forEach(btn => {
+        btn.addEventListener('click', () => subscribe(btn.dataset.plan));
+      });
+    });
+  })();
+  </script>
+
+</body>
+</html>

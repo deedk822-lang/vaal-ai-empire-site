@@ -1,0 +1,68 @@
+name: Setup Grafana Metrics Environment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup-env:
+    name: Generate Grafana .env from Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for required secrets
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER: ${{ secrets.PROMETHEUS_USER }}
+          PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+          GRAFANA_DATASOURCE_NAME: ${{ secrets.GRAFANA_DATASOURCE_NAME }}
+        run: |
+          echo "Checking for Grafana/Prometheus secrets..."
+          
+          COUNT=0
+          [ -n "$PROMETHEUS_URL" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_URL configured"
+          [ -n "$PROMETHEUS_USER" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_USER configured"
+          [ -n "$PROMETHEUS_API_KEY" ] && COUNT=$((COUNT + 1)) && echo "✅ PROMETHEUS_API_KEY configured"
+          [ -n "$GRAFANA_DATASOURCE_NAME" ] && COUNT=$((COUNT + 1)) && echo "✅ GRAFANA_DATASOURCE_NAME configured"
+          
+          if [ $COUNT -eq 0 ]; then
+            echo "::notice::No Grafana/Prometheus secrets configured."
+            echo "::notice::Add secrets in: Settings → Secrets and variables → Actions"
+          else
+            echo "::notice::$COUNT of 4 secrets configured."
+          fi
+
+      - name: Generate .env file from secrets
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          PROMETHEUS_USER: ${{ secrets.PROMETHEUS_USER }}
+          PROMETHEUS_API_KEY: ${{ secrets.PROMETHEUS_API_KEY }}
+          GRAFANA_DATASOURCE_NAME: ${{ secrets.GRAFANA_DATASOURCE_NAME }}
+        run: |
+          # Only create .env if secrets are configured
+          if [ -n "$PROMETHEUS_URL" ] || [ -n "$PROMETHEUS_API_KEY" ]; then
+            cat > .env << EOF
+          PROMETHEUS_URL=${PROMETHEUS_URL:-not_configured}
+          PROMETHEUS_USER=${PROMETHEUS_USER:-not_configured}
+          PROMETHEUS_PASSWORD=${PROMETHEUS_API_KEY:-not_configured}
+          GRAFANA_DATASOURCE_NAME=${GRAFANA_DATASOURCE_NAME:-not_configured}
+          EOF
+            echo ".env generated from secrets."
+          else
+            echo "::notice::No secrets configured — skipping .env generation"
+          fi
+
+      - name: Upload .env as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grafana-env
+          path: .env
+          retention-days: 1
+        if: always()
+        continue-on-error: true
