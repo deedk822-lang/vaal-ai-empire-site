@@ -8,7 +8,6 @@ jobs:
     name: detect-pr-context
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - run: echo "PR context detected successfully."
 
   execute_enterprise_swarm:

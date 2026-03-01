@@ -9,7 +9,6 @@ jobs:
     name: Run Benchmark Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - run: echo "Benchmark scaffold placeholder completed."
 
   performance_regression_check:
