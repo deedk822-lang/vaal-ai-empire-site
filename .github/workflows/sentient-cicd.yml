@@ -1,7 +1,8 @@
 name: Sentient Financial Sentinel CI/CD
 
-"on":
+on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -1,7 +1,8 @@
 name: Swarm Auto-Fixer
 
-"on":
+on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
