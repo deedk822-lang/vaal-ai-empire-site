@@ -1,8 +1,9 @@
 name: Benchmark Performance
 
-"on":
+on:
   pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,14 +13,17 @@ jobs:
     name: Run Benchmark Suite
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Benchmark scaffold placeholder completed."
+      - name: Benchmark smoke check
+        run: echo "Benchmark scaffold placeholder completed."
 
   performance_regression_check:
     name: Performance Regression Check
-    needs: run_benchmark_suite
     runs-on: ubuntu-latest
+    needs:
+      - run_benchmark_suite
     steps:
-      - run: echo "No baseline metrics yet; marking check as pass."
+      - name: Regression smoke check
+        run: echo "No baseline metrics yet; marking check as pass."
 
   docker_benchmark:
     name: Docker Benchmark

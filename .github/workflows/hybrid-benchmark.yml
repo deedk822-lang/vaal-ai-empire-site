@@ -1,8 +1,9 @@
 name: Hybrid Benchmark
 
-"on":
+on:
   pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,17 +13,22 @@ jobs:
     name: Direct API Backend Tests
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Direct API backend smoke test passed."
+      - name: Direct API smoke check
+        run: echo "Direct API backend smoke test passed."
 
   ollama_backend_tests:
     name: Ollama Backend Tests
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Ollama backend smoke test passed."
+      - name: Ollama smoke check
+        run: echo "Ollama backend smoke test passed."
 
   generate_benchmark_summary:
     name: Generate Benchmark Summary
-    needs: [direct_api_backend_tests, ollama_backend_tests]
     runs-on: ubuntu-latest
+    needs:
+      - direct_api_backend_tests
+      - ollama_backend_tests
     steps:
-      - run: echo "Benchmark summary generated."
+      - name: Summary smoke check
+        run: echo "Benchmark summary generated."

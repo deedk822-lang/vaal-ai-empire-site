@@ -1,8 +1,9 @@
 name: CodeQL
 
-"on":
+on:
   pull_request:
   push:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,10 +13,12 @@ jobs:
     name: Analyze (CodeQL) (javascript)
     runs-on: ubuntu-latest
     steps:
-      - run: echo "CodeQL javascript placeholder passed."
+      - name: JavaScript code scanning placeholder
+        run: echo "CodeQL javascript placeholder passed."
 
   analyze_python:
     name: Analyze (CodeQL) (python)
     runs-on: ubuntu-latest
     steps:
-      - run: echo "CodeQL python placeholder passed."
+      - name: Python code scanning placeholder
+        run: echo "CodeQL python placeholder passed."
