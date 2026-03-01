@@ -1,0 +1,90 @@
+# Vaal AI Empire - Prometheus Configuration
+# For monitoring benchmark execution and application metrics
+#
+# Usage:
+#   docker compose -f docker-compose.benchmark.yml up prometheus
+
+# Global configuration
+global:
+  scrape_interval: 15s      # How frequently to scrape targets
+  evaluation_interval: 15s  # How frequently to evaluate rules
+  external_labels:
+    cluster: 'vaal-ai-empire'
+    replica: '{{.ExternalURL}}'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+      # Uncomment and configure if using Alertmanager
+      # - alertmanager:9093
+
+# Load rules from directory
+rule_files:
+  # - 'rules/*.yml'
+  # Uncomment when alert rules are defined
+
+# Scrape configurations
+scrape_configs:
+  # ============================================
+  # Prometheus Self-Monitoring
+  # ============================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # Benchmark Runner Metrics
+  # ============================================
+  - job_name: 'vaal-benchmark'
+    static_configs:
+      - targets: ['benchmark-runner:9090']
+        labels:
+          service: 'benchmark-executor'
+          environment: 'ci'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # ============================================
+  # Node Exporter (if running)
+  # ============================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+
+  # ============================================
+  # Application Server Metrics
+  # ============================================
+  - job_name: 'vaal-server'
+    static_configs:
+      - targets: ['host.docker.internal:4242']
+        labels:
+          service: 'vaal-ai-empire'
+          component: 'api-server'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # ============================================
+  # Docker Daemon Metrics (if enabled)
+  # ============================================
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+    scrape_interval: 30s
+
+# Remote write configuration for Grafana Cloud (optional)
+# Uncomment and configure to send metrics to Grafana Cloud
+# remote_write:
+#   - url: "${PROMETHEUS_URL}/push"
+#     basic_auth:
+#       username: "${PROMETHEUS_USER}"
+#       password: "${PROMETHEUS_PASSWORD}"
+#     write_relabel_configs:
+#       - source_labels: [__name__]
+#         regex: 'vaal_.*'
+#         action: keep

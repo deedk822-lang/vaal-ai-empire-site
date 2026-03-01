@@ -1,0 +1,40 @@
+# African Language Engine Dependencies
+# Install: pip install -r requirements.txt
+
+# Core ML
+torch>=2.6.0
+torchaudio>=2.0.0
+transformers>=4.38.0
+datasets>=2.12.0
+accelerate>=0.20.0
+
+# Training
+peft>=0.4.0
+bitsandbytes>=0.39.0
+wandb>=0.15.0
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
+TTS>=0.20.0
+
+# Data
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.28.0
+
+# Evaluation
+jiwer>=3.0.0
+evaluate>=0.4.0
+
+# API
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.7
+
+# Utils
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Financial Data (Optional)
+perplexity>=0.1.0  # For market data fetching
