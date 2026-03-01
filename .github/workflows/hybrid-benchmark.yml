@@ -1,8 +1,11 @@
 name: Hybrid Benchmark
 
-on:
+"on":
   pull_request:
   push:
+
+permissions:
+  contents: read
 
 jobs:
   direct_api_backend_tests:

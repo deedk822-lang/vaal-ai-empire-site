@@ -1,8 +1,11 @@
 name: Benchmark Performance
 
-on:
+"on":
   pull_request:
   push:
+
+permissions:
+  contents: read
 
 jobs:
   run_benchmark_suite:
@@ -20,7 +23,7 @@ jobs:
 
   docker_benchmark:
     name: Docker Benchmark
-    if: false
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "Skipped by default unless Docker benchmark assets exist."
