@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+server/node_modules/
+.venv/
+venv/
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Cache
+.eslintcache
+
+# Agent workspace
+.kimi/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
