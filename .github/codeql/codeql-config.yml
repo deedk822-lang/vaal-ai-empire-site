@@ -1,0 +1,35 @@
+name: "Vaal AI Empire CodeQL Configuration"
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+paths:
+  - agents/
+  - server/
+  - services/
+  - app/
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.venv/**'
+  - '**/__pycache__/**'
+  - '**/tests/**'
+  - '**/test_*.py'
+  - '**/*.test.js'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/.git/**'
+  - '**/vaal-ai-empire-site/**'
+  - '**/vaal-repo/**'
+
+query-filters:
+  - exclude:
+      id: py/unsafe-deserialization
+  - exclude:
+      id: js/unsafe-deserialization
+  # PayFast API requires MD5 for signature generation - third-party compliance, not password storage
+  - exclude:
+      id: js/insufficient-password-hash
+  - exclude:
+      id: js/weak-cryptographic-algorithm

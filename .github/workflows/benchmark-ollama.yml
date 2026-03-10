@@ -1,0 +1,143 @@
+name: Ollama Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Models to test (comma-separated: kimi-k2.5,glm-5,qwen2.5-coder,llama3.2)'
+        default: 'llama3.2'
+        required: true
+      category:
+        description: 'Test category (empty = all)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', security, efficiency, code_generation, debugging, reasoning]
+      runs:
+        description: 'Runs per test (1–10)'
+        required: false
+        default: '3'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ollama-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  benchmark:
+    name: Run Ollama Benchmark Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio
+
+      - name: Validate inputs
+        id: validate
+        run: |
+          RUNS="${{ github.event.inputs.runs }}"
+          RUNS=$(echo "$RUNS" | tr -d '[:space:]')
+          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 10 ]; then
+            echo "::warning::Invalid 'runs' value: '$RUNS'. Using default of 3."
+            RUNS=3
+          fi
+          echo "runs_safe=${RUNS}" >> "$GITHUB_OUTPUT"
+          echo "✅ Validated: runs=${RUNS}"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh || true
+        continue-on-error: true
+
+      - name: Start Ollama daemon
+        run: |
+          ollama serve &
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "✅ Ollama ready"
+              break
+            fi
+            sleep 1
+          done || true
+        continue-on-error: true
+
+      - name: Pull models
+        run: |
+          IFS=',' read -ra MODELS <<< "${{ github.event.inputs.models }}"
+          for model in "${MODELS[@]}"; do
+            model=$(echo "$model" | xargs)
+            echo "Pulling model: $model"
+            ollama pull "$model" || echo "::warning::Could not pull $model"
+          done
+          ollama list || true
+        continue-on-error: true
+
+      - name: Create results directory
+        run: mkdir -p benchmark_results
+
+      - name: Run Ollama benchmark suite
+        run: |
+          if [ -f "agents/ollama_benchmark_enhanced.py" ]; then
+            python agents/ollama_benchmark_enhanced.py \
+              --runs "${{ steps.validate.outputs.runs_safe }}" \
+              --output benchmark_results/ollama_report.json || true
+          else
+            echo "::notice::ollama_benchmark_enhanced.py not found — skipping"
+          fi
+        continue-on-error: true
+
+      - name: Generate benchmark summary
+        if: always()
+        run: |
+          python3 << 'PYEOF' || true
+          import json, os
+          from pathlib import Path
+          
+          report_path = Path("benchmark_results/ollama_report.json")
+          if not report_path.exists():
+              print("No benchmark report found")
+              exit(0)
+          
+          data = json.loads(report_path.read_text())
+          summary = data.get("summary", {})
+          
+          lines = [
+              "## Ollama Benchmark Results",
+              "",
+              f"**Total Tests:** {summary.get('total_tests', 0)}",
+              f"**Passed:** {summary.get('passed_tests', 0)}",
+              f"**Overall Score:** {summary.get('overall_score', 0):.1f}%",
+          ]
+          
+          output = "\n".join(lines)
+          print(output)
+          
+          sf = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(sf, "a") as f:
+              f.write(output + "\n")
+          PYEOF
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-benchmark-results
+          path: benchmark_results/
+          retention-days: 30
